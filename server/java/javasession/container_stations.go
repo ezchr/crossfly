@@ -385,7 +385,7 @@ func mergeEnchantments(input, material, result item.Stack, cost int, enchantedBo
 		resultLevel := enchant.Level()
 		levelCost := resultLevel
 		if existing, ok := input.Enchantment(enchantType); ok {
-			if existing.Level() > resultLevel || (existing.Level() == resultLevel && resultLevel == enchantType.MaxLevel()) {
+			if existing.Level() > resultLevel || (existing.Level() == resultLevel && resultLevel >= enchantType.MaxLevel()) {
 				hasIncompatible = true
 				continue
 			} else if existing.Level() == resultLevel {

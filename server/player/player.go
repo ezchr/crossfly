@@ -1535,10 +1535,7 @@ func (p *Player) OnFireDuration() time.Duration {
 
 // SetOnFire ...
 func (p *Player) SetOnFire(duration time.Duration) {
-	ticks := int64(duration.Seconds() * 20)
-	if level := p.Armour().HighestEnchantmentLevel(enchantment.FireProtection); level > 0 {
-		ticks -= int64(math.Floor(float64(ticks) * float64(level) * 0.15))
-	}
+	ticks := enchantment.FireProtection.BurnTicks(int64(duration.Seconds()*20), p.Armour().TotalEnchantmentLevel(enchantment.FireProtection))
 
 	duration = time.Duration(ticks) * time.Second / 20
 	ctx := NewEventContext(p.tx, p)

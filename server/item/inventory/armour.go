@@ -146,6 +146,18 @@ func (a *Armour) HighestEnchantmentLevel(t item.EnchantmentType) int {
 	return lvl
 }
 
+// TotalEnchantmentLevel adds up the levels of an item.EnchantmentType on all
+// Armour items, or returns 0 if none of them have the enchantment.
+func (a *Armour) TotalEnchantmentLevel(t item.EnchantmentType) int {
+	lvl := 0
+	for _, it := range a.Items() {
+		if e, ok := it.Enchantment(t); ok {
+			lvl += e.Level()
+		}
+	}
+	return lvl
+}
+
 // DamageFunc is a function that deals d damage points to an item stack s. The
 // resulting item.Stack is returned. Depending on the game mode of a player,
 // damage may not be dealt at all.
@@ -160,39 +172,31 @@ func (a *Armour) Damage(dmg float64, f DamageFunc) {
 	}
 }
 
-// ThornsDamage checks if any of the Armour items are enchanted with thorns. If
-// this is the case and the thorns enchantment activates (15% chance per level),
-// a random Armour piece is damaged. The damage to be dealt to the attacker is
-// returned.
+// ThornsDamage handles the Thorns enchantment of the Armour items when the
+// wearer is hurt by an attacker, as Bedrock Edition's ProtectionEnchant does
+// for every Thorns item: it activates with a 15% chance per level (always from
+// level VII on) and then deals 1-4 damage, or level-10 damage from level XI on.
+// Every Thorns item loses 1 durability, and 2 more when it activates. The
+// damage to be dealt to the attacker is returned: the highest of the items
+// that activated, as the attacker's hurt immunity lets only the highest of the
+// hits of one attack through.
 func (a *Armour) ThornsDamage(f DamageFunc) float64 {
-	slots := a.Slots()
 	dmg := 0.0
-
-	for _, i := range slots {
-		thorns, _ := i.Enchantment(enchantment.Thorns)
-		if level := float64(thorns.Level()); rand.Float64() < level*0.15 {
-			// 15%/level chance of thorns activation per item. Total damage from
-			// normal thorns armour (max thorns III) should never exceed 4.0 in
-			// total.
-			dmg = math.Min(dmg+float64(1+rand.IntN(4)), 4.0)
+	for slot, it := range a.Slots() {
+		thorns, ok := it.Enchantment(enchantment.Thorns)
+		if !ok {
+			continue
 		}
-	}
-	if highest := a.HighestEnchantmentLevel(enchantment.Thorns); highest > 10 {
-		// When we find an armour piece with thorns XI or above, the logic
-		// changes: We have to find the armour piece with the highest level
-		// of thorns and subtract 10 from its level to calculate the final
-		// damage.
-		dmg = float64(highest - 10)
-	}
-	if dmg > 0 {
-		// Deal 2 damage to one random thorns item. Bedrock Edition and Java Edition
-		// both have different behaviour here and neither seem to match the expected
-		// behaviour. Java Edition deals 2 damage to a random thorns item for every
-		// thorns armour item worn, while Bedrock Edition deals 1 additional damage
-		// for every thorns item and another 2 for every thorns item when it
-		// activates.
-		slot := rand.IntN(len(slots))
-		_ = a.Inventory().SetItem(slot, f(slots[slot], 2))
+		level, cost := thorns.Level(), 1
+		if rand.Float64() < float64(level)*0.15 {
+			cost += 2
+			d := float64(1 + rand.IntN(4))
+			if level > 10 {
+				d = float64(level - 10)
+			}
+			dmg = math.Max(dmg, d)
+		}
+		_ = a.inv.SetItem(slot, f(it, cost))
 	}
 	return dmg
 }

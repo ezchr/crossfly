@@ -85,6 +85,14 @@ var attributeMovementSpeed = v777.BuiltinID("minecraft:attribute", "minecraft:mo
 // then drops its own sprint modifier (handleUpdateAttributes clears modifiers) and moves at
 // exactly Dragonfly's speed, which a vanilla client also does between sprint toggles.
 func (s *Session) SendSpeed(speed float64) {
+	s.enchAttrs.speed, s.enchAttrs.speedSet = speed, true
+	s.writeSpeed()
+}
+
+// writeSpeed sends the speed SendSpeed was last given, with the Soul Speed boost while it is in
+// effect (enchant_attributes.go).
+func (s *Session) writeSpeed() {
+	speed := s.enchAttrs.speed * soulSpeedFactor(s.enchAttrs.soulSpeed)
 	attr := attributeMovementSpeed
 	if l := s.legacy(); l != nil {
 		if attr = version.Map(l.attribute, attr); attr < 0 {

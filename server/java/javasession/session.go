@@ -78,6 +78,9 @@ type Session struct {
 	textModelIDs map[int32]struct{}     // entities shown as a text model (textmodel.go)
 	remeasure    bool                   // the line width remeasureTextModels sent last time
 	nextEntityID int32
+	// enchAttrs are the enchantment attributes last sent (enchant_attributes.go), in the player's
+	// transaction.
+	enchAttrs enchantAttrState
 
 	chunkRadius int32
 	dim         string // the client's current Java dimension
@@ -423,6 +426,7 @@ func (s *Session) tickLoop() {
 				s.sendChunkBatch(tx)
 				s.continueBreaking(c)
 				s.continueEating(c)
+				s.syncEnchantAttributes(tx, c)
 			})
 			if err != nil {
 				if !stopped(err) {

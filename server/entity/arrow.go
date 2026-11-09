@@ -1,6 +1,8 @@
 package entity
 
 import (
+	"math"
+
 	"github.com/df-mc/dragonfly/server/block/cube"
 	"github.com/df-mc/dragonfly/server/internal/nbtconv"
 	"github.com/df-mc/dragonfly/server/item"
@@ -83,9 +85,10 @@ func (arrowType) DecodeNBT(m map[string]any, data *world.EntityData) {
 
 func (arrowType) EncodeNBT(data *world.EntityData) map[string]any {
 	b := data.Data.(*ProjectileBehaviour)
+	// enchantPunch is a byte, like Bedrock's: Punch levels past 255 are saved as 255.
 	m := map[string]any{
 		"Damage":       float32(b.conf.Damage),
-		"enchantPunch": byte(b.conf.KnockBackForceAddend / enchantment.Punch.KnockBackMultiplier()),
+		"enchantPunch": byte(min(math.Round(b.conf.KnockBackForceAddend/enchantment.Punch.KnockBackMultiplier()), 255)),
 		"auxValue":     int32(b.conf.Potion.Uint8() + 1),
 		"player":       boolByte(!b.conf.DisablePickup),
 		"isCreative":   boolByte(b.conf.PickupItem.Empty()),

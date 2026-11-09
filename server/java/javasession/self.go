@@ -110,6 +110,7 @@ func (s *Session) SendAbilities(c session.Controllable) {
 func (s *Session) SendRespawn(pos mgl64.Vec3, c session.Controllable) {
 	s.closeWindowsAfterRespawn()
 	s.writeRespawn(s.dim, c, 0)
+	s.enchAttrs.respawned() // a new player entity: default attributes
 	rot := c.Rotation()
 	s.teleport(pos[0], pos[1], pos[2], float32(rot.Yaw()), float32(rot.Pitch()))
 	// Like vanilla's sendLevelInfo: the client waits on "Loading terrain" until this event.

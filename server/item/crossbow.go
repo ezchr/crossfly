@@ -57,18 +57,14 @@ func (c Crossbow) ContinueCharge(releaser Releaser, tx *world.Tx, ctx *UseContex
 		tx.PlaySound(releaser.Position(), sound.CrossbowLoad{Stage: sound.CrossbowLoadingStart, QuickCharge: qcLevel > 0})
 	}
 
-	// Base reload time is 25 ticks; each Quick Charge level reduces by 5 ticks
-	multiplier := 25.0 / float64(25-(5*qcLevel))
-
-	// Adjust ticks based on the multiplier
-	adjustedTicks := int(float64(duration.Milliseconds()) / (50 / multiplier))
-
-	// Play sound after every 16 ticks (adjusted by Quick Charge)
-	if adjustedTicks%16 == 0 {
-		tx.PlaySound(releaser.Position(), sound.CrossbowLoad{Stage: sound.CrossbowLoadingMiddle, QuickCharge: qcLevel > 0})
+	// The middle sound plays every 16 ticks of an unenchanted (25 tick) charge, sped up along with the
+	// charge by Quick Charge. From Quick Charge V on the charge takes no time at all.
+	if chargeDuration > 0 {
+		if adjustedTicks := int(duration.Seconds() * 20 * 1.25 / chargeDuration.Seconds()); adjustedTicks%16 == 0 {
+			tx.PlaySound(releaser.Position(), sound.CrossbowLoad{Stage: sound.CrossbowLoadingMiddle, QuickCharge: qcLevel > 0})
+		}
 	}
-
-	if progress := float64(duration) / float64(chargeDuration); progress >= 1 {
+	if duration >= chargeDuration {
 		tx.PlaySound(releaser.Position(), sound.CrossbowLoad{Stage: sound.CrossbowLoadingEnd, QuickCharge: qcLevel > 0})
 	}
 }

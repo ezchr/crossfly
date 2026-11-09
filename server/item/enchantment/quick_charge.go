@@ -32,9 +32,11 @@ func (quickCharge) Rarity() item.EnchantmentRarity {
 	return item.EnchantmentRarityUncommon
 }
 
-// ChargeDuration returns the charge duration.
+// ChargeDuration returns the charge duration: a quarter of a second less than the 1.25 seconds of
+// an unenchanted crossbow per level, as in Bedrock Edition (5*(5-level) ticks). From level 5 on the
+// crossbow loads at once.
 func (quickCharge) ChargeDuration(level int) time.Duration {
-	return time.Duration((1.25 - 0.25*float64(level)) * float64(time.Second))
+	return max(0, time.Duration((1.25-0.25*float64(level))*float64(time.Second)))
 }
 
 // CompatibleWithEnchantment ...

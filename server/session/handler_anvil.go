@@ -239,9 +239,9 @@ func mergeEnchantments(input item.Stack, material item.Stack, result item.Stack,
 
 		// Check if we have an enchantment of the same type on the input item.
 		if existingEnchant, ok := input.Enchantment(enchantType); ok {
-			if existingEnchant.Level() > resultLevel || (existingEnchant.Level() == resultLevel && resultLevel == enchantType.MaxLevel()) {
-				// The result level is either lower than the existing enchantment's level or is higher than the maximum
-				// level, so skip this enchantment.
+			if existingEnchant.Level() > resultLevel || (existingEnchant.Level() == resultLevel && resultLevel >= enchantType.MaxLevel()) {
+				// The result level is either lower than the existing enchantment's level or would go past the maximum
+				// level (two equal levels at or above it never combine into a higher one), so skip this enchantment.
 				hasIncompatible = true
 				continue
 			} else if existingEnchant.Level() == resultLevel {
