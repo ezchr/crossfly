@@ -161,7 +161,7 @@ func (uc UserConfig) netherNetListenerFunc(conf Config) (Listener, error) {
 	if err != nil {
 		return nil, fmt.Errorf("parse UDP port range: %w", err)
 	}
-	return NetherNetConfig{Address: address, Key: key, Domain: nn.Domain, UDPPorts: r}.Listener(conf)
+	return NetherNetConfig{Address: address, Key: key, Domain: nn.Domain, UDPPorts: r, VerifyClientToken: conf.NetherNetClientIdentity}.Listener(conf)
 }
 
 // ListenNetwork returns a Listener accepting connections for conf over any
@@ -210,6 +210,10 @@ type NetherNetConfig struct {
 	// UDPPorts is the UDP port range used for player connections. See PortRange
 	// for how single ports and zero bounds behave.
 	UDPPorts PortRange
+	// VerifyClientToken, if set, refuses connections without a client identity and checks the token of
+	// each one, returning its public key (or nil to read it from the token's 'cpk' claim). If nil,
+	// connections without an identity are accepted when authentication is disabled.
+	VerifyClientToken func(ctx context.Context, token string) (*ecdsa.PublicKey, error)
 }
 
 // parsePortRange parses "port" or "min-max" as a PortRange. An empty string
@@ -302,10 +306,15 @@ func (nc NetherNetConfig) Listener(conf Config) (Listener, error) {
 	lcfg := nethernet.ListenConfig{
 		API:            webrtc.NewAPI(webrtc.WithSettingEngine(settingEngine)),
 		Log:            log,
-		AllowAnonymous: conf.AuthDisabled,
+		AllowAnonymous: conf.AuthDisabled && nc.VerifyClientToken == nil,
 		IssueServerIdentity: func(ctx context.Context) (*nethernet.Identity, error) {
 			return nethernet.ServerIdentity(nc.Key, nc.Domain)
 		},
+	}
+	if verify := nc.VerifyClientToken; verify != nil {
+		lcfg.VerifyClientIdentity = func(ctx context.Context, identity *nethernet.RemoteIdentity) (*ecdsa.PublicKey, error) {
+			return verify(ctx, identity.Assertion.Token)
+		}
 	}
 
 	httpLog := conf.Log.With("net origin", "nethernet-http")

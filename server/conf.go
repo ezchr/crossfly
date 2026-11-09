@@ -1,6 +1,8 @@
 package server
 
 import (
+	"context"
+	"crypto/ecdsa"
 	"fmt"
 	"log/slog"
 	"os"
@@ -61,6 +63,11 @@ type Config struct {
 	// local games. Allowing players to join without authentication is generally
 	// a security hazard.
 	AuthDisabled bool
+	// NetherNetClientIdentity, if set, makes the NetherNet listeners built from the UserConfig refuse
+	// connections without a client identity, even with AuthDisabled, and check each identity's token with
+	// it. It returns the public key of the token, or nil to read it from the token's 'cpk' claim. A proxy
+	// that logs players in itself reaches such a listener with its own identity.
+	NetherNetClientIdentity func(ctx context.Context, token string) (*ecdsa.PublicKey, error)
 	// MuteEmoteChat specifies if the player emote chat should be muted or not.
 	MuteEmoteChat bool
 	// MaxPlayers is the maximum amount of players allowed to join the server at
