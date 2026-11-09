@@ -593,13 +593,17 @@ func (tx *Tx) setBlockEntity(pos cube.Pos, b Block) {
 		tx.setBlock(pos, b, nil)
 		return
 	}
+	shapeKept := false
 	if javaRedstone {
 		before, had := c.BlockEntities[pos]
 		w.beTicks.noteWrite(c, pos, before, had)
+		shapeKept = had && redstoneShapeKept(before, b)
 	}
 	c.BlockEntities[pos] = b
 	c.modified = true
-	w.blockChangedAt(pos)
+	if !shapeKept {
+		w.blockChangedAt(pos)
+	}
 }
 
 // setBiome sets the Biome at the position passed. If a chunk is not yet loaded

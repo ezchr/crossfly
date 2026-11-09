@@ -6,15 +6,16 @@ import (
 	"github.com/df-mc/dragonfly/server/block/cube"
 )
 
-// RedstoneShaper may be implemented by redstone components whose states differ in their power and in what
-// RedstoneShape returns. Two states of the same type with the same RedstoneShape must have the same model, the same
-// encoded name or one that conducts the same, and connect to redstone the same: they differ in their power only.
+// RedstoneShaper may be implemented by blocks whose state changes often in ways that do not change how they connect
+// to and conduct redstone (the power of dust, the progress of a moving block): RedstoneShape returns a key of the
+// rest of the state. Two states of the same type with the same RedstoneShape must have the same model faces, the same
+// encoded name or one that conducts the same, and connect to redstone the same.
 type RedstoneShaper interface {
 	RedstoneShape() uint64
 }
 
-// redstoneShapeKept reports whether before and after differ in their redstone power only (RedstoneShaper). Nothing
-// kept in redstoneMemo or redstoneListMemo depends on the power of a block, so such a change is not logged.
+// redstoneShapeKept reports whether before and after differ only in state RedstoneShape leaves out. Nothing kept
+// in redstoneMemo or redstoneListMemo depends on that state, so such a change is not logged.
 func redstoneShapeKept(before, after Block) bool {
 	a, ok := before.(RedstoneShaper)
 	if !ok {
@@ -24,26 +25,55 @@ func redstoneShapeKept(before, after Block) bool {
 	return ok && reflect.TypeOf(before) == reflect.TypeOf(after) && a.RedstoneShape() == b.RedstoneShape()
 }
 
-// changeLog logs the positions of the latest block changes of a world. A value worked out from the blocks around
-// a position holds until a block near the position changes (unchangedSince).
+// changeLog logs the block changes of a world: the positions of the latest ones, and when a block of each chunk
+// section last changed. A value worked out from the blocks around a position holds until a block near the position
+// changes (unchangedSince).
 type changeLog struct {
 	// seq counts the changes logged. epoch is seq at the last change of everything (a chunk loaded, a structure).
 	seq, epoch uint64
 	ring       [changeLogSize]cube.Pos
+	// sections holds the seq after the last change in each chunk section (sectionKey).
+	sections map[uint64]uint64
 }
 
 const (
 	// changeLogSize is how many of the latest changes are kept.
 	changeLogSize = 64
-	// changeLogScan is the most changes looked through to find out if a value holds; past that it is worked out
-	// again.
+	// changeLogScan is the most latest changes looked through to find out if a value holds. Past that the chunk
+	// sections around the value are looked at.
 	changeLogScan = 32
+	// changeLogSections is the most chunk sections followed. Past that every value is worked out again.
+	changeLogSections = 1 << 16
 )
+
+// sectionKey packs the chunk section of the block at x, y, z, false if it is too far out.
+func sectionKey(x, y, z int) (uint64, bool) {
+	const xz, sy = 1 << 23, 1 << 9
+	x, y, z = x>>4, y>>4, z>>4
+	if x < -xz || x >= xz || z < -xz || z >= xz || y < -sy || y >= sy {
+		return 0, false
+	}
+	return uint64(x+xz)<<34 | uint64(z+xz)<<10 | uint64(y+sy), true
+}
 
 // blockChangedAt logs a change of the block at pos.
 func (w *World) blockChangedAt(pos cube.Pos) {
-	w.changes.ring[w.changes.seq%changeLogSize] = pos
-	w.changes.seq++
+	l := &w.changes
+	l.ring[l.seq%changeLogSize] = pos
+	l.seq++
+	key, ok := sectionKey(pos[0], pos[1], pos[2])
+	if !ok {
+		// Too far out to follow: everything is worked out again.
+		l.epoch = l.seq
+		return
+	}
+	if l.sections == nil {
+		l.sections = make(map[uint64]uint64)
+	} else if len(l.sections) >= changeLogSections {
+		clear(l.sections)
+		l.epoch = l.seq
+	}
+	l.sections[key] = l.seq
 }
 
 // everyBlockChanged logs a change that may affect any block: a chunk loaded or unloaded, a structure built.
@@ -52,15 +82,29 @@ func (w *World) everyBlockChanged() {
 	w.changes.epoch = w.changes.seq
 }
 
-// unchangedSince reports whether no block within r blocks of pos (on each axis) changed after seq.
+// unchangedSince reports whether no block within r blocks of pos (on each axis) changed after seq. With few
+// changes since, they are looked through; with more, no block of the chunk sections within r of pos may have changed.
 func (l *changeLog) unchangedSince(seq uint64, pos cube.Pos, r int) bool {
-	if seq < l.epoch || l.seq-seq > changeLogScan {
+	if seq < l.epoch {
 		return false
 	}
-	for i := seq; i < l.seq; i++ {
-		q := l.ring[i%changeLogSize]
-		if abs(q[0]-pos[0]) <= r && abs(q[1]-pos[1]) <= r && abs(q[2]-pos[2]) <= r {
-			return false
+	if l.seq-seq <= changeLogScan {
+		for i := seq; i < l.seq; i++ {
+			q := l.ring[i%changeLogSize]
+			if abs(q[0]-pos[0]) <= r && abs(q[1]-pos[1]) <= r && abs(q[2]-pos[2]) <= r {
+				return false
+			}
+		}
+		return true
+	}
+	for x := (pos[0] - r) >> 4; x <= (pos[0]+r)>>4; x++ {
+		for y := (pos[1] - r) >> 4; y <= (pos[1]+r)>>4; y++ {
+			for z := (pos[2] - r) >> 4; z <= (pos[2]+r)>>4; z++ {
+				key, ok := sectionKey(x<<4, y<<4, z<<4)
+				if !ok || l.sections[key] > seq {
+					return false
+				}
+			}
 		}
 	}
 	return true

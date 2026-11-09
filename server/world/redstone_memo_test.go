@@ -60,8 +60,23 @@ func TestChangeLog(t *testing.T) {
 		t.Fatal("far changes up to the scan limit counted")
 	}
 	w.blockChangedAt(cube.Pos{100, 64, 100})
+	if !w.changes.unchangedSince(seq, pos, 3) {
+		t.Fatal("more far changes than the scan limit, in other sections, dropped a value")
+	}
+	w.blockChangedAt(cube.Pos{4, 70, 4})
 	if w.changes.unchangedSince(seq, pos, 3) {
-		t.Fatal("more changes than the scan limit kept a value")
+		t.Fatal("past the scan limit, a change in the section of the value kept it")
+	}
+	seq = w.changes.seq
+	for i := 0; i < changeLogScan+1; i++ {
+		w.blockChangedAt(cube.Pos{100, 64, 100})
+	}
+	w.blockChangedAt(cube.Pos{16, 64, 10})
+	if w.changes.unchangedSince(seq, pos, 6) {
+		t.Fatal("past the scan limit, a change in a section within reach kept the value")
+	}
+	if !w.changes.unchangedSince(seq, pos, 5) {
+		t.Fatal("past the scan limit, a change in a section out of reach dropped the value")
 	}
 	seq = w.changes.seq
 	w.everyBlockChanged()

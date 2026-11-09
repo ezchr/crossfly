@@ -2,6 +2,8 @@
 
 package block
 
+import "github.com/df-mc/dragonfly/server/world"
+
 // RedstoneShape (world.RedstoneShaper) of the redstone components whose power changes all the time: their states
 // differ in power only (with the same model, conduction and connections) unless the keys returned differ. With Java
 // redstone the world keeps what it worked out about the blocks around them when only their power changes.
@@ -26,3 +28,19 @@ func (o Observer) RedstoneShape() uint64 { return uint64(o.Facing) }
 
 // RedstoneShape ...
 func (l Lever) RedstoneShape() uint64 { return uint64(l.Facing) | uint64(l.Direction)<<8 }
+
+// RedstoneShape of a moving block: what it moves, and whether it is the source or has arrived (from then on it has
+// the faces of the block it moves, movingPistonModel). Its progress changes every tick.
+func (m MovingPiston) RedstoneShape() uint64 {
+	key := uint64(boolByte(m.Source)) | uint64(boolByte(m.Progress >= 1))<<1
+	if m.Moving != nil {
+		key |= (uint64(world.BlockRuntimeID(m.Moving)) + 1) << 2
+	}
+	return key
+}
+
+// RedstoneShape of a piston: which way it faces, whether it is sticky and its model (extended, retracting). Its
+// progress and the blocks it moves change every tick while it moves.
+func (p Piston) RedstoneShape() uint64 {
+	return uint64(p.Facing) | uint64(boolByte(p.Sticky))<<3 | uint64(boolByte(p.Extended))<<4 | uint64(boolByte(p.State == 3))<<5
+}
