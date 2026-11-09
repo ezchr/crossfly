@@ -84,6 +84,8 @@ github.com/sandertv/go-raknet v1.15.2 h1:PJD0ICQBkE7J7bSeI14eGqbD1aU0gxLBLJ35zjK
 github.com/sandertv/go-raknet v1.15.2/go.mod h1:/yysjwfCXm2+2OY8mBazLzcxJ3irnylKCyG3FLgUPVU=
 github.com/sandertv/gophertunnel v1.63.0 h1:18s5x1fKqt8JHh1hz+xuNAsQwJWPIKkOv6sN4wXyUTs=
 github.com/sandertv/gophertunnel v1.63.0/go.mod h1:hOjJWwzgmTw/Di+cYKVyoDxVtQINwqHVAYtgmTLo15A=
+github.com/sandertv/gophertunnel v1.63.1-0.20261109094306-477607dcca7c h1:Z2oU2Def9nN4GVBadZLuPBMy/gobrNyjx8KcwdQqsa8=
+github.com/sandertv/gophertunnel v1.63.1-0.20261109094306-477607dcca7c/go.mod h1:sluxapcMsUBSO/AzYgZMFTDY6ITtNlW+ttxE9ZyhdHk=
 github.com/segmentio/fasthash v1.0.3 h1:EI9+KE1EwvMLBWwjpRDc+fEM+prwxDYbslddQGtrmhM=
 github.com/segmentio/fasthash v1.0.3/go.mod h1:waKX8l2N8yckOgmSsXJi7x1ZfdKZ4x7KRMzBtS3oedY=
 github.com/stretchr/testify v1.12.1 h1:EuwCh5fleGS7H32xRwO3wRGT7DxrDhLAT6FF8MpWDWE=
