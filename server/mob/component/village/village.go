@@ -783,7 +783,6 @@ type Manager struct {
 
 	trader traderScheduler
 	omens  map[*world.EntityHandle]*omenState
-	rest   map[*world.EntityHandle]int64
 	bars   map[*world.EntityHandle]*Raid
 }
 
@@ -795,7 +794,7 @@ func ManagerOf(tx *world.Tx) *Manager {
 	if v, ok := managers.Load(w); ok {
 		return v.(*Manager)
 	}
-	m := &Manager{w: w, omens: map[*world.EntityHandle]*omenState{}, rest: map[*world.EntityHandle]int64{}, bars: map[*world.EntityHandle]*Raid{}}
+	m := &Manager{w: w, omens: map[*world.EntityHandle]*omenState{}, bars: map[*world.EntityHandle]*Raid{}}
 	for i := range m.pois {
 		m.pois[i] = map[cube.Pos]*POI{}
 	}
