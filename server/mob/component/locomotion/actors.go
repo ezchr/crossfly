@@ -356,12 +356,10 @@ func isSlime(m *mob.Mob) bool {
 	return id == "minecraft:slime" || id == "minecraft:magma_cube"
 }
 
-// slimeSplit is Slime::remove: a dead slime of size 2 or more splits into 2-4
-// slimes of half its size (spawn_medium / spawn_small of the definition).
-func slimeSplit(m *mob.Mob, _ world.DamageSource) {
-	if !isSlime(m) {
-		return
-	}
+// slimeSplit is Slime::remove: when its corpse is removed, a dead slime of
+// size 2 or more splits into 2-4 slimes of half its size (spawn_medium /
+// spawn_small of the definition) where it lies.
+func slimeSplit(m *mob.Mob) {
 	size := m.Meta().Variant
 	if size <= 1 {
 		return

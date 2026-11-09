@@ -5,7 +5,7 @@
 // (with the follow_flock goal), buoyancy, can_fly, friction and air drag
 // modifiers, bounciness, block_climber, drying_out_timer, bribeable, the
 // dolphin move control, float navigation travel (ghast, bat), the fly,
-// hover and glide controls of fliers, slime splitting and guardian spikes,
+// hover and glide controls of fliers, slime squish and splitting, guardian spikes,
 // flopping and curse, blaze hovering.
 // The goals are in server/mob/goal/locomotion; its README.md lists sources.
 package locomotion
@@ -50,6 +50,7 @@ func init() {
 	mob.RegisterSystem(mob.System{Name: "locomotion/after_travel", Stage: mob.StageTravel, Order: 20, Tick: afterTravel})
 	mob.RegisterSystem(mob.System{Name: "locomotion/float_facing", Stage: mob.StageTravel, Order: 21, Tick: floatNavigationAfter})
 	mob.RegisterHurtHook(mob.HurtHook{Name: "locomotion/guardian_thorns", Hurt: guardianThorns})
-	mob.RegisterDeathHook(mob.DeathHook{Name: "locomotion/slime_split", Die: slimeSplit})
+	mob.RegisterSystem(mob.System{Name: "locomotion/slime", Stage: mob.StageTravel, Order: 22, Tick: slimeTick})
+	mob.RegisterDeathHook(mob.DeathHook{Name: "locomotion/slime_split", Die: slimeDied})
 	filter.RegisterFlagSource(waterBottleFlag)
 }
