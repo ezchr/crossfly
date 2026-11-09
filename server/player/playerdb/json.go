@@ -35,6 +35,7 @@ func (p *Provider) fromJson(d jsonData, lookupWorld func(world.Dimension) *world
 		Effects:             dataToEffects(d.Effects),
 		FireTicks:           d.FireTicks,
 		FallDistance:        d.FallDistance,
+		TimeSinceRest:       d.TimeSinceRest,
 		Inventory:           inventory.New(36, nil),
 		EnderChestInventory: inventory.New(27, nil),
 		OffHand:             inventory.New(1, nil),
@@ -93,6 +94,7 @@ func (p *Provider) toJson(d player.Config, w *world.World) jsonData {
 		}),
 		EnderChestInventory: encodeItems(d.EnderChestInventory.Slots()),
 		Dimension:           int32(dim),
+		TimeSinceRest:       d.TimeSinceRest,
 	}
 }
 
@@ -116,6 +118,7 @@ type jsonData struct {
 	FireTicks                        int64
 	FallDistance                     float64
 	Dimension                        int32
+	TimeSinceRest                    int64
 }
 
 type jsonInventoryData struct {

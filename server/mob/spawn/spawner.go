@@ -579,7 +579,12 @@ func (st *worldState) spawnOne(e *env, id string, floor cube.Pos, cond *conditio
 		return nil
 	}
 	pos := mgl64.Vec3{float64(floor[0]) + 0.49, float64(floor[1] + 1), float64(floor[2]) + 0.49}
-	if !checkSpawnRules(e.tx, t, pos, floor) {
+	if f, ok := actorSpawnRules[ident]; ok {
+		// The mob's own checkSpawnRules may move it (phantoms).
+		if pos, ok = f(e, t, pos); !ok {
+			return nil
+		}
+	} else if !checkSpawnRules(e.tx, t, pos, floor) {
 		return nil
 	}
 	if monsterSpawnTypes[ident] && !monsterDarkEnough(e, floor.Side(cube.FaceUp)) {

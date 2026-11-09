@@ -52,6 +52,8 @@ type Config struct {
 	FireTicks              int64
 	FallDistance           float64
 	Effects                []effect.Effect
+	// TimeSinceRest is the ticks since the player last slept or respawned (Player.TimeSinceRest).
+	TimeSinceRest int64
 }
 
 // Apply applies fields from a Config to a world.EntityData, filling out empty
@@ -95,6 +97,7 @@ func (cfg Config) Apply(data *world.EntityData) {
 		alwaysShowNameTag:   true,
 		fireTicks:           conf.FireTicks,
 		fallDistance:        conf.FallDistance,
+		timeSinceRest:       conf.TimeSinceRest,
 	}
 	if conf.NoNameTag {
 		pdata.nameTag = ""

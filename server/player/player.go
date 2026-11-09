@@ -110,6 +110,10 @@ type playerData struct {
 
 	enchantSeed int64
 
+	// timeSinceRest counts the ticks since the player last slept or respawned (BDS
+	// InsomniaComponent); see TimeSinceRest.
+	timeSinceRest int64
+
 	mc           *entity.MovementComputer
 	portalTravel *entity.PortalTravelComputer
 
@@ -4539,6 +4543,7 @@ func (p *Player) Data() Config {
 		FireTicks:           p.fireTicks,
 		FallDistance:        p.fallDistance,
 		Effects:             p.Effects(),
+		TimeSinceRest:       p.timeSinceRest,
 	}
 }
 

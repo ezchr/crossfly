@@ -468,8 +468,9 @@ func withGrowth(b world.Block, g int) (world.Block, bool) {
 
 // insomnia is minecraft:insomnia (players, BDS InsomniaSystem): the time
 // since the player last slept counts up and resets while sleeping or on
-// respawn. Players do not run definitions in this server, so the manager
-// counts it for every player; InsomniaTicks reads it (phantom spawning).
+// respawn. Players do not run definitions in this server, so package spawn
+// counts it for every player (player.TimeSinceRest, saved with the player);
+// phantoms spawn from it.
 type insomnia struct{}
 
 func newInsomnia(string, json.RawMessage) (mob.Component, error) { return insomnia{}, nil }
@@ -478,13 +479,8 @@ func (insomnia) Detach(*mob.Mob)                                 {}
 
 // InsomniaTicks returns how many ticks ago p last rested (slept or
 // respawned), as BDS InsomniaComponent::timeSinceRest.
-func InsomniaTicks(tx *world.Tx, p *player.Player) int64 {
-	mgr := ManagerOf(tx)
-	t, ok := mgr.rest[p.H()]
-	if !ok {
-		return 1
-	}
-	return mgr.now - t + 1
+func InsomniaTicks(_ *world.Tx, p *player.Player) int64 {
+	return p.TimeSinceRest()
 }
 
 // DaysUntilInsomnia is the BDS default (3 days = 72000 ticks).

@@ -20,5 +20,8 @@ var registerHook sync.Once
 // RegisterHook registers the world tick hook natural spawning runs from (in the worlds that Enable it).
 // vanilla.Register calls it: until then, nothing of this package runs in a world tick.
 func RegisterHook() {
-	registerHook.Do(func() { world.RegisterTickHook(worldTick) })
+	registerHook.Do(func() {
+		world.RegisterTickHook(worldTick)
+		world.RegisterTickHook(insomniaTick)
+	})
 }

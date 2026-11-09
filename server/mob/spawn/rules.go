@@ -284,12 +284,6 @@ func parseCondition(id, pool string, c map[string]json.RawMessage) (*Rule, error
 		// unity::_applyHardcodedSpawnRules: only the slime has a callback.
 		r.hardcoded = slimeSpawnRules
 	}
-	if id == "minecraft:phantom" {
-		// Phantoms only come to players that have not slept for days
-		// (minecraft:insomnia on the player), which Dragonfly does not
-		// track, and they need fly navigation (Phase 2). Never spawn them.
-		r.hardcoded = func(*conditions, *env) bool { return false }
-	}
 	return r, nil
 }
 
