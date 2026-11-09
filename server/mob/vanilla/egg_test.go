@@ -122,8 +122,10 @@ func TestSpawnEggUse(t *testing.T) {
 		if got := pig.Position(); got != (mgl64.Vec3{0.5, 10, 0.5}) {
 			t.Errorf("pig at %v, want on top of the stone at 0.5 10 0.5", got)
 		}
-		if pig.NameTag() != "Egbert" || !pig.Persistent() || pig.Baby() {
-			t.Errorf("pig: name %q, persistent %v, baby %v", pig.NameTag(), pig.Persistent(), pig.Baby())
+		// The egg fires minecraft:entity_spawned, so like any spawned pig it
+		// is a baby 1 time in 20 (pig.json randomize); that is not checked.
+		if pig.NameTag() != "Egbert" || !pig.Persistent() {
+			t.Errorf("pig: name %q, persistent %v", pig.NameTag(), pig.Persistent())
 		}
 		// The player is south of the pig: it looks south (yaw 0).
 		if yaw := pig.Rotation().Yaw(); yaw < -30 || yaw > 30 {
@@ -150,18 +152,21 @@ func TestSpawnEggUse(t *testing.T) {
 			t.Errorf("%d eggs left in survival, want 1", n)
 		}
 
+		babies := func() (n int) {
+			for _, m := range mobsOf("minecraft:pig") {
+				if m.Baby() {
+					n++
+				}
+			}
+			return n
+		}
 		p.SetGameMode(world.GameModeCreative)
+		before := babies()
 		if !p.UseItemOnEntity(pig) {
 			t.Fatal("using the egg on the pig failed")
 		}
-		var babies int
-		for _, m := range mobsOf("minecraft:pig") {
-			if m.Baby() {
-				babies++
-			}
-		}
-		if babies != 1 {
-			t.Errorf("%d baby pigs after using the egg on a pig, want 1", babies)
+		if n := babies() - before; n != 1 {
+			t.Errorf("%d new baby pigs after using the egg on a pig, want 1", n)
 		}
 		if n := held(); n != 1 {
 			t.Errorf("%d eggs left in creative, want 1", n)
@@ -169,9 +174,9 @@ func TestSpawnEggUse(t *testing.T) {
 
 		// An egg of another mob does nothing to the pig.
 		p.SetHeldItems(item.NewStack(item.SpawnEgg{Mob: "minecraft:cow"}, 1), item.Stack{})
-		before := len(mobsOf("minecraft:cow"))
+		cows := len(mobsOf("minecraft:cow"))
 		p.UseItemOnEntity(pig)
-		if len(mobsOf("minecraft:cow")) != before {
+		if len(mobsOf("minecraft:cow")) != cows {
 			t.Error("a cow egg on a pig spawned a cow")
 		}
 		return struct{}{}, nil
