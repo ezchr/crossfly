@@ -203,12 +203,21 @@ func (t ticker) tickBlocksRandomly(tx *Tx, loaders []*Loader, tick int64) {
 		}
 	}
 
+	bt := &tx.World().beTicks
+	if javaRedstone {
+		bt.begin()
+		defer bt.end()
+	}
 	for pos, c := range tx.World().chunks {
 		if !t.anyWithinDistance(pos, loaded, r) {
 			// No loaders in this chunk that are within the simulation distance, so proceed to the next.
 			continue
 		}
-		blockEntities = append(blockEntities, slices.Collect(maps.Keys(c.BlockEntities))...)
+		if javaRedstone {
+			bt.collect(pos, c)
+		} else {
+			blockEntities = append(blockEntities, slices.Collect(maps.Keys(c.BlockEntities))...)
+		}
 
 		cx, cz := int(pos[0]<<4), int(pos[1]<<4)
 
@@ -250,35 +259,24 @@ func (t ticker) tickBlocksRandomly(tx *Tx, loaders []*Loader, tick int64) {
 		return
 	}
 	// Java ticks block entities in the order they were added; map order would make machines random.
-	order := func(pos cube.Pos) uint64 {
-		if c, ok := tx.World().chunks[chunkPosFromBlockPos(pos)]; ok {
-			return c.blockEntityTickOrder(pos)
-		}
-		return 0
-	}
-	slices.SortFunc(blockEntities, func(a, b cube.Pos) int {
-		if oa, ob := order(a), order(b); oa != ob {
-			return cmp.Compare(oa, ob)
-		}
-		return compareBlockPos(a, b)
-	})
-	for _, pos := range blockEntities {
+	w := tx.World()
+	bt.sort(w)
+	bt.entries = bt.run(bt.entries, func(pos cube.Pos) {
 		if tb, ok := tx.Block(pos).(TickerBlock); ok {
 			tb.Tick(tick, pos, tx)
 			// Java runs a block entity's updates before the next one ticks: a moved block that arrives updates a
 			// piston beside it while the rest of its line is still moving (and so cannot be pushed yet).
 			t.flushUpdates(tx, tick)
 		}
-	}
+	})
 	// Then what watches the block entities (comparators reading containers), once every block entity has ticked.
-	w := tx.World()
 	w.analogWatchers = w.analogWatchers[:0]
-	for _, pos := range blockEntities {
+	bt.run(bt.analogList(), func(pos cube.Pos) {
 		if aw, ok := tx.Block(pos).(RedstoneAnalogWatcher); ok {
 			w.analogWatchers = append(w.analogWatchers, pos)
 			aw.RedstoneAnalogCheck(pos, tx)
 		}
-	}
+	})
 }
 
 // anyWithinDistance checks if any of the ChunkPos loaded are within the distance r of the ChunkPos pos.

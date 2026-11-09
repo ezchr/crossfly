@@ -32,3 +32,16 @@ func (w *World) invalidateCurrentSky(ChunkPos)         {}
 func (w *World) updateWeatherIntensity()               {}
 func (w *World) runBlockEvents(*Tx, func())            {}
 func (t ticker) flushUpdates(*Tx, int64)               {}
+
+// blockEntityTicks lists the block entities ticked in a tick with Java redstone (Crossfly Full).
+type blockEntityTicks struct{ entries []cube.Pos }
+
+func (*blockEntityTicks) begin()                                   {}
+func (*blockEntityTicks) end()                                     {}
+func (*blockEntityTicks) collect(ChunkPos, *Column)                {}
+func (*blockEntityTicks) sort(*World)                              {}
+func (*blockEntityTicks) analogList() []cube.Pos                   { return nil }
+func (*blockEntityTicks) noteWrite(*Column, cube.Pos, Block, bool) {}
+func (*blockEntityTicks) run(l []cube.Pos, _ func(cube.Pos)) []cube.Pos {
+	return l
+}

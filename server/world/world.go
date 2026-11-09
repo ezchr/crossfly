@@ -93,6 +93,8 @@ type World struct {
 	ticked bool
 	// analogWatchers are the positions of the RedstoneAnalogWatchers found in the last tick.
 	analogWatchers []cube.Pos
+	// beTicks are the block entities ticked in the current tick (Java redstone).
+	beTicks blockEntityTicks
 
 	viewerMu sync.Mutex
 	viewers  map[*Loader]Viewer
@@ -284,6 +286,9 @@ func (w *World) blockInChunk(c *Column, pos cube.Pos) Block {
 		// Despite being a block with NBT, the block didn't actually have any
 		// stored NBT yet. We add it here and update the block.
 		nbtB := w.conf.Blocks.BlockByRuntimeIDOrAir(rid).(NBTer).DecodeNBT(map[string]any{}).(Block)
+		if javaRedstone {
+			w.beTicks.noteWrite(c, pos, nil, false)
+		}
 		c.BlockEntities[pos] = nbtB
 		for _, v := range c.viewers {
 			v.ViewBlockUpdate(pos, nbtB, 0)
@@ -437,6 +442,9 @@ func (tx *Tx) setBlock(pos cube.Pos, b Block, opts *SetOpts) {
 
 	c.modified = true
 	c.SetBlock(x, y, z, 0, rid)
+	if javaRedstone {
+		w.beTicks.noteWrite(c, pos, previousEntity, previousEntity != nil)
+	}
 	if w.conf.Blocks.NBTBlock(rid) {
 		c.BlockEntities[pos] = b
 		if !javaRedstone {
@@ -566,6 +574,10 @@ func (tx *Tx) setBlockEntity(pos cube.Pos, b Block) {
 		tx.setBlock(pos, b, nil)
 		return
 	}
+	if javaRedstone {
+		before, had := c.BlockEntities[pos]
+		w.beTicks.noteWrite(c, pos, before, had)
+	}
 	c.BlockEntities[pos] = b
 	c.modified = true
 }
@@ -643,6 +655,10 @@ func (tx *Tx) buildStructure(pos cube.Pos, s Structure) {
 								sub.SetBlock(uint8(xOffset), uint8(yOffset), uint8(zOffset), 0, rid)
 
 								nbtPos := cube.Pos{xOffset, yOffset, zOffset}
+								if javaRedstone {
+									before, had := c.BlockEntities[nbtPos]
+									w.beTicks.noteWrite(c, nbtPos, before, had)
+								}
 								if w.conf.Blocks.NBTBlock(rid) {
 									c.BlockEntities[nbtPos] = b
 								} else {
