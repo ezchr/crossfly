@@ -90,7 +90,7 @@ var mobKinds = map[string]*mobKind{}
 
 func init() {
 	plain := []string{
-		"allay", "bat", "blaze", "breeze", "cod", "copper_golem", "creaking", "elder_guardian",
+		"allay", "bat", "breeze", "cod", "copper_golem", "creaking", "elder_guardian",
 		"endermite", "ender_dragon", "evoker", "giant", "guardian", "illusioner", "iron_golem",
 		"parched", "phantom", "piglin_brute", "pillager", "pufferfish", "ravager", "silverfish",
 		"stray", "tadpole", "vex", "vindicator", "warden", "wither", "wither_skeleton",
@@ -284,9 +284,8 @@ func init() {
 	set("zoglin", mobKind{extra: func(_ *Session, d *mobData, e world.Entity, _ string) {
 		d.boolean(16, mobBool(e, mobBaby.Baby))
 	}})
-	set("ghast", mobKind{extra: func(_ *Session, d *mobData, e world.Entity, _ string) {
-		d.boolean(16, mobBool(e, mobCharged.Charged)) // mouth open to shoot
-	}})
+	set("ghast", mobKind{extra: ghastData})
+	set("blaze", mobKind{extra: blazeData})
 	set("witch", mobKind{extra: func(_ *Session, d *mobData, e world.Entity, _ string) {
 		d.boolean(17, mobBool(e, mobUsing.UsingItem)) // drinking a potion
 	}})
