@@ -8,7 +8,7 @@ import (
 	"github.com/df-mc/dragonfly/server/world"
 )
 
-var registerJavaRedstone sync.Once
+var registerJavaRedstone, registerMobItems sync.Once
 
 // RegisterJavaRedstone registers the items of Crossfly Full's Java redstone: the minecarts. Call it before the
 // server is configured, with block.RegisterJavaRedstone.
@@ -20,3 +20,13 @@ func RegisterJavaRedstone() {
 	})
 }
 
+// RegisterMobItems registers the items of Crossfly Full's mobs: the saddle and horse armour. Call it before the
+// server is configured.
+func RegisterMobItems() {
+	registerMobItems.Do(func() {
+		world.RegisterItem(Saddle{})
+		for _, t := range HorseArmourTiers() {
+			world.RegisterItem(HorseArmour{Tier: t})
+		}
+	})
+}

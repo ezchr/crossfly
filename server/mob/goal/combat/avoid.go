@@ -1,0 +1,243 @@
+//go:build crossfly_full
+
+package combat
+
+import (
+	"encoding/json"
+	"fmt"
+	"math"
+	"strings"
+
+	"github.com/df-mc/dragonfly/server/block/cube"
+	"github.com/df-mc/dragonfly/server/mob"
+	"github.com/df-mc/dragonfly/server/mob/component/combat/sense"
+	"github.com/df-mc/dragonfly/server/world"
+	"github.com/go-gl/mathgl/mgl64"
+)
+
+// avoidMobType is minecraft:behavior.avoid_mob_type (BDS AvoidMobTypeGoal):
+// run from the nearest matching mob to a random spot further away, walking,
+// and sprinting once it is within 7 blocks.
+type avoidMobType struct {
+	mob.GoalBase
+	descriptors      []descriptor
+	probeXZ, probeY  int     // +104, +108
+	maxDist, maxFlee float64 // +112, +116
+	probPerStrength  float64 // +120
+	walk, sprint     float64 // +132, +136
+	ignoreVisibility bool    // +64
+	onEscape         sense.Trigger
+
+	avoid    *world.EntityHandle
+	desc     *descriptor
+	wanted   mgl64.Vec3
+	path     mob.Path
+	sprinted bool
+}
+
+func newAvoidMobType(spec mob.GoalSpec) (mob.Goal, error) {
+	var v struct {
+		EntityTypes            json.RawMessage `json:"entity_types"`
+		MaxDist                *float64        `json:"max_dist"`
+		MaxFlee                *float64        `json:"max_flee"`
+		ProbabilityPerStrength *float64        `json:"probability_per_strength"`
+		WalkSpeedMultiplier    *float64        `json:"walk_speed_multiplier"`
+		SprintSpeedMultiplier  *float64        `json:"sprint_speed_multiplier"`
+		IgnoreVisibility       bool            `json:"ignore_visibilty"`
+		IgnoreVisibility2      bool            `json:"ignore_visibility"`
+		OnEscape               json.RawMessage `json:"on_escape_event"`
+	}
+	if err := spec.Decode(&v); err != nil {
+		return nil, fmt.Errorf("%v: %w", spec.Key, err)
+	}
+	g := &avoidMobType{
+		GoalBase: mob.GoalBase{Control: spec.FlagsOr(mob.FlagMove)},
+		probeXZ:  16, probeY: 7,
+		maxDist: or(v.MaxDist, 3), maxFlee: or(v.MaxFlee, 10),
+		probPerStrength: or(v.ProbabilityPerStrength, 1),
+		walk:            or(v.WalkSpeedMultiplier, 1), sprint: or(v.SprintSpeedMultiplier, 1),
+		ignoreVisibility: v.IgnoreVisibility || v.IgnoreVisibility2,
+	}
+	d, err := parseDescriptors(v.EntityTypes, g.maxDist)
+	if err != nil {
+		return nil, fmt.Errorf("%v: %w", spec.Key, err)
+	}
+	for i := range d {
+		raw := descriptorRaw(v.EntityTypes, i)
+		if raw.WalkSpeedMultiplier == nil {
+			d[i].walk = g.walk
+		}
+		if raw.SprintSpeedMultiplier == nil {
+			d[i].sprint = g.sprint
+		}
+		if raw.MaxFlee == nil {
+			d[i].maxFlee = g.maxFlee
+		}
+	}
+	g.descriptors = d
+	if g.onEscape, err = sense.ParseTrigger(v.OnEscape); err != nil {
+		return nil, fmt.Errorf("%v: %w", spec.Key, err)
+	}
+	return g, nil
+}
+
+// descriptorRaw re-reads entry i of entity_types to see which fields it set.
+func descriptorRaw(raw json.RawMessage, i int) rawDescriptor {
+	var list []rawDescriptor
+	if json.Unmarshal(raw, &list) != nil {
+		var one rawDescriptor
+		_ = json.Unmarshal(raw, &one)
+		list = []rawDescriptor{one}
+	}
+	if i < len(list) {
+		return list[i]
+	}
+	return rawDescriptor{}
+}
+
+// nearest is AvoidMobTypeGoal::findNearestEntityToAvoid: the nearest living
+// mob or player matching an entry within dist (the entry's max_dist when
+// dist is 0, its max_flee when flee is set).
+func (g *avoidMobType) nearest(m *mob.Mob, flee bool) (world.Entity, *descriptor) {
+	pos := m.Pos()
+	for i := range g.descriptors {
+		d := &g.descriptors[i]
+		r := d.maxDist
+		if flee {
+			r = d.maxFlee
+		}
+		box := cube.Box(pos[0]-r, pos[1]-r, pos[2]-r, pos[0]+r, pos[1]+r, pos[2]+r)
+		var best world.Entity
+		bestD := math.MaxFloat64
+		for e := range m.Tx().EntitiesWithin(box) {
+			if e.H() == m.H() || !sense.Alive(e) || !hasFamilies(e) || sense.Invulnerable(e) || sense.Invisible(e) {
+				continue
+			}
+			dist := e.Position().Sub(pos).LenSqr()
+			if dist >= bestD || dist > r*r {
+				continue
+			}
+			ctx := m.Ctx()
+			ctx.Other = e
+			if t, ok := m.Target(); ok {
+				ctx.Target = t
+			}
+			if !d.filter.Test(ctx) {
+				continue
+			}
+			best, bestD = e, dist
+		}
+		if best != nil {
+			return best, d
+		}
+	}
+	return nil, nil
+}
+
+// CanUse is AvoidMobTypeGoal::canUse.
+func (g *avoidMobType) CanUse(m *mob.Mob) bool {
+	e, d := g.nearest(m, false)
+	return g.canFindAvoidPath(m, e, d)
+}
+
+// canFindAvoidPath is AvoidMobTypeGoal::canFindAvoidPath.
+func (g *avoidMobType) canFindAvoidPath(m *mob.Mob, e world.Entity, d *descriptor) bool {
+	if e == nil {
+		return false
+	}
+	g.avoid, g.desc = e.H(), d
+	if !g.ignoreVisibility && !sense.CanSee(m, e) {
+		return false
+	}
+	p, ok := PosAway(m, e.Position(), g.probeXZ, g.probeY)
+	if !ok {
+		return false
+	}
+	if p.Sub(e.Position()).LenSqr() < m.Pos().Sub(e.Position()).LenSqr() {
+		return false
+	}
+	g.wanted = p
+	g.path = m.Navigation().CreatePath(m, p)
+	return g.path != nil
+}
+
+// PosAway returns a random standable position up to xz/y blocks away from
+// m in the half facing away from from (BDS RandomPos::getPosAvoid, 10
+// tries).
+func PosAway(m *mob.Mob, from mgl64.Vec3, xz, y int) (mgl64.Vec3, bool) {
+	tx, r := m.Tx(), m.Rand()
+	pos := m.Pos()
+	away := pos.Sub(from)
+	away[1] = 0
+	for i := 0; i < 10; i++ {
+		off := mgl64.Vec3{float64(r.IntN(2*xz+1) - xz), float64(r.IntN(2*y+1) - y), float64(r.IntN(2*xz+1) - xz)}
+		if off[0]*away[0]+off[2]*away[2] < 0 {
+			continue
+		}
+		p := cube.PosFromVec3(pos.Add(off))
+		if standable(tx, p) {
+			return mgl64.Vec3{float64(p[0]) + 0.5, float64(p[1]), float64(p[2]) + 0.5}, true
+		}
+	}
+	return mgl64.Vec3{}, false
+}
+
+// standable reports whether a mob could stand at p: solid below, two free
+// blocks.
+func standable(tx *world.Tx, p cube.Pos) bool {
+	below := tx.Block(p.Side(cube.FaceDown))
+	if len(below.Model().BBox(p.Side(cube.FaceDown), tx)) == 0 {
+		return false
+	}
+	return len(tx.Block(p).Model().BBox(p, tx)) == 0 && len(tx.Block(p.Side(cube.FaceUp)).Model().BBox(p.Side(cube.FaceUp), tx)) == 0
+}
+
+// CanContinueToUse is AvoidMobTypeGoal::canContinueToUse.
+func (g *avoidMobType) CanContinueToUse(m *mob.Mob) bool {
+	e, d := g.nearest(m, true)
+	if e == nil {
+		return false
+	}
+	if m.Navigation().Done() {
+		return g.canFindAvoidPath(m, e, d)
+	}
+	return true
+}
+
+// Start ...
+func (g *avoidMobType) Start(m *mob.Mob) {
+	g.sprinted = false
+	if g.path != nil {
+		m.Navigation().MoveAlong(m, g.path, g.speed(m))
+		g.path = nil
+	}
+}
+
+func (g *avoidMobType) speed(m *mob.Mob) float64 {
+	if g.desc == nil {
+		return g.walk
+	}
+	if e, ok := g.avoid.Entity(m.Tx()); ok && m.Pos().Sub(e.Position()).LenSqr() < 49 {
+		return g.desc.sprint
+	}
+	return g.desc.walk
+}
+
+// Tick sprints within 7 blocks of the avoided mob, walks further away.
+func (g *avoidMobType) Tick(m *mob.Mob) {
+	if g.avoid == nil {
+		return
+	}
+	m.Navigation().SetSpeed(g.speed(m))
+}
+
+// Stop ...
+func (g *avoidMobType) Stop(m *mob.Mob) {
+	if !g.onEscape.Empty() {
+		g.onEscape.Fire(m, nil)
+	}
+	g.avoid, g.desc = nil, nil
+}
+
+// AppendDebugInfo ...
+func (g *avoidMobType) AppendDebugInfo(b *strings.Builder) { b.WriteString("AvoidMobType") }
