@@ -39,6 +39,9 @@ type nameDisplay struct {
 // nameDisplayText is the text shown above p: their name tag and, under it, their score tag ("" when
 // the name is hidden), as this client sees them.
 func (s *Session) nameDisplayText(p *player.Player) string {
+	if isGhost(p) {
+		return "" // a ghost has no name
+	}
 	ts := s.txt()
 	ts.mu.Lock()
 	tag, ok := ts.nameOverride[p.H()]

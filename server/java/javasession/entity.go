@@ -143,6 +143,7 @@ func (s *Session) ViewEntity(e world.Entity) {
 	s.queue(v777.ClientboundPlayAddEntity, w)
 	s.setTrack(id, pos, rot)
 	s.viewPlayerNameTag(p)
+	s.viewGhost(p)
 	s.sendSkinParts(id, skinPartsOf(u)) // else the outer skin layer is not drawn: a flat skin
 	// Its state as it is now (invisible, sneaking, on fire...): a player that came into view
 	// already invisible was drawn with its skin until its state next changed.
@@ -195,6 +196,7 @@ func (s *Session) HideEntity(e world.Entity) {
 	w.VarInt(1)
 	w.VarInt(id)
 	s.queue(v777.ClientboundPlayRemoveEntities, w)
+	s.hideGhost(e)
 	s.forgetEntityText(e)
 	s.forgetRiding(e.H())
 	s.hideMobBossBarOf(e.H())

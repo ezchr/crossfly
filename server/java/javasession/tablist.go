@@ -33,6 +33,8 @@ type tabEntry struct {
 	// display is the name the tab list shows: the player's name tag (with the server's team and
 	// rank prefix and colours), "" for the plain name.
 	display string
+	// skinOf is the player whose Java skin the entry wears instead of its own (a ghost).
+	skinOf uuid.UUID
 }
 
 // newTabEntry describes p for the tab list.
@@ -46,6 +48,9 @@ func newTabEntry(p *player.Player) tabEntry {
 	if !isJavaPlayer(p.UUID()) {
 		e.xuid = p.XUID()
 	}
+	if g, ok := ghostOf(p.UUID()); ok {
+		e.xuid, e.skinOf = g.xuid, g.id
+	}
 	return e
 }
 
@@ -53,6 +58,9 @@ func newTabEntry(p *player.Player) tabEntry {
 // skin from GeyserMC's database (nil until it is found).
 func (e tabEntry) props(id uuid.UUID) []jserver.Property {
 	if e.xuid == "" {
+		if e.skinOf != uuid.Nil {
+			id = e.skinOf
+		}
 		return profileProperties(id)
 	}
 	props, _ := bedrockSkinProps(e.xuid)
@@ -351,9 +359,12 @@ func (s *Session) updateSelfGameMode(gameMode int32) {
 }
 
 // unnamed reports whether p is shown to this client without a name: a player entity that is not a
-// player on the server (a statue).
+// player on the server (a statue). Ghosts keep their names, for their own team.
 func (s *Session) unnamed(p *player.Player) bool {
 	if s.tabs == nil {
+		return false
+	}
+	if _, ghost := ghostOf(p.UUID()); ghost {
 		return false
 	}
 	_, online := s.tabs.srv.Player(p.UUID())

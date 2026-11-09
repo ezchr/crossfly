@@ -225,7 +225,7 @@ func (s *Session) ViewEntityState(e world.Entity) {
 	if onFire(e) {
 		flags |= 0x01
 	}
-	if mobBool(e, (interface{ Invisible() bool }).Invisible) {
+	if mobBool(e, (interface{ Invisible() bool }).Invisible) || isGhost(e) {
 		flags |= 0x20
 	}
 	w := s.packet()

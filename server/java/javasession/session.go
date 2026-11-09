@@ -291,6 +291,7 @@ func (s *Session) CloseConnection() {
 		_ = s.conn.NetConn().SetWriteDeadline(time.Now().Add(time.Second))
 		close(s.closed)
 		selfSwings.Delete(s)
+		ghostTeams.Delete(s)
 		if !s.spawned.Load() {
 			s.cleanup()
 		}
