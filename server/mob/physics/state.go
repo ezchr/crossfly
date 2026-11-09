@@ -42,6 +42,9 @@ type state struct {
 
 	// flying is set by fly/hover move controls: no gravity, air drag on Y.
 	flying bool
+	// lavaSlime is a magma cube (LavaSlimeFlag: its own jump height),
+	// lavaDragImmune its ImmuneToLavaDragFlag.
+	lavaSlime, lavaDragImmune bool
 
 	// Per-tick bookkeeping.
 	noJumpDelay int
@@ -65,6 +68,9 @@ func stateOf(m *mob.Mob) *state {
 		return v.(*state)
 	}
 	s := newState()
+	if m.Identifier() == "minecraft:magma_cube" {
+		s.lavaSlime, s.lavaDragImmune = true, true
+	}
 	m.SetData(stateKey{}, s)
 	return s
 }

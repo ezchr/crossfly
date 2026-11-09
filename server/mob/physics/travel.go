@@ -91,6 +91,9 @@ func Travel(m *mob.Mob) {
 		// CheckFallDamage resets in water, LavaResetFallDistanceSystem in lava.
 		p.FallDistance = 0
 	}
+	// ImmuneToLavaDragFlag (magma cube): ActorMobilityUtils::shouldApplyLava
+	// is false, so the mob jumps and travels in lava as on land.
+	inLava := p.InLava && !s.lavaDragImmune
 
 	// MobJumpSystem / MobJumpFromGroundSystemImpl.
 	if s.noJumpDelay > 0 {
@@ -98,7 +101,7 @@ func Travel(m *mob.Mob) {
 	}
 	if in.Jump {
 		switch {
-		case p.InWater, p.InLava:
+		case p.InWater, inLava:
 			vel[1] += liquidJump
 		case p.OnGround && s.noJumpDelay == 0:
 			vel[1] = jumpVelocity(m)
@@ -113,12 +116,12 @@ func Travel(m *mob.Mob) {
 	wasOnGround := p.OnGround
 	startY := pos[1]
 
-	liquid := p.InWater || p.InLava
+	liquid := p.InWater || inLava
 	friction := airFriction
 	switch {
 	case p.InWater:
 		vel = moveRelative(vel, input, m.Attr(mob.AttrUnderwaterMovement), yaw)
-	case p.InLava:
+	case inLava:
 		vel = moveRelative(vel, input, m.Attr(mob.AttrLavaMovement), yaw)
 	default:
 		speed := airSpeed
@@ -187,7 +190,7 @@ func Travel(m *mob.Mob) {
 		if s.liquidGravity(m, tx, pos) {
 			vel[1] -= liquidGravity
 		}
-	case p.InLava:
+	case inLava:
 		vel = vel.Mul(lavaDrag)
 		if s.liquidGravity(m, tx, pos) {
 			vel[1] -= liquidGravity
@@ -272,10 +275,14 @@ func groundFriction(tx *world.Tx, pos mgl64.Vec3, box cube.BBox) float64 {
 }
 
 // jumpVelocity is the Y velocity of a jump from the ground: the jump
-// control's power (0.42 by default) plus 0.1 per jump boost level.
+// control's power (0.42 by default) plus 0.1 per jump boost level. A magma
+// cube jumps 0.42 + 0.1 x its size whatever its jump control
+// (MobJumpFromGroundSystemImpl::doLavaSlimeJumpFromGround).
 func jumpVelocity(m *mob.Mob) float64 {
 	power := DefaultJumpPower
-	if jp, ok := m.JumpControl().(interface{ JumpPower() float64 }); ok {
+	if stateOf(m).lavaSlime {
+		power += 0.1 * float64(m.Meta().Variant)
+	} else if jp, ok := m.JumpControl().(interface{ JumpPower() float64 }); ok {
 		power = jp.JumpPower()
 	}
 	if e, ok := m.Effect(effect.JumpBoost); ok {
