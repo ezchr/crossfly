@@ -4,7 +4,6 @@ package boss
 
 import (
 	"math"
-	"sync"
 	"time"
 
 	"github.com/df-mc/dragonfly/server/block"
@@ -781,10 +780,6 @@ func (d *Dragon) onHurt(m *mob.Mob, dealt float64, _ world.DamageSource) {
 	}
 }
 
-// killedDragons remembers the worlds a dragon died in: the first dragon of
-// a world drops 12000 experience, later ones 500.
-var killedDragons sync.Map
-
 // StartDeathAnimation is the end of DragonDeathGoal: health 0, the death
 // animation actor event, then 200 ticks of rising and explosions
 // (tickDeath) before the dragon is removed.
@@ -793,9 +788,13 @@ func (d *Dragon) StartDeathAnimation(m *mob.Mob) {
 		return
 	}
 	d.dying, d.deathTime = true, 0
+	// The first dragon of a world drops 12000 experience, later ones 500
+	// (EnderDragon::tickDeath); the world remembers across restarts.
 	d.xp = 12000
-	if _, killed := killedDragons.LoadOrStore(m.Tx().World(), true); killed {
+	if w := m.Tx().World(); DragonPreviouslyKilled(w) {
 		d.xp = 500
+	} else {
+		SetDragonPreviouslyKilled(w)
 	}
 	if b, ok := BossOf(m); ok {
 		b.SetHealthOverride(0)

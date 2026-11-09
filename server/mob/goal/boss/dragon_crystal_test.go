@@ -73,3 +73,18 @@ func TestDragonCrystalDestroyed(t *testing.T) {
 		}
 	})
 }
+
+// TestDragonKilledSaved: that a dragon was killed is kept in the world's
+// database (TheEnd, DragonFight.PreviouslyKilled) and survives a restart,
+// so later dragons drop 500 experience instead of 12000.
+func TestDragonKilledSaved(t *testing.T) {
+	w := setup(t, mobtest.Options{Persistent: true}, "minecraft:boss")
+	if bc.DragonPreviouslyKilled(w.W) {
+		t.Fatal("a new world had a dragon killed")
+	}
+	bc.SetDragonPreviouslyKilled(w.W)
+	w.Reload()
+	if !bc.DragonPreviouslyKilled(w.W) {
+		t.Errorf("the killed dragon was forgotten after a restart")
+	}
+}
