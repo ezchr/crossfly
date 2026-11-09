@@ -58,6 +58,7 @@ func (s *state) encodeNBT() map[string]any {
 	if len(comps) > 0 {
 		out["mob:components"] = comps
 	}
+	s.encodeNBTHooks(out)
 	return out
 }
 
@@ -99,6 +100,7 @@ func (m *Mob) decodeNBT(d map[string]any) {
 			}
 		}
 	}
+	m.decodeNBTHooks(d)
 }
 
 func boolByte(b bool) byte {

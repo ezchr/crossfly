@@ -8,10 +8,14 @@ import (
 	"math"
 	"sync/atomic"
 
+	"github.com/df-mc/dragonfly/server/block/cube"
 	"github.com/df-mc/dragonfly/server/entity"
 	"github.com/df-mc/dragonfly/server/entity/effect"
 	"github.com/df-mc/dragonfly/server/item"
+	"github.com/df-mc/dragonfly/server/item/inventory"
 	"github.com/df-mc/dragonfly/server/mob"
+	"github.com/df-mc/dragonfly/server/mob/component/combat"
+	"github.com/df-mc/dragonfly/server/mob/component/core"
 	"github.com/df-mc/dragonfly/server/player"
 	"github.com/df-mc/dragonfly/server/session"
 	"github.com/df-mc/dragonfly/server/world"
@@ -66,6 +70,9 @@ type Economy struct {
 	low     int
 	high    int
 	nearby  int
+	// nearbyStamp is the world tick the nearby cured discount next decays
+	// at (NEARBY_CURED_DISCOUNT_TIME_STAMP).
+	nearbyStamp int64
 
 	trading      *world.EntityHandle
 	closed       atomic.Bool
@@ -171,6 +178,7 @@ type savedTrades struct {
 	low     int
 	high    int
 	nearby  int
+	stamp   int64
 }
 
 type tradeStateKey struct{}
@@ -180,15 +188,256 @@ func (e *Economy) Attach(m *mob.Mob) {
 	if v, ok := m.Data(tradeStateKey{}); ok {
 		s := v.(*savedTrades)
 		e.offers, e.tierExp, e.path, e.exp, e.maxTier, e.riches = s.offers, s.tierExp, s.path, s.exp, s.maxTier, s.riches
-		e.low, e.high, e.nearby = s.low, s.high, s.nearby
+		e.low, e.high, e.nearby, e.nearbyStamp = s.low, s.high, s.nearby, s.stamp
 		m.SetData(tradeStateKey{}, nil)
 	}
 }
 
 func (e *Economy) Detach(m *mob.Mob) {
 	m.SetData(tradeStateKey{}, &savedTrades{offers: e.offers, tierExp: e.tierExp, path: e.path, exp: e.exp, tier: int(m.Meta().TradeTier),
-		maxTier: e.maxTier, riches: e.riches, low: e.low, high: e.high, nearby: e.nearby})
+		maxTier: e.maxTier, riches: e.riches, low: e.low, high: e.high, nearby: e.nearby, stamp: e.nearbyStamp})
 	e.closeWindow(m)
+}
+
+// CuredDiscounts returns the low tier, high tier and nearby cured discounts
+// (BDS actor data LOW_TIER_CURED_TRADE_DISCOUNT, HIGH_TIER_..., NEARBY_...).
+func (e *Economy) CuredDiscounts() (low, high, nearby int) { return e.low, e.high, e.nearby }
+
+// tryIncrementCuredDiscount is EconomyTradeableComponent::
+// tryIncrementCuredDiscount, run on a villager cured from a zombie villager:
+// cured_discount is added to the low and high tier discounts, each kept
+// within max_cured_discount..0. The discount belongs to the villager, not to
+// the player who cured it: every player trading with it gets it.
+func (e *Economy) tryIncrementCuredDiscount() {
+	e.low = addCuredDiscount(e.low, e.curedMin, e.maxCuredMin)
+	e.high = addCuredDiscount(e.high, e.curedMax, e.maxCuredMax)
+}
+
+// tryIncrementNearbyCuredDiscount is EconomyTradeableComponent::
+// tryIncrementNearbyCuredDiscount, run on every villager_v2 within 16 blocks
+// of a cured one. With use_legacy_price_formula nearby_cured_discount is
+// added to the nearby discount (down to max_nearby_cured_discount), which
+// then decays by one a day; otherwise the low tier discount is set to
+// cured_discount.min + nearby_cured_discount (within max_cured_discount..0),
+// whatever it was.
+func (e *Economy) tryIncrementNearbyCuredDiscount(now int64) {
+	if e.legacyFormula {
+		e.setNearby(max(e.nearby+e.nearbyCured, e.maxNearby), now)
+		return
+	}
+	e.low = addCuredDiscount(0, e.curedMin+e.nearbyCured, e.maxCuredMin)
+}
+
+func addCuredDiscount(cur, add, limit int) int {
+	if v := cur + add; v <= 0 {
+		return max(v, limit)
+	}
+	return 0
+}
+
+// setNearby is setNearbyCuredDiscount: the next decay is a day away.
+func (e *Economy) setNearby(v int, now int64) {
+	e.nearby, e.nearbyStamp = v, now+24000
+}
+
+// standingLargeReward is Village::StandingModifiers::LARGE_REWARD (5 in the
+// BDS 1.21.3 binary).
+const standingLargeReward = 5
+
+// rewardAllStanding is Village::rewardAllPlayers(int): every player the
+// village keeps a standing for gains delta, kept within -30..10.
+func (v *Village) rewardAllStanding(delta int) {
+	for h, s := range v.standing {
+		v.standing[h] = max(-30, min(10, s+delta))
+	}
+}
+
+// curedState is the cured discount actor data every BDS actor has; a mob
+// without a trade component (a zombie villager) keeps it under curedKey so
+// villager -> zombie villager -> villager carries it.
+type curedState struct {
+	low, high, nearby int
+	stamp             int64
+}
+
+type curedKey struct{}
+
+func curedOf(m *mob.Mob) curedState {
+	if e, ok := EconomyOf(m); ok {
+		return curedState{e.low, e.high, e.nearby, e.nearbyStamp}
+	}
+	if v, ok := m.Data(curedKey{}); ok {
+		return *v.(*curedState)
+	}
+	return curedState{}
+}
+
+func setCured(m *mob.Mob, c curedState) {
+	if e, ok := EconomyOf(m); ok {
+		e.low, e.high, e.nearby, e.nearbyStamp = c.low, c.high, c.nearby, c.stamp
+		return
+	}
+	if c == (curedState{}) {
+		m.SetData(curedKey{}, nil)
+		return
+	}
+	m.SetData(curedKey{}, &c)
+}
+
+// persistingTrades is Actor::savePersistingTrade: the offers and riches of
+// a trader with persist_trades that became a mob without a trade component
+// (a villager killed into a zombie villager), given back to the trade
+// component of what it turns into next (the cured villager).
+type persistingTrades struct {
+	offers  []*Offer
+	tierExp []int
+	path    string
+	riches  int
+}
+
+type persistKey struct{}
+
+// PersistingOffers returns the offers m carries without a trade component.
+func PersistingOffers(m *mob.Mob) ([]*Offer, bool) {
+	v, ok := m.Data(persistKey{})
+	if !ok {
+		return nil, false
+	}
+	return v.(*persistingTrades).offers, true
+}
+
+func init() {
+	combat.RegisterTransformHook(transformed)
+	mob.RegisterNBTHook(mob.NBTHook{Name: "village/trades", Encode: EncodeActorTradeNBT, Decode: DecodeActorTradeNBT})
+}
+
+// transformed is the trade part of TransformationComponent::maintainOldData
+// and the zombie villager cure in transformIfAble:
+//   - drop_inventory also drops the private inventory (Inventory);
+//   - keep_level copies TRADE_TIER, MAX_TRADE_TIER and TRADE_EXPERIENCE;
+//   - persisting trades move to the new trade component, or are kept on the
+//     new mob when it has none; a trader with persist_trades hands its
+//     offers (generated now if it had none yet) and riches on the same way;
+//   - the cured discounts always carry over;
+//   - when a zombie villager is cured the closest village (within 1000
+//     blocks) rewards every player it knows with LARGE_REWARD standing, the
+//     new villager gets tryIncrementCuredDiscount and every villager_v2
+//     within 16 blocks tryIncrementNearbyCuredDiscount.
+func transformed(old, n *mob.Mob, o combat.TransformOptions) {
+	if o.DropInventory {
+		if v, ok := old.Data(invKey{}); ok {
+			core.DropItems(old, v.(*inventory.Inventory).Clear(), 0.5)
+		}
+	}
+	oe, oldHas := EconomyOf(old)
+	ne, newHas := EconomyOf(n)
+	if o.KeepLevel {
+		om := old.Meta()
+		exp := om.TradeExperience
+		if oldHas {
+			exp = int32(oe.exp)
+		}
+		n.UpdateMeta(func(meta *mob.Meta) {
+			meta.TradeTier, meta.MaxTradeTier, meta.TradeExperience = om.TradeTier, om.MaxTradeTier, exp
+		})
+		if newHas {
+			ne.exp = int(exp)
+		}
+	}
+	var p *persistingTrades
+	if v, ok := old.Data(persistKey{}); ok {
+		p = v.(*persistingTrades)
+		old.SetData(persistKey{}, nil)
+	} else if oldHas && oe.persist {
+		oe.generate(old)
+		if len(oe.offers) > 0 {
+			p = &persistingTrades{offers: oe.offers, tierExp: oe.tierExp, path: oe.path, riches: oe.riches}
+		}
+	}
+	if p != nil {
+		if newHas {
+			ne.offers, ne.tierExp, ne.path, ne.riches = p.offers, p.tierExp, p.path, p.riches
+			ne.maxTier = len(p.tierExp) - 1
+			n.UpdateMeta(func(meta *mob.Meta) { meta.MaxTradeTier = int32(max(ne.maxTier, 0)) })
+		} else {
+			n.SetData(persistKey{}, p)
+		}
+	}
+	if newHas && o.KeepLevel && len(ne.tierExp) > 0 {
+		ne.matchExpAndTier(n)
+	}
+	setCured(n, curedOf(old))
+	if id := old.Identifier(); id == "minecraft:zombie_villager" || id == "minecraft:zombie_villager_v2" {
+		cured(old, n)
+	}
+}
+
+// cured is the zombie villager part of TransformationComponent::
+// transformIfAble.
+func cured(old, n *mob.Mob) {
+	tx := n.Tx()
+	if v := ManagerOf(tx).ClosestVillage(old.Position(), 1000); v != nil {
+		v.rewardAllStanding(standingLargeReward)
+	}
+	if e, ok := EconomyOf(n); ok && !e.legacy {
+		e.tryIncrementCuredDiscount()
+	}
+	now := tx.CurrentTick()
+	p := n.Position()
+	for ent := range tx.EntitiesWithin(cube.Box(p[0]-16, p[1]-16, p[2]-16, p[0]+16, p[1]+16, p[2]+16)) {
+		if m, ok := mob.Of(ent); ok && m.Identifier() == "minecraft:villager_v2" {
+			if e, ok := EconomyOf(m); ok && !e.legacy {
+				e.tryIncrementNearbyCuredDiscount(now)
+			}
+		}
+	}
+}
+
+// EncodeActorTradeNBT returns what BDS Actor::addAdditionalSaveData writes
+// of the trade data for a mob without a trade component (a trader saves its
+// own): TradeTier, TradeExperience and, while it carries persisting trades,
+// persistingOffers and persistingRiches. It is nil when there is nothing to
+// save. Package mob has to call it from its NBT encoding (see
+// DecodeActorTradeNBT).
+func EncodeActorTradeNBT(m *mob.Mob) map[string]any {
+	if _, ok := EconomyOf(m); ok {
+		return nil
+	}
+	out := map[string]any{}
+	if meta := m.Meta(); meta.TradeTier != 0 || meta.TradeExperience != 0 {
+		out["TradeTier"], out["TradeExperience"] = meta.TradeTier, meta.TradeExperience
+	}
+	if v, ok := m.Data(persistKey{}); ok {
+		p := v.(*persistingTrades)
+		out["persistingOffers"] = map[string]any{"Recipes": encodeOffers(p.offers), "TierExp": encodeTierExp(p.tierExp), "TradeTablePath": p.path}
+		out["persistingRiches"] = int32(p.riches)
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
+}
+
+// DecodeActorTradeNBT restores what EncodeActorTradeNBT wrote (after the
+// components attached).
+func DecodeActorTradeNBT(m *mob.Mob, d map[string]any) {
+	if _, ok := EconomyOf(m); ok {
+		return
+	}
+	tier, hasTier := d["TradeTier"].(int32)
+	exp, hasExp := d["TradeExperience"].(int32)
+	if hasTier || hasExp {
+		m.UpdateMeta(func(meta *mob.Meta) { meta.TradeTier, meta.TradeExperience = tier, exp })
+	}
+	po, ok := d["persistingOffers"].(map[string]any)
+	if !ok {
+		return
+	}
+	p := &persistingTrades{offers: decodeOffers(po["Recipes"]), tierExp: decodeTierExp(po["TierExp"])}
+	p.path, _ = po["TradeTablePath"].(string)
+	r, _ := d["persistingRiches"].(int32)
+	p.riches = int(r)
+	m.SetData(persistKey{}, p)
 }
 
 // Offers returns the generated offers (all tiers).
@@ -546,6 +795,13 @@ func (e *Economy) notifyTrade(m *mob.Mob, tx *world.Tx, ph *world.EntityHandle, 
 // Tick runs the level-up timer (newServerAiStep) and closes the window when
 // it is no longer valid (Trade2ContainerManagerModel::isValid).
 func (e *Economy) Tick(m *mob.Mob) {
+	if e.nearby < 0 {
+		// tickDiscountDegradationTimer: the nearby cured discount fades by
+		// one a day.
+		if now := m.Tx().CurrentTick(); e.nearbyStamp <= now {
+			e.setNearby(e.nearby+1, now)
+		}
+	}
 	if e.trading != nil {
 		p, ok := e.Trading(m.Tx())
 		switch {
@@ -590,8 +846,18 @@ func (e *Economy) closeWindow(m *mob.Mob) {
 
 // EncodeNBT ...
 func (e *Economy) EncodeNBT() map[string]any {
-	offers := make([]any, 0, len(e.offers))
-	for _, o := range e.offers {
+	out := map[string]any{"Recipes": encodeOffers(e.offers), "TierExp": encodeTierExp(e.tierExp), "TradeTablePath": e.path, "Riches": int32(e.riches),
+		"TradeExperience": int32(e.exp), "MaxTradeTier": int32(e.maxTier),
+		"LowTierCuredDiscount": int32(e.low), "HighTierCuredDiscount": int32(e.high), "NearbyCuredDiscount": int32(e.nearby)}
+	if e.nearbyStamp != 0 {
+		out["NearbyCuredDiscountTimeStamp"] = e.nearbyStamp
+	}
+	return out
+}
+
+func encodeOffers(l []*Offer) []any {
+	offers := make([]any, 0, len(l))
+	for _, o := range l {
 		r := map[string]any{"buyA": item.WriteNBT(o.BuyA, true), "sell": item.WriteNBT(o.Sell, true), "tier": int32(o.Tier),
 			"uses": int32(o.Uses), "maxUses": int32(o.MaxUses), "traderExp": int32(o.TraderExp), "rewardExp": boolByte(o.RewardExp),
 			"demand": int32(o.Demand), "buyCountA": int32(o.BaseA), "buyCountB": int32(o.BaseB),
@@ -601,13 +867,26 @@ func (e *Economy) EncodeNBT() map[string]any {
 		}
 		offers = append(offers, r)
 	}
-	tiers := make([]any, len(e.tierExp))
-	for i, t := range e.tierExp {
+	return offers
+}
+
+func encodeTierExp(l []int) []any {
+	tiers := make([]any, len(l))
+	for i, t := range l {
 		tiers[i] = int32(t)
 	}
-	return map[string]any{"Recipes": offers, "TierExp": tiers, "TradeTablePath": e.path, "Riches": int32(e.riches),
-		"TradeExperience": int32(e.exp), "MaxTradeTier": int32(e.maxTier),
-		"LowTierCuredDiscount": int32(e.low), "HighTierCuredDiscount": int32(e.high), "NearbyCuredDiscount": int32(e.nearby)}
+	return tiers
+}
+
+func decodeTierExp(v any) []int {
+	var out []int
+	if l, ok := v.([]any); ok {
+		for _, v := range l {
+			n, _ := v.(int32)
+			out = append(out, int(n))
+		}
+	}
+	return out
 }
 
 // DecodeNBT ...
@@ -616,15 +895,18 @@ func (e *Economy) DecodeNBT(m *mob.Mob, data map[string]any) {
 	e.path, _ = data["TradeTablePath"].(string)
 	e.riches, e.exp, e.maxTier = i32("Riches"), i32("TradeExperience"), i32("MaxTradeTier")
 	e.low, e.high, e.nearby = i32("LowTierCuredDiscount"), i32("HighTierCuredDiscount"), i32("NearbyCuredDiscount")
-	e.tierExp = nil
-	if l, ok := data["TierExp"].([]any); ok {
-		for _, v := range l {
-			n, _ := v.(int32)
-			e.tierExp = append(e.tierExp, int(n))
-		}
-	}
-	e.offers = nil
-	if l, ok := data["Recipes"].([]any); ok {
+	e.nearbyStamp, _ = data["NearbyCuredDiscountTimeStamp"].(int64)
+	e.tierExp = decodeTierExp(data["TierExp"])
+	e.offers = decodeOffers(data["Recipes"])
+	m.UpdateMeta(func(meta *mob.Meta) {
+		meta.TradeExperience = int32(e.exp)
+		meta.MaxTradeTier = int32(max(e.maxTier, 0))
+	})
+}
+
+func decodeOffers(v any) []*Offer {
+	var out []*Offer
+	if l, ok := v.([]any); ok {
 		for _, rv := range l {
 			r, ok := rv.(map[string]any)
 			if !ok {
@@ -648,13 +930,10 @@ func (e *Economy) DecodeNBT(m *mob.Mob, data map[string]any) {
 				continue
 			}
 			o.PriceA = o.BaseA
-			e.offers = append(e.offers, o)
+			out = append(out, o)
 		}
 	}
-	m.UpdateMeta(func(meta *mob.Meta) {
-		meta.TradeExperience = int32(e.exp)
-		meta.MaxTradeTier = int32(max(e.maxTier, 0))
-	})
+	return out
 }
 
 // tradeResupply is minecraft:trade_resupply (BDS TradeResupplyComponent):

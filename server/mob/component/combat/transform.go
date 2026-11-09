@@ -7,12 +7,14 @@ import (
 	"fmt"
 	"log/slog"
 	"math"
+	"slices"
 	"strings"
 
 	"github.com/df-mc/dragonfly/server/block"
 	"github.com/df-mc/dragonfly/server/block/cube"
 	"github.com/df-mc/dragonfly/server/entity"
 	"github.com/df-mc/dragonfly/server/item"
+	"github.com/df-mc/dragonfly/server/item/inventory"
 	"github.com/df-mc/dragonfly/server/mob"
 	"github.com/df-mc/dragonfly/server/world"
 	"github.com/df-mc/dragonfly/server/world/particle"
@@ -21,20 +23,57 @@ import (
 )
 
 // Transformation is minecraft:transformation (BDS TransformationComponent):
-// after "delay" seconds the mob is replaced by "into" ("id<event>": the new
-// mob spawns with that event, then minecraft:entity_transformed fires on it
-// with the old mob as "other"). Name tag, persistence, rotation and, with
-// preserve_equipment, armour and held items carry over; drop_equipment
-// drops them instead.
+// after the delay the mob is replaced by "into" ("id<event>": the new mob
+// gets that event, then minecraft:entity_transformed, both with the old mob
+// as "other").
+//
+// The delay (TransformationComponent::reloadComponent, on attach) is
+// delay.value plus range_min plus a random [0, range_max-range_min) ticks,
+// so a zombie villager cure (value 100, range 80..200) takes 180-300 s. Each
+// tick (tickTransformationComponent) counts down by one, and with chance
+// block_assist_chance by one more for every block_types block within
+// block_radius that passes block_chance (at most block_max blocks looked at
+// with a match). begin_transform_sound plays on attach.
+//
+// A transformation that is due when the mob dies still happens (the
+// villager_v2 "become_zombie" group is added by a damage_sensor on the
+// fatal hit, BDS transforms right in reloadComponent; here in OnDeath).
 type Transformation struct {
-	into, event       string
-	delay             int
-	preserveEquipment bool
-	dropEquipment     bool
-	keepOwner         bool
+	into, event          string
+	delay                int // ticks: delay.value
+	rangeMin, rangeMax   int // ticks
+	assistChance         float64
+	blockRadius          int
+	blockMax             int
+	blockChance          float64
+	blockTypes           []string
+	beginSounds, sounds  []string
+	preserveEquipment    bool
+	dropEquipment        bool
+	dropInventory        bool
+	keepOwner, keepLevel bool
 
 	left int
 	done bool
+}
+
+// soundList is a Parser vector<LevelSoundEvent>: one name or a list.
+type soundList []string
+
+func (s *soundList) UnmarshalJSON(b []byte) error {
+	var one string
+	if json.Unmarshal(b, &one) == nil {
+		if one != "" {
+			*s = soundList{one}
+		}
+		return nil
+	}
+	var many []string
+	if err := json.Unmarshal(b, &many); err != nil {
+		return err
+	}
+	*s = many
+	return nil
 }
 
 func newTransformation(_ string, raw json.RawMessage) (mob.Component, error) {
@@ -43,29 +82,56 @@ func newTransformation(_ string, raw json.RawMessage) (mob.Component, error) {
 		Delay             json.RawMessage `json:"delay"`
 		PreserveEquipment bool            `json:"preserve_equipment"`
 		DropEquipment     bool            `json:"drop_equipment"`
+		DropInventory     bool            `json:"drop_inventory"`
 		KeepOwner         bool            `json:"keep_owner"`
+		KeepLevel         bool            `json:"keep_level"`
+		BeginSound        soundList       `json:"begin_transform_sound"`
+		Sound             soundList       `json:"transformation_sound"`
 	}
 	if err := json.Unmarshal(raw, &v); err != nil {
 		return nil, fmt.Errorf("minecraft:transformation: %w", err)
 	}
-	t := &Transformation{preserveEquipment: v.PreserveEquipment, dropEquipment: v.DropEquipment, keepOwner: v.KeepOwner}
+	t := &Transformation{preserveEquipment: v.PreserveEquipment, dropEquipment: v.DropEquipment, dropInventory: v.DropInventory,
+		keepOwner: v.KeepOwner, keepLevel: v.KeepLevel, beginSounds: v.BeginSound, sounds: v.Sound}
 	t.into, t.event = SplitIdentifier(v.Into)
+	// TransformationDescription::deserializeData: a number or an object;
+	// every time is (int)(seconds*20).
+	ticks := func(f float64) int { return int(float32(f) * 20) }
 	if len(v.Delay) > 0 {
-		var d float64
 		if v.Delay[0] == '{' {
 			var o struct {
-				Value float64 `json:"value"`
+				Value             float64  `json:"value"`
+				RangeMin          float64  `json:"range_min"`
+				RangeMax          float64  `json:"range_max"`
+				BlockAssistChance float64  `json:"block_assist_chance"`
+				BlockRadius       int      `json:"block_radius"`
+				BlockMax          int      `json:"block_max"`
+				BlockChance       float64  `json:"block_chance"`
+				BlockTypes        []string `json:"block_types"`
 			}
 			if err := json.Unmarshal(v.Delay, &o); err != nil {
 				return nil, fmt.Errorf("minecraft:transformation: delay: %w", err)
 			}
-			d = o.Value
-		} else if err := json.Unmarshal(v.Delay, &d); err != nil {
-			return nil, fmt.Errorf("minecraft:transformation: delay: %w", err)
+			t.delay, t.rangeMin, t.rangeMax = ticks(o.Value), ticks(o.RangeMin), ticks(o.RangeMax)
+			t.assistChance, t.blockRadius, t.blockMax, t.blockChance = o.BlockAssistChance, o.BlockRadius, o.BlockMax, o.BlockChance
+			if t.blockMax <= 0 {
+				t.blockMax = t.blockRadius
+			}
+			for _, b := range o.BlockTypes {
+				if !strings.Contains(b, ":") {
+					b = "minecraft:" + b
+				}
+				t.blockTypes = append(t.blockTypes, b)
+			}
+		} else {
+			var d float64
+			if err := json.Unmarshal(v.Delay, &d); err != nil {
+				return nil, fmt.Errorf("minecraft:transformation: delay: %w", err)
+			}
+			t.delay = ticks(d)
 		}
-		t.delay = int(d * 20)
 	}
-	t.left = t.delay
+	t.left = t.delay + t.rangeMin
 	return t, nil
 }
 
@@ -78,9 +144,17 @@ func SplitIdentifier(s string) (id, event string) {
 	return s, ""
 }
 
-// Attach starts the delay.
+// Attach is TransformationComponent::reloadComponent: the begin sounds play
+// and the delay is rolled.
 func (t *Transformation) Attach(m *mob.Mob) {
-	if t.delay > 0 {
+	for _, s := range t.beginSounds {
+		m.PlaySound(s)
+	}
+	t.left = t.delay + t.rangeMin
+	if t.rangeMin < t.rangeMax {
+		t.left += m.Rand().IntN(t.rangeMax - t.rangeMin)
+	}
+	if t.left > 0 {
 		m.UpdateMeta(func(meta *mob.Meta) { meta.Converting = true })
 	}
 }
@@ -93,65 +167,182 @@ func (t *Transformation) Detach(m *mob.Mob) {
 // Left is the number of ticks before the transformation.
 func (t *Transformation) Left() int { return t.left }
 
+// SetLeft sets the ticks left (commands, tests).
+func (t *Transformation) SetLeft(n int) { t.left = n }
+
+// OnDeath transforms a mob whose transformation was added by the hit that
+// killed it (delay 0). BDS does it as the component is added, before the
+// damage lands; here the death sound has played by then.
+func (t *Transformation) OnDeath(m *mob.Mob, _ world.DamageSource) {
+	if !t.done && t.left <= 0 {
+		t.transform(m)
+	}
+}
+
+// tick is tickTransformationComponent.
 func (t *Transformation) tick(m *mob.Mob) {
-	if t.done || m.Dead() {
+	if t.done {
 		return
 	}
-	if t.left > 0 {
-		t.left--
-		return
+	step := 1
+	if t.assistChance > 0 && m.Rand().Float64() < t.assistChance {
+		step += t.assist(m)
 	}
+	if t.left -= step; t.left <= 0 {
+		t.transform(m)
+	}
+}
+
+// assist counts the block_types blocks around the mob that speed the
+// transformation up: the cube from (int)pos-radius to (int)pos+radius
+// (exclusive), stopping after block_max matching blocks, each adding one
+// tick with block_chance.
+func (t *Transformation) assist(m *mob.Mob) int {
+	if len(t.blockTypes) == 0 || t.blockMax <= 0 {
+		return 0
+	}
+	tx, r := m.Tx(), m.Rand()
+	p := m.Pos()
+	px, py, pz := int(p[0]), int(p[1]), int(p[2])
+	rad := t.blockRadius
+	extra, found := 0, 0
+	for x := px - rad; x < px+rad && found < t.blockMax; x++ {
+		for y := py - rad; y < py+rad && found < t.blockMax; y++ {
+			for z := pz - rad; z < pz+rad && found < t.blockMax; z++ {
+				b := tx.Block(cube.Pos{x, y, z})
+				if _, air := b.(block.Air); air {
+					continue
+				}
+				name, _ := b.EncodeBlock()
+				if !slices.Contains(t.blockTypes, name) {
+					continue
+				}
+				if r.Float64() < t.blockChance {
+					extra++
+				}
+				found++
+			}
+		}
+	}
+	return extra
+}
+
+func (t *Transformation) transform(m *mob.Mob) {
 	t.done = true
-	if _, err := Transform(m, t.into, t.event, t.preserveEquipment, t.dropEquipment, t.keepOwner); err != nil {
+	if _, err := TransformWith(m, TransformOptions{Into: t.into, Event: t.event, PreserveEquipment: t.preserveEquipment,
+		DropEquipment: t.dropEquipment, DropInventory: t.dropInventory, KeepOwner: t.keepOwner, KeepLevel: t.keepLevel,
+		Sounds: t.sounds}); err != nil {
 		slog.Default().Warn("mob: transformation failed", "entity", m.Identifier(), "into", t.into, "err", err)
 	}
 }
 
-// Transform replaces m by a new mob of id, fired with event (or
-// minecraft:entity_transformed when empty).
+// TransformOptions are the minecraft:transformation fields TransformWith
+// follows.
+type TransformOptions struct {
+	// Into is the new mob's identifier, Event the event it spawns with
+	// (minecraft:entity_transformed always fires after it).
+	Into, Event       string
+	PreserveEquipment bool
+	DropEquipment     bool
+	// DropInventory drops the mob's container (Mob::dropContainer).
+	DropInventory bool
+	KeepOwner     bool
+	// KeepLevel carries the trade tier, max tier and trade experience over.
+	KeepLevel bool
+	// Sounds are the transformation_sound level sound events, played at the
+	// old mob.
+	Sounds []string
+}
+
+// TransformHook runs in TransformWith after the new mob spawned and saw its
+// events, before the old one is removed: the parts of BDS
+// TransformationComponent::maintainOldData and transformIfAble that other
+// packages own (package village: trades, keep_level, cured discounts).
+type TransformHook func(old, n *mob.Mob, o TransformOptions)
+
+var transformHooks []TransformHook
+
+// RegisterTransformHook adds h (call from init).
+func RegisterTransformHook(h TransformHook) { transformHooks = append(transformHooks, h) }
+
+// Transform replaces m by a new mob of id, fired with event (and
+// minecraft:entity_transformed).
 func Transform(m *mob.Mob, id, event string, preserveEquipment, dropEquipment, keepOwner bool) (*mob.Mob, error) {
+	return TransformWith(m, TransformOptions{Into: id, Event: event, PreserveEquipment: preserveEquipment,
+		DropEquipment: dropEquipment, KeepOwner: keepOwner})
+}
+
+// TransformWith is TransformationComponent::transformIfAble: drops the
+// equipment and container if asked, spawns the new mob where the old one is
+// (ActorFactory::createTransformedActor: position, rotation, head and body
+// yaw, name tag, velocity), copies equipment with preserve_equipment,
+// persistence, the owner with keep_owner, plays transformation_sound, runs
+// the TransformHooks and removes the old mob. Health and fire do not carry
+// over.
+func TransformWith(m *mob.Mob, o TransformOptions) (*mob.Mob, error) {
 	tx := m.Tx()
-	if _, ok := mob.TypeFor(id); !ok {
-		return nil, fmt.Errorf("no mob type %q", id)
-	}
-	main, off := m.HeldItems()
-	a := m.Armour()
-	armour := []item.Stack{a.Helmet(), a.Chestplate(), a.Leggings(), a.Boots()}
-	opts := mob.SpawnOptions{Rotation: m.Rotation(), Velocity: m.Velocity(), Event: event}
-	if event == "" {
-		opts.Event = mob.EventTransformed
-	}
-	opts.NameTag = m.NameTag()
-	owner, persistent := m.Owner(), m.Persistent()
-	opts.Configure = func(n *mob.Mob) {
-		n.SetPersistent(persistent)
-		if keepOwner && owner != nil {
-			n.UpdateMeta(func(meta *mob.Meta) { meta.Owner = owner })
-		}
-		if preserveEquipment {
-			n.SetHeldItems(main, off)
-			n.Armour().Set(armour[0], armour[1], armour[2], armour[3])
-		}
-		if d := m.OnFireDuration(); d > 0 {
-			n.SetOnFire(d)
-		}
+	if _, ok := mob.TypeFor(o.Into); !ok {
+		return nil, fmt.Errorf("no mob type %q", o.Into)
 	}
 	pos := m.Pos()
-	n, err := mob.Spawn(tx, id, pos, opts)
-	if err != nil {
-		return nil, err
-	}
-	if event != "" {
-		ctx := n.Ctx()
-		ctx.Other = m
-		n.Fire(mob.EventTransformed, ctx)
-	}
-	if dropEquipment && !preserveEquipment {
-		for _, s := range append([]item.Stack{main, off}, armour...) {
+	drop := func(stacks []item.Stack) {
+		for _, s := range stacks {
 			if !s.Empty() {
 				tx.AddEntity(entity.NewItem(world.EntitySpawnOpts{Position: pos.Add(mgl64.Vec3{0, 0.5})}, s))
 			}
 		}
+	}
+	main, off := m.HeldItems()
+	a := m.Armour()
+	armour := []item.Stack{a.Helmet(), a.Chestplate(), a.Leggings(), a.Boots()}
+	if o.DropEquipment && !o.PreserveEquipment {
+		drop(append([]item.Stack{main, off}, armour...))
+	}
+	if o.DropInventory {
+		if c, ok := mob.ComponentOf[interface {
+			Inventory(*mob.Mob) *inventory.Inventory
+		}](m); ok {
+			if inv := c.Inventory(m); inv != nil {
+				drop(inv.Clear())
+			}
+		}
+	}
+	owner, persistent := m.Owner(), m.Persistent()
+	headYaw, bodyYaw := m.HeadYaw(), m.BodyYaw()
+	opts := mob.SpawnOptions{Rotation: m.Rotation(), Velocity: m.Velocity(), NameTag: m.NameTag(), NoEvent: true}
+	opts.Configure = func(n *mob.Mob) {
+		n.SetHeadYaw(headYaw)
+		n.SetBodyYaw(bodyYaw)
+		n.SetPersistent(persistent)
+		if o.KeepOwner && owner != nil {
+			n.UpdateMeta(func(meta *mob.Meta) { meta.Owner = owner })
+		}
+		if o.PreserveEquipment {
+			n.SetHeldItems(main, off)
+			n.Armour().Set(armour[0], armour[1], armour[2], armour[3])
+		}
+	}
+	n, err := mob.Spawn(tx, o.Into, pos, opts)
+	if err != nil {
+		return nil, err
+	}
+	// The new mob's events see the old one as "other" (VariantParameterList
+	// other = the transformed actor), e.g. villager_v2 picking the cured
+	// zombie villager's profession and skin.
+	fire := func(event string) {
+		ctx := n.Ctx()
+		ctx.Other = m
+		n.Fire(event, ctx)
+	}
+	if o.Event != "" {
+		fire(o.Event)
+	}
+	fire(mob.EventTransformed)
+	for _, s := range o.Sounds {
+		m.PlaySound(s)
+	}
+	for _, h := range transformHooks {
+		h(m, n, o)
 	}
 	_ = m.Close()
 	return n, nil

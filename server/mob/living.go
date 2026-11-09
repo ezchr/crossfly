@@ -139,6 +139,10 @@ func (m *Mob) Hurt(dmg float64, src world.DamageSource) (float64, world.HurtResu
 			}
 		}
 	}
+	if m.closed() {
+		// A damage_sensor event removed the mob (it transformed).
+		return 0, world.HurtIgnored
+	}
 	for _, h := range damageHooks {
 		if h.Modify(m, d); d.Cancel {
 			return 0, world.HurtIgnored
@@ -220,6 +224,11 @@ func (m *Mob) die(src world.DamageSource) {
 		if l, ok := c.comp.(DeathListener); ok {
 			l.OnDeath(m, src)
 		}
+	}
+	if m.closed() {
+		// A death listener replaced the mob (a transformation at death,
+		// villager to zombie villager): no drops or death hooks.
+		return
 	}
 	for _, h := range deathHooks {
 		h.Die(m, src)
