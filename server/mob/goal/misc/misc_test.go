@@ -133,19 +133,19 @@ func TestBDSDefaults(t *testing.T) {
 		map[string]any{"cdMin": 400.0, "cdMax": 500.0, "durMin": 2.0, "flags": move | look})
 }
 
-// TestTimerFlag: timer_flag_1 starts 200 ticks after it is added, shows
+// TestTimerFlag: timer_flag_1 starts a cooldown roll after it is added, shows
 // timer_flag_1 for duration_range, fires on_start and on_end, then waits
 // cooldown_range before it runs again.
 func TestTimerFlag(t *testing.T) {
 	w := arena(t, 8)
 	c := w.Spawn("minecraft:cow", mgl64.Vec3{0.5, 1, 0.5}, mob.SpawnOptions{Event: "minecraft:entity_born"})
 	swap(w, c, "timer", goal(t, "minecraft:behavior.timer_flag_1", `{"cooldown_range": 1, "duration_range": 2, "on_end": {"event": "minecraft:ageable_grow_up"}}`), true)
-	n, ok := flagSeen(w, c, 260, protocol.EntityDataFlagTimerFlag1)
+	n, ok := flagSeen(w, c, 60, protocol.EntityDataFlagTimerFlag1)
 	if !ok {
 		t.Fatalf("timer_flag_1 never set: %v", w.Dump(c))
 	}
-	if n < 195 || n > 202 {
-		t.Errorf("timer started after %d ticks, want 200", n)
+	if n < 19 || n > 23 {
+		t.Errorf("timer started after %d ticks, want the 20-tick cooldown", n)
 	}
 	m, ok := w.TickUntil(60, func(tx *world.Tx) bool {
 		cm, _ := c.Mob(tx)

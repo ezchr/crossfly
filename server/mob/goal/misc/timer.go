@@ -12,15 +12,24 @@ import (
 )
 
 // timerFlag is minecraft:behavior.timer_flag_1/2/3 (BDS
-// TimerActorFlagBaseGoal): after a cooldown it runs for a rolled duration
-// with the actor flag timer_flag_N on, firing on_start and on_end.
+// TimerActorFlagBaseGoal, TimerActorFlag1/2/3Goal): after a cooldown it runs
+// for a rolled duration with the actor flag timer_flag_N on, firing on_start
+// and on_end.
 //
-//	cooldown_range  seconds before the next run (default 10 s); the first
-//	                run waits 200 ticks after the goal is added
-//	duration_range  seconds the goal runs (default 2 s)
-//	on_start, on_end  triggers
+//	cooldown_range  seconds before the next run (default 10 s). The first run
+//	                also waits a cooldown roll from when the goal is added
+//	                (TimerActorFlagBaseDefinition::initialize overwrites the
+//	                constructor's now+200), so cooldown 0 starts on the next
+//	                tick (bee effects) and the sniffer first sniffs after
+//	                400-500 s.
+//	duration_range  seconds the goal runs (default 2 s); both ranges are
+//	                rolled in ticks like BDS (roundf(s*20)).
+//	on_start, on_end  triggers. start() runs on_start before it sets the
+//	                flag; stop() runs on_end before it clears the flag, then
+//	                rolls the next cooldown.
 //
-// No control flags by default (BDS Goal()).
+// canUse: now > next start; canContinueToUse: now <= end. No control flags by
+// default (BDS Goal()): the data sets them (sniffer move|look, stand_up move).
 type timerFlag struct {
 	mob.GoalBase
 	flag              uint8
@@ -62,7 +71,7 @@ func newTimerFlag(flag uint8) mob.GoalFactory {
 // CanUse ...
 func (g *timerFlag) CanUse(m *mob.Mob) bool {
 	if !g.init {
-		g.init, g.nextStart = true, m.Ticks()+200
+		g.init, g.nextStart = true, m.Ticks()+int64(tickRange(m, g.cooldown))
 	}
 	return m.Ticks() > g.nextStart
 }
@@ -72,16 +81,23 @@ func (g *timerFlag) CanContinueToUse(m *mob.Mob) bool { return m.Ticks() <= g.en
 
 // Start ...
 func (g *timerFlag) Start(m *mob.Mob) {
-	g.endsAt = m.Ticks() + int64(kit.RollTicks(m, g.length))
-	m.SetActorFlag(g.flag, true)
+	g.endsAt = m.Ticks() + int64(tickRange(m, g.length))
 	g.onStart.Fire(m, nil)
+	m.SetActorFlag(g.flag, true)
 }
 
 // Stop ...
 func (g *timerFlag) Stop(m *mob.Mob) {
-	g.nextStart = m.Ticks() + int64(kit.RollTicks(m, g.cooldown))
-	m.SetActorFlag(g.flag, false)
 	g.onEnd.Fire(m, nil)
+	m.SetActorFlag(g.flag, false)
+	g.nextStart = m.Ticks() + int64(tickRange(m, g.cooldown))
+}
+
+// tickRange rolls a seconds range the way BDS IntRange does after
+// TimerActorFlagBaseDefinition::initialize turned it into ticks: both ends
+// rounded to ticks, then a whole number of ticks between them.
+func tickRange(m *mob.Mob, r kit.Range) int {
+	return kit.Range{Min: float64(kit.Ticks(r.Min)), Max: float64(kit.Ticks(r.Max))}.RollInt(m.Rand())
 }
 
 // AppendDebugInfo ...
