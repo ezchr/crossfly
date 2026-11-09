@@ -30,6 +30,9 @@ import (
 
 // Session is one Java Edition player's connection.
 type Session struct {
+	// borderVersion and borderSent: the world border last sent (border.go).
+	borderVersion atomic.Uint64
+	borderSent    atomic.Bool
 	// frames are the item frame entities standing in for item frame blocks (itemframe.go).
 	frames frameState
 	log    *slog.Logger

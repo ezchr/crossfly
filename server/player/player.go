@@ -132,6 +132,7 @@ type playerData struct {
 // Player is an implementation of a player entity. It has methods that implement the behaviour that players
 // need to play in the world.
 type Player struct {
+	border borderHold // a Region world border's hold on the player (border.go)
 	tx     *world.Tx
 	handle *world.EntityHandle
 	data   *world.EntityData
@@ -2990,6 +2991,11 @@ func (p *Player) Move(deltaPos mgl64.Vec3, deltaYaw, deltaPitch float64) {
 		pos         = p.Position()
 		res, resRot = pos.Add(deltaPos), p.Rotation().Add(cube.Rotation{deltaYaw, deltaPitch})
 	)
+	if edge, changed := p.borderMove(pos, res); changed {
+		// The move would leave the world border: it ends at the edge, which the client is told.
+		p.teleport(edge)
+		return
+	}
 	ctx := NewEventContext(p.tx, p)
 	if p.Handler().HandleMove(ctx, res, resRot); ctx.Cancelled() {
 		if p.conn() != session.Nop && pos.ApproxEqual(p.Position()) {
@@ -3375,6 +3381,7 @@ func (p *Player) Tick(tx *world.Tx, current int64) {
 	p.checkBlockCollisions(p.data.Vel)
 	p.onGround = p.checkOnGround(mgl64.Vec3{})
 	p.checkEntitySteppers()
+	p.tickBorder(tx)
 
 	before := p.effects.Effects()
 	p.effects.Tick(p, p.tx)

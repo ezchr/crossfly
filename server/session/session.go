@@ -34,6 +34,7 @@ import (
 // of abstraction over direct packets. A Session basically 'controls' an entity.
 type Session struct {
 	conf           Config
+	border         borderView // the world border wall shown (border.go)
 	once, connOnce sync.Once
 
 	ent      *world.EntityHandle
@@ -548,6 +549,7 @@ func (s *Session) handleWorldSwitch(w *world.World, tx *world.Tx, c Controllable
 // changeDimension changes the dimension of the client. If silent is set to true, the portal noise will be stopped
 // immediately.
 func (s *Session) changeDimension(dim int32, silent bool, c Controllable) {
+	s.border = borderView{} // the client drops every entity, the border wall too
 	s.changingDimension.Store(true)
 	h := s.handlers[packet.IDServerBoundLoadingScreen].(*ServerBoundLoadingScreenHandler)
 	id := h.currentID.Add(1)
@@ -668,6 +670,9 @@ func (s *Session) sendAvailableEntities(w *world.World) {
 	var identifiers []actorIdentifier
 	for _, t := range w.EntityRegistry().Types() {
 		identifiers = append(identifiers, actorIdentifier{ID: t.EncodeEntity()})
+	}
+	if world.BorderWall() {
+		identifiers = append(identifiers, actorIdentifier{ID: BorderCapEntity}, actorIdentifier{ID: BorderRingEntity})
 	}
 	serialisedEntityData, err := nbt.Marshal(map[string]any{"idlist": identifiers})
 	if err != nil {

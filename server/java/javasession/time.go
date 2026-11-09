@@ -37,6 +37,7 @@ func (s *Session) ViewTimeCycle(doCycle bool) {
 // resendLevelInfo sends the time and weather again, for a client that made a new level. Like
 // vanilla's sendLevelInfo, the weather is sent as it is now, without fading in.
 func (s *Session) resendLevelInfo() {
+	s.borderSent.Store(false) // a new level starts without a border
 	s.timeMu.Lock()
 	t := s.time
 	s.rainLevel, s.thunderLevel = levelOf(s.raining), levelOf(s.thunder)

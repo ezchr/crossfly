@@ -34,6 +34,8 @@ func BuildResourcePack(reg world.BlockRegistry) (*resource.Pack, bool) {
 	assets += blockCount
 	lang = append(lang, blockLang...)
 
+	assets += buildBorder(dir)
+
 	if assets > 0 {
 		// Sorted: items and blocks come in a different order at every start, and the pack would get
 		// a new UUID (from the hash of its files) every time.
