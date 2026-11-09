@@ -116,7 +116,8 @@ func attackerOf(src world.DamageSource) world.Entity {
 
 // Hurt damages the mob:
 //  1. DamageModifier components may change or cancel the damage;
-//  2. fire resistance ignores fire damage, resistance lowers the rest;
+//  2. fire resistance ignores fire damage; armour (ArmourValue), the
+//     protection enchantments and resistance lower the rest;
 //  3. within hurtImmunity ticks of the last hit only damage above it counts;
 //  4. health drops, the attacker becomes LastHurtBy, viewers see the hurt
 //     animation, HurtListener components are told;
@@ -141,6 +142,10 @@ func (m *Mob) Hurt(dmg float64, src world.DamageSource) (float64, world.HurtResu
 		return 0, world.HurtIgnored
 	}
 	total := d.Amount
+	if src.ReducedByArmour() {
+		total = m.armourReduced(total)
+	}
+	total = m.protectionReduced(total, src)
 	if res, ok := s.effects.Effect(effect.Resistance); ok && src.ReducedByResistance() {
 		total *= math.Max(0, 1-0.2*float64(res.Level()))
 	}
@@ -157,6 +162,9 @@ func (m *Mob) Hurt(dmg float64, src world.DamageSource) (float64, world.HurtResu
 	s.health.AddHealth(-dealt)
 	s.noAction = 0
 	m.viewHealth()
+	if src.ReducedByArmour() {
+		m.hurtArmour(d.Amount)
+	}
 
 	if d.Attacker != nil && d.Attacker.H() != m.H() {
 		m.SetLastHurtBy(d.Attacker)

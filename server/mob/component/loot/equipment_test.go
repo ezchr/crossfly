@@ -328,7 +328,10 @@ func TestEquipmentDrops(t *testing.T) {
 		return
 	}
 	byPlayer := func(tx *world.Tx, m *mob.Mob) {
-		m.Hurt(1000, entity.AttackDamageSource{Attacker: playerEntity(t, tx, p)})
+		// A small lethal hit: worn armour loses max(damage/4, 1) durability
+		// (Mob::hurtArmorSlots), so a hit of 1000 would break the helmet.
+		m.SetHealth(1)
+		m.Hurt(5, entity.AttackDamageSource{Attacker: playerEntity(t, tx, p)})
 	}
 	byVoid := func(tx *world.Tx, m *mob.Mob) { m.Hurt(1000, entity.VoidDamageSource{}) }
 

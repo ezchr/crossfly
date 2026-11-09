@@ -205,8 +205,9 @@ func TestVexCharges(t *testing.T) {
 }
 
 // TestRavagerRoar: start_roar makes the ravager roar; half a second in,
-// a zombie next to it is hurt for 6 and pushed, a pillager (illager) only
-// pushed; on_roar_end brings back the hostile group.
+// a zombie next to it is hurt for 6 (5.904 through its natural armour of
+// 2) and pushed, a pillager (illager) only pushed; on_roar_end brings back
+// the hostile group.
 func TestRavagerRoar(t *testing.T) {
 	w := arena(t, 12)
 	r := w.Spawn("minecraft:ravager", mgl64.Vec3{0.5, 1, 0.5})
@@ -222,8 +223,8 @@ func TestRavagerRoar(t *testing.T) {
 	}
 	w.Tick(12)
 	z.With(func(m *mob.Mob) {
-		if zh-m.Health() != 6 {
-			t.Errorf("zombie lost %v health, want 6", zh-m.Health())
+		if want := 6 * (1 - 0.04*0.4); math.Abs(zh-m.Health()-want) > 1e-9 {
+			t.Errorf("zombie lost %v health, want %v", zh-m.Health(), want)
 		}
 		if m.Position()[0] < 3.2 {
 			t.Errorf("zombie not pushed away: x %.2f", m.Position()[0])
