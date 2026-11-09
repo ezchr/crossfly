@@ -125,6 +125,11 @@ func TestBlockSpotChecks(t *testing.T) {
 		{block.Stone{}, "minecraft:stone"},
 		{block.Stone{Smooth: true}, "minecraft:smooth_stone"},
 		{block.Grass{}, "minecraft:grass_block[snowy=false]"},
+		{block.SnowLayer{}, "minecraft:snow[layers=1]"},
+		{block.SnowLayer{Height: 3}, "minecraft:snow[layers=4]"},
+		{block.SnowLayer{Height: 7}, "minecraft:snow[layers=8]"},
+		{block.SnowLayer{Height: 7, Covered: true}, "minecraft:snow[layers=8]"},
+		{block.Snow{}, "minecraft:snow_block"},
 		{block.Log{Wood: block.OakWood(), Axis: cube.X}, "minecraft:oak_log[axis=x]"},
 		{block.Log{Wood: block.OakWood(), Axis: cube.Y}, "minecraft:oak_log[axis=y]"},
 		{block.Log{Wood: block.OakWood(), Axis: cube.Z}, "minecraft:oak_log[axis=z]"},
@@ -317,4 +322,25 @@ func BenchmarkTableLookup(b *testing.B) {
 		}
 	}
 	_ = sink
+}
+
+func TestSnowy(t *testing.T) {
+	rep := javaBlocks(t)
+	table := DefaultBlockStates()
+	for _, c := range []struct {
+		b    world.Block
+		want string
+	}{
+		{block.Grass{}, "minecraft:grass_block[snowy=true]"},
+		{block.Mycelium{}, "minecraft:mycelium[snowy=true]"},
+		{block.Podzol{}, "minecraft:podzol[snowy=true]"},
+	} {
+		got, ok := Snowy(table[world.BlockRuntimeID(c.b)])
+		if !ok || rep.byID[got] != c.want {
+			t.Errorf("Snowy(%T) = %d (%s) %v, want %s", c.b, got, rep.byID[got], ok, c.want)
+		}
+	}
+	if _, ok := Snowy(table[world.BlockRuntimeID(block.Dirt{})]); ok {
+		t.Error("dirt has a snowy state")
+	}
 }

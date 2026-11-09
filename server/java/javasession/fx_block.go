@@ -61,6 +61,15 @@ func (s *Session) blockEventFor(pos cube.Pos, javaBlock int32, b0, b1 byte) {
 // javaStateAt is the Java state of the block at pos in the chunks this client has. Viewer methods
 // run in the world's transaction, so reading the chunk is safe.
 func (s *Session) javaStateAt(pos cube.Pos) (int32, bool) {
+	rid, ok := s.ridAt(pos)
+	if !ok {
+		return 0, false
+	}
+	return int32(blocks().java[rid]), true
+}
+
+// ridAt is the runtime id of the block (layer 0) at pos in the chunks this client has.
+func (s *Session) ridAt(pos cube.Pos) (uint32, bool) {
 	if s.loader == nil {
 		return 0, false
 	}
@@ -72,11 +81,10 @@ func (s *Session) javaStateAt(pos cube.Pos) (int32, bool) {
 		return 0, false
 	}
 	rid := col.Chunk.Block(uint8(pos[0]&15), int16(pos[1]), uint8(pos[2]&15), 0)
-	bi := blocks()
-	if int(rid) >= len(bi.java) {
+	if int(rid) >= len(blocks().java) {
 		return 0, false
 	}
-	return int32(bi.java[rid]), true
+	return rid, true
 }
 
 // crack is a crack overlay the session animates for a block another player breaks.

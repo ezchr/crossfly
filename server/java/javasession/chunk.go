@@ -17,6 +17,8 @@ type blockInfo struct {
 	waterlogged []uint32 // Java state when the block's second layer holds water
 	air         []bool   // counts as air (not counted in a section's block count)
 	fluid       []bool   // has a fluid (counted in a section's fluid count)
+	snowy       []uint32 // Java snowy=true state of a grass block, mycelium or podzol; 0 for other blocks
+	snowCover   []bool   // makes the snowy block below it snowy (snow layers, snow, powder snow)
 	biomes      []uint32 // 26.3 biome id -> the version's (nil: unchanged)
 
 	// encoder encodes chunks for the version (the palette widths depend on its registry sizes);
@@ -190,6 +192,9 @@ func (s *Session) column(pos world.ChunkPos, c *chunk.Chunk) *jchunk.Column {
 						if wet {
 							state = bi.waterlogged[rid]
 						}
+						if snowy := bi.snowy[rid]; snowy != 0 && bi.snowCover[ridAbove(subs, i, layer, x, y, z)] {
+							state = snowy
+						}
 						sec.Blocks[jchunk.BlockIndex(int(x), int(y), int(z))] = state
 						if !bi.air[rid] {
 							nonAir++
@@ -257,6 +262,18 @@ func (s *Session) column(pos world.ChunkPos, c *chunk.Chunk) *jchunk.Column {
 	)
 	col.BlockEntities = col.BlockEntities[:0]
 	return col
+}
+
+// ridAbove returns the runtime id of the block above x, y, z of section i, whose layer 0 is layer: air above the
+// top section.
+func ridAbove(subs []*chunk.SubChunk, i int, layer *chunk.PalettedStorage, x, y, z byte) uint32 {
+	if y < 15 {
+		return layer.At(x, y+1, z)
+	}
+	if i+1 >= len(subs) || subs[i+1].Empty() {
+		return airRID()
+	}
+	return subs[i+1].Layer(0).At(x, 0, z)
 }
 
 // fillLight copies a sub chunk's light into a Java nibble array and reports whether any of it

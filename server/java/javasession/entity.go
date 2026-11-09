@@ -613,9 +613,38 @@ func (s *Session) ViewBlockUpdate(pos cube.Pos, b world.Block, layer int) {
 	if jb, ok := b.(JavaBlock); ok {
 		state = s.ver.BlockState(jb.JavaState())
 	}
+	if snowy := bi.snowy[rid]; snowy != 0 {
+		if above, ok := s.ridAt(pos.Side(cube.FaceUp)); ok && bi.snowCover[above] {
+			state = int32(snowy)
+		}
+	}
 	w.VarInt(state)
 	s.queue(v777.ClientboundPlayBlockUpdate, w)
 	if jb, ok := b.(JavaBlock); ok {
 		s.sendBlockEntity(pos, jb)
 	}
+	s.updateSnowyBelow(pos, bi.snowCover[rid])
+}
+
+// updateSnowyBelow resends the grass block, mycelium or podzol below pos, snowy if the block now at pos is snow.
+// Java clients do not update the snowy property of blocks themselves, and Bedrock has no such state, so the block
+// below gets no update of its own when snow is placed on it or removed.
+func (s *Session) updateSnowyBelow(pos cube.Pos, snow bool) {
+	below := pos.Side(cube.FaceDown)
+	rid, ok := s.ridAt(below)
+	if !ok {
+		return
+	}
+	bi := s.blk
+	if bi.snowy[rid] == 0 {
+		return
+	}
+	state := bi.java[rid]
+	if snow {
+		state = bi.snowy[rid]
+	}
+	w := s.packet()
+	w.Position(below[0], below[1], below[2])
+	w.VarInt(int32(state))
+	s.queue(v777.ClientboundPlayBlockUpdate, w)
 }

@@ -16,13 +16,18 @@ func buildBlockInfo() *blockInfo {
 	reg := world.DefaultBlockRegistry
 	java := javamap.DefaultBlockStates()
 	n := len(java)
-	bi := &blockInfo{java: make([]uint32, n), air: make([]bool, n), fluid: make([]bool, n), waterlogged: make([]uint32, n)}
+	bi := &blockInfo{java: make([]uint32, n), air: make([]bool, n), fluid: make([]bool, n), waterlogged: make([]uint32, n),
+		snowy: make([]uint32, n), snowCover: make([]bool, n)}
 	for rid := 0; rid < n; rid++ {
 		name, _, _ := reg.RuntimeIDToState(uint32(rid))
 		bi.air[rid] = name == "minecraft:air" || name == "minecraft:cave_air" || name == "minecraft:void_air" ||
 			name == "minecraft:structure_void" || name == "minecraft:light_block"
 		bi.fluid[rid] = reg.LiquidBlock(uint32(rid))
+		bi.snowCover[rid] = javamap.SnowCover(name)
 		bi.java[rid] = uint32(java[rid])
+		if snowy, ok := javamap.Snowy(java[rid]); ok {
+			bi.snowy[rid] = uint32(snowy)
+		}
 		if s, ok := customBlockState(name); ok {
 			bi.java[rid] = uint32(s)
 		}
@@ -50,11 +55,14 @@ func blocksFor(v *version.Version) *blockInfo {
 		return bi.(*blockInfo)
 	}
 	src := blocks()
-	bi := &blockInfo{air: src.air, fluid: src.fluid,
-		java: make([]uint32, len(src.java)), waterlogged: make([]uint32, len(src.waterlogged))}
+	bi := &blockInfo{air: src.air, fluid: src.fluid, snowCover: src.snowCover,
+		java: make([]uint32, len(src.java)), waterlogged: make([]uint32, len(src.waterlogged)), snowy: make([]uint32, len(src.snowy))}
 	for i := range src.java {
 		bi.java[i] = uint32(v.BlockState(int32(src.java[i])))
 		bi.waterlogged[i] = uint32(v.BlockState(int32(src.waterlogged[i])))
+		if src.snowy[i] != 0 {
+			bi.snowy[i] = uint32(v.BlockState(int32(src.snowy[i])))
+		}
 	}
 	bi.biomes = make([]uint32, len(v777.Registries["minecraft:worldgen/biome"]))
 	plains := v.RegistryID("minecraft:worldgen/biome", "minecraft:plains")
