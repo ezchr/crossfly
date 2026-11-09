@@ -110,6 +110,10 @@ type targetBase struct {
 	reachDelay       int  // +92
 	unseen           int  // +96
 	reevaluateActive bool // +104
+
+	// fctx is the filter context of matchesTargetTypes, kept to not
+	// allocate one per entity tested.
+	fctx mob.FilterContext
 }
 
 // IsTargetGoal ...
@@ -152,9 +156,9 @@ func (g *targetBase) matchesTargetTypes(m *mob.Mob, t world.Entity, mustSee bool
 	alreadyTarget := isCurrent && g.unseen < g.forgetActive
 	defaults := true
 	if len(g.descriptors) > 0 {
-		ctx := m.Ctx()
-		ctx.Other = t
-		ctx.Target = cur
+		ctx := &g.fctx
+		*ctx = mob.FilterContext{Tx: m.Tx(), Self: m, Other: t, Target: cur}
+		defer func() { *ctx = mob.FilterContext{} }()
 		if sense.IsPlayer(t) {
 			ctx.Player = t
 		}

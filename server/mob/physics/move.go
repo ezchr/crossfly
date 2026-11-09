@@ -27,12 +27,14 @@ func move(tx *world.Tx, s *state, box cube.BBox, vel mgl64.Vec3, onGround bool) 
 	if !s.collision {
 		return vel, collision{}
 	}
-	boxes := entity.BlockBBoxesAround(tx, box.Extend(vel))
+	s.boxes = entity.AppendBlockBBoxesAround(s.boxes[:0], tx, box.Extend(vel))
+	boxes := s.boxes
 	d := collide(box, vel, boxes)
 	c := collision{x: d[0] != vel[0], y: d[1] != vel[1], z: d[2] != vel[2]}
 	if step := s.maxStep; step > 0 && (onGround || c.y && vel[1] < 0) && (c.x || c.z) {
 		up := mgl64.Vec3{vel[0], step, vel[2]}
-		stepBoxes := entity.BlockBBoxesAround(tx, box.Extend(up).Extend(mgl64.Vec3{0, math.Min(vel[1], 0)}))
+		s.stepBoxes = entity.AppendBlockBBoxesAround(s.stepBoxes[:0], tx, box.Extend(up).Extend(mgl64.Vec3{0, math.Min(vel[1], 0)}))
+		stepBoxes := s.stepBoxes
 		u := collide(box, up, stepBoxes)
 		raised := box.Translate(u)
 		dy := vel[1] - u[1]

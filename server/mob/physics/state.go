@@ -18,6 +18,7 @@ package physics
 import (
 	"bytes"
 	"encoding/json"
+	"github.com/df-mc/dragonfly/server/block/cube"
 
 	"github.com/df-mc/dragonfly/server/mob"
 )
@@ -48,6 +49,8 @@ type state struct {
 	navRaw      []byte
 	navParsed   bool
 	navCanSink  bool
+	// boxes, stepBoxes are the block box buffers of move.
+	boxes, stepBoxes []cube.BBox
 }
 
 type stateKey struct{}

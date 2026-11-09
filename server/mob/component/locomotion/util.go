@@ -73,6 +73,26 @@ func solidAt(tx *world.Tx, pos cube.Pos) bool {
 	return len(b.Model().BBox(pos, tx)) > 0
 }
 
+// solidOrAirAt is solidAt(pos) and, when air is wanted and the block is not
+// solid, airAt(pos), reading the block once.
+func solidOrAirAt(tx *world.Tx, pos cube.Pos, wantAir bool) (solid, air bool) {
+	if !inRange(tx, pos) {
+		return false, wantAir && pos[1] > tx.Range()[1]
+	}
+	switch b := tx.Block(pos).(type) {
+	case block.Air:
+		if !wantAir {
+			return false, false
+		}
+		_, liquid := tx.Liquid(pos)
+		return false, !liquid
+	case world.Liquid:
+		return false, false
+	default:
+		return len(b.Model().BBox(pos, tx)) > 0, false
+	}
+}
+
 // aboveTopSolid is BlockSource::getAboveTopSolidBlock.
 func aboveTopSolid(tx *world.Tx, x, z int) int {
 	y := int(tx.HighestBlock(x, z))

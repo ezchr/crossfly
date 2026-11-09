@@ -93,6 +93,7 @@ func (c *ambientSound) Event(m *mob.Mob) string {
 // HurtOnConditionSystem).
 type hurtOnCondition struct {
 	conds []hurtCondition
+	fctx  mob.FilterContext
 }
 
 type hurtCondition struct {
@@ -135,7 +136,11 @@ func (c *hurtOnCondition) Detach(*mob.Mob) {}
 
 func (c *hurtOnCondition) Tick(m *mob.Mob) {
 	for _, d := range c.conds {
-		if d.filter.Test(m.Ctx()) {
+		ctx := &c.fctx
+		*ctx = mob.FilterContext{Tx: m.Tx(), Self: m}
+		pass := d.filter.Test(ctx)
+		*ctx = mob.FilterContext{}
+		if pass {
 			m.Hurt(d.damage, SourceOf(d.cause))
 			if m.Dead() {
 				return

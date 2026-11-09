@@ -98,9 +98,13 @@ type Finder struct {
 	heap  nodeHeap
 	pages []*[infoPage]blockInfo
 	used  int
-	nb    [maxNeighbors]*node
-	nbN   int
-	minY  int
+	// nodePages hold the nodes of a search, reused by the next one (paths
+	// copy what they need out of them).
+	nodePages []*[nodePage]node
+	nodesUsed int
+	nb        [maxNeighbors]*node
+	nbN       int
+	minY      int
 
 	r       Request
 	aabb    cube.BBox
@@ -140,6 +144,10 @@ func (f *Finder) release() {
 		clear(p[:])
 	}
 	f.used = 0
+	for _, p := range f.nodePages[:(f.nodesUsed+nodePage-1)/nodePage] {
+		clear(p[:])
+	}
+	f.nodesUsed = 0
 	f.heap = f.heap[:0]
 }
 
@@ -147,6 +155,7 @@ func (f *Finder) setup(src BlockSource, r Request) {
 	f.src = src
 	clear(f.cache)
 	f.used = 0
+	f.nodesUsed = 0
 	clear(f.nodes)
 	clear(f.mm)
 	f.heap = f.heap[:0]
@@ -216,10 +225,18 @@ func (f *Finder) nodeAt(pos cube.Pos, t NodeType) *node {
 		n.typ = t
 		return n
 	}
-	n := &node{heapIdx: -1, typ: t, pos: pos}
+	page, i := f.nodesUsed/nodePage, f.nodesUsed%nodePage
+	if page == len(f.nodePages) {
+		f.nodePages = append(f.nodePages, new([nodePage]node))
+	}
+	f.nodesUsed++
+	n := &f.nodePages[page][i]
+	*n = node{heapIdx: -1, typ: t, pos: pos}
 	f.nodes[k] = n
 	return n
 }
+
+const nodePage = 128
 
 // FindPathToBlock searches a path to a block, aiming at its centre (PathFinder::findPath(Actor&,
 // int, int, int, float)).

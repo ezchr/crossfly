@@ -33,6 +33,9 @@ type avoidMobType struct {
 	wanted   mgl64.Vec3
 	path     mob.Path
 	sprinted bool
+
+	cands []cand
+	fctx  mob.FilterContext
 }
 
 func newAvoidMobType(spec mob.GoalSpec) (mob.Goal, error) {
@@ -99,39 +102,65 @@ func descriptorRaw(raw json.RawMessage, i int) rawDescriptor {
 // mob or player matching an entry within dist (the entry's max_dist when
 // dist is 0, its max_flee when flee is set).
 func (g *avoidMobType) nearest(m *mob.Mob, flee bool) (world.Entity, *descriptor) {
+	if len(g.descriptors) == 0 {
+		return nil, nil
+	}
 	pos := m.Pos()
+	// One search over the largest box, then each entry in order over the
+	// entities in its own box: the same entities in the same order as one
+	// search per entry, and the checks that do not depend on the entry are
+	// made once per entity.
+	scan := 0.0
+	for i := range g.descriptors {
+		scan = math.Max(scan, math.Abs(g.searchRadius(&g.descriptors[i], flee)))
+	}
+	cands := g.cands[:0]
+	for e := range m.Tx().EntitiesWithin(cube.Box(pos[0]-scan, pos[1]-scan, pos[2]-scan, pos[0]+scan, pos[1]+scan, pos[2]+scan)) {
+		if e.H() == m.H() || !sense.Alive(e) || !hasFamilies(e) || sense.Invulnerable(e) || sense.Invisible(e) {
+			continue
+		}
+		cands = append(cands, cand{e: e, dist: e.Position().Sub(pos).LenSqr()})
+	}
+	g.cands = cands
+	defer clear(cands)
+	if len(cands) == 0 {
+		return nil, nil
+	}
+	ctx := &g.fctx
+	*ctx = mob.FilterContext{Tx: m.Tx(), Self: m}
+	defer func() { *ctx = mob.FilterContext{} }()
+	if t, ok := m.Target(); ok {
+		ctx.Target = t
+	}
 	for i := range g.descriptors {
 		d := &g.descriptors[i]
-		r := d.maxDist
-		if flee {
-			r = d.maxFlee
-		}
+		r := g.searchRadius(d, flee)
 		box := cube.Box(pos[0]-r, pos[1]-r, pos[2]-r, pos[0]+r, pos[1]+r, pos[2]+r)
 		var best world.Entity
 		bestD := math.MaxFloat64
-		for e := range m.Tx().EntitiesWithin(box) {
-			if e.H() == m.H() || !sense.Alive(e) || !hasFamilies(e) || sense.Invulnerable(e) || sense.Invisible(e) {
+		for _, c := range cands {
+			if c.dist >= bestD || c.dist > r*r || !box.Vec3Within(c.e.Position()) {
 				continue
 			}
-			dist := e.Position().Sub(pos).LenSqr()
-			if dist >= bestD || dist > r*r {
-				continue
-			}
-			ctx := m.Ctx()
-			ctx.Other = e
-			if t, ok := m.Target(); ok {
-				ctx.Target = t
-			}
+			ctx.Other = c.e
 			if !d.filter.Test(ctx) {
 				continue
 			}
-			best, bestD = e, dist
+			best, bestD = c.e, c.dist
 		}
 		if best != nil {
 			return best, d
 		}
 	}
 	return nil, nil
+}
+
+// searchRadius is how far nearest looks for d.
+func (g *avoidMobType) searchRadius(d *descriptor, flee bool) float64 {
+	if flee {
+		return d.maxFlee
+	}
+	return d.maxDist
 }
 
 // CanUse is AvoidMobTypeGoal::canUse.

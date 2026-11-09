@@ -12,6 +12,7 @@ import (
 	"math"
 	"slices"
 	"strings"
+	"sync"
 
 	"github.com/df-mc/dragonfly/server/block/cube"
 	"github.com/df-mc/dragonfly/server/entity"
@@ -134,17 +135,43 @@ func Around(m *mob.Mob, xz, y float64) []world.Entity {
 	b := m.BBox()
 	box := cube.Box(b.Min()[0]-xz, b.Min()[1]-y, b.Min()[2]-xz, b.Max()[0]+xz, b.Max()[1]+y, b.Max()[2]+xz)
 	pos := m.Position()
-	var out []world.Entity
+	// The distances are worked out once per entity, not per comparison.
+	near := aroundBufs.Get().(*[]nearby)
+	defer func() {
+		clear(*near)
+		*near = (*near)[:0]
+		aroundBufs.Put(near)
+	}()
 	for e := range m.Tx().EntitiesWithin(box) {
 		if e.H() != m.H() {
-			out = append(out, e)
+			*near = append(*near, nearby{e: e, dist: DistSq(e.Position(), pos), i: len(*near)})
 		}
 	}
-	slices.SortStableFunc(out, func(a, b world.Entity) int {
-		return cmpFloat(DistSq(a.Position(), pos), DistSq(b.Position(), pos))
+	if len(*near) == 0 {
+		return nil
+	}
+	slices.SortFunc(*near, func(a, b nearby) int {
+		if c := cmpFloat(a.dist, b.dist); c != 0 {
+			return c
+		}
+		return a.i - b.i
 	})
+	out := make([]world.Entity, len(*near))
+	for i, n := range *near {
+		out[i] = n.e
+	}
 	return out
 }
+
+// nearby is an entity Around found, with its squared distance and the order
+// it was found in (ties keep it, as a stable sort).
+type nearby struct {
+	e    world.Entity
+	dist float64
+	i    int
+}
+
+var aroundBufs = sync.Pool{New: func() any { return new([]nearby) }}
 
 // Nearest returns the nearest living entity within radius (a sphere,
 // searched in a box radius x height) for which ok is true.
