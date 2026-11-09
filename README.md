@@ -1,47 +1,46 @@
-<!--suppress ALL -->
-<img height="310" alt="image" src="https://user-images.githubusercontent.com/16114089/121805566-0cd81280-cc4c-11eb-9b7d-b5f8a6db4f8d.png" align="right">
+# Crossfly
 
-# Dragonfly
+Crossfly is a Minecraft server where **Java Edition and Bedrock Edition players play together natively**.
+It is built on [Dragonfly](https://github.com/df-mc/dragonfly), the Bedrock server written in Go, and adds a
+Java Edition layer written in Go inside the server: Java players connect straight to it, with no Geyser,
+ViaProxy or ViaBedrock in between, and share the same world with Bedrock players.
 
-Dragonfly is a heavily asynchronous server software for Minecraft: Bedrock Edition written in Go. It was written with scalability
-and simplicity in mind and aims to make the process of setting up a server and modifying it easy. Unlike other
-Minecraft server software, Dragonfly is generally used as a library to extend.
+Like Dragonfly, Crossfly is used as a library: you write your server in Go and import it.
 
-[![Discord Banner 2](https://discordapp.com/api/guilds/623638955262345216/widget.png?style=banner2)](https://discord.gg/U4kFWHhTNR)
+## What you get
+
+- **Both editions on one server.** Bedrock players join as they would on any Dragonfly server; Java players
+  join the Java listener. Everyone sees each other, chats, fights and builds in the same world.
+- **No translation proxy.** The Java protocol is spoken in Go inside the server and renders the server's own
+  world, blocks, items, entities, inventories and forms (as Java dialogs) directly.
+- **Light.** One Go binary, low memory, no JVM.
+- **Behind Velocity or standalone.** Velocity modern forwarding, or the Java listener on its own with online
+  mode (Microsoft accounts) or offline mode.
+- **Skins across editions.** Bedrock players' skins show for Java players and Java skins show for Bedrock players.
+
+Supported versions: Java Edition **26.3** and **26.2**, Bedrock Edition **1.26.60**.
 
 ## Getting started
-Running Dragonfly requires at least **Go 1.26**. After starting the server through one of the methods below,
-**ctrl+c** may be used to shut down the server. Also check out the [wiki](https://github.com/df-mc/dragonfly/wiki) for
-more detailed info.
 
-#### Installation as library
-```shell
-go mod init github.com/user/module
-go get github.com/df-mc/dragonfly
+Crossfly keeps Dragonfly's module path, so existing Dragonfly servers switch with one line in `go.mod`:
+
+```
+replace github.com/df-mc/dragonfly => github.com/ezchr/crossfly main
 ```
 
-![SetupLibrary](https://user-images.githubusercontent.com/16114089/121804512-0f843900-cc47-11eb-9320-d195393b5a1f.gif)
+then `go mod tidy` (it turns `main`, or a release tag, into a version). Your Dragonfly code keeps working as is.
+Then start the Java listener next to your Bedrock one; see [server/java/README.md](server/java/README.md) for
+the full setup, options and Velocity forwarding.
 
-#### Installation of the latest commit
-```shell
-git clone https://github.com/df-mc/dragonfly
-cd dragonfly
-go run main.go
-```
+Requires **Go 1.26** or newer.
 
-![SetupClone](https://user-images.githubusercontent.com/16114089/121804495-ff6c5980-cc46-11eb-8e31-df4d94782e5b.gif)
+## Relationship with Dragonfly
 
-## Developer info
-[![Go Reference](https://pkg.go.dev/badge/github.com/df-mc/dragonfly/server.svg)](https://pkg.go.dev/github.com/df-mc/dragonfly/server)
+Crossfly is a fork of Dragonfly that follows it closely: upstream changes are merged in regularly, and fixes
+that belong in Dragonfly itself are sent upstream. For Dragonfly's API, documentation and guides, see the
+[Dragonfly repository](https://github.com/df-mc/dragonfly) and its [wiki](https://github.com/df-mc/dragonfly/wiki).
+Crossfly is not an official df-mc project; please report Crossfly issues here, not to Dragonfly.
 
-Dragonfly features a well-documented codebase with an easy-to-use API. Documentation may be found
-[here](https://pkg.go.dev/github.com/df-mc/dragonfly/server) and in the subpackages found by clicking *Directories*.
+## License
 
-Publishing your project on GitHub? Consider adding the **[#df-mc](https://github.com/topic/df-mc)** topic to your
-repository and opening a pull request at [df-wiki](https://github.com/df-mc/wiki) adding your project as a Community
-Project to improve its visibility.
-
-## Contributing
-Contributions are very welcome! Issues, pull requests and feature requests are highly appreciated. Opening a pull
-request? Consider joining our [Discord server](https://discord.gg/U4kFWHhTNR) to discuss your changes! Also have a read through the
-[CONTRIBUTING.md](https://github.com/df-mc/dragonfly/blob/master/.github/CONTRIBUTING.md) for more info.
+MIT, like Dragonfly: see [LICENSE](LICENSE). Dragonfly is copyright Dragonfly Tech and its contributors.
