@@ -13,6 +13,13 @@ type ptype struct{}
 
 func (t ptype) Open(tx *world.Tx, handle *world.EntityHandle, data *world.EntityData) world.Entity {
 	pd := data.Data.(*playerData)
+	// Mobs open the players they look at every tick: within one transaction
+	// the *Player of the last Open is handed out again (its inventory
+	// callbacks were set for it). Transactions are never reused, so one of
+	// an earlier transaction never matches.
+	if c := pd.cur; c != nil && c.tx == tx && c.handle == handle && c.data == data {
+		return c
+	}
 	p := &Player{
 		tx:         tx,
 		handle:     handle,
@@ -31,6 +38,7 @@ func (t ptype) Open(tx *world.Tx, handle *world.EntityHandle, data *world.Entity
 		pd.offHand.SlotFunc(p.broadcastItems)
 		pd.armour.Inventory().SlotFunc(p.broadcastArmour)
 	}
+	pd.cur = p
 	return p
 }
 

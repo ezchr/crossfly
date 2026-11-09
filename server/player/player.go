@@ -42,6 +42,9 @@ import (
 )
 
 type playerData struct {
+	// cur is the *Player last opened (ptype.Open).
+	cur *Player
+
 	xuid, playFabID   string
 	locale            language.Tag
 	nameTag, scoreTag string
