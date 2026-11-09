@@ -28,10 +28,18 @@ type pendingWork struct {
 	dirty   map[cube.Pos]redstoneDirty
 }
 
+// reacts reports whether the world reacts to changes between ticks: only while someone is in it, as only then
+// does it tick (ticker.tick).
+func (w *World) reacts() bool {
+	return w.conf.Synchronous || w.hasViewers()
+}
+
 // pending notes the work queued for the next tick.
 func (w *World) pending() pendingWork {
 	p := pendingWork{updates: len(w.neighbourUpdates)}
-	if w.redstone != nil && len(w.redstone.dirty) > 0 {
+	// A world nobody is in does not react between ticks (settle returns at once), so the redstone changes are not
+	// copied: they pile up until a player comes, and copying them on every transaction cost a share of a core.
+	if w.redstone != nil && len(w.redstone.dirty) > 0 && w.reacts() {
 		// Copied by entry, not with maps.Clone: a clone copies the table at its peak size.
 		p.dirty = make(map[cube.Pos]redstoneDirty, len(w.redstone.dirty))
 		maps.Copy(p.dirty, w.redstone.dirty)
@@ -44,22 +52,20 @@ func (w *World) pending() pendingWork {
 // instead of in the next tick. Work queued before the transaction, and what the reaction itself changes, waits for
 // the next tick, as it does in a tick.
 func (w *World) settle(before pendingWork) {
+	// A world nobody is in does not tick (ticker.tick): it does not react between ticks either.
+	if !w.reacts() {
+		return
+	}
 	newUpdates := len(w.neighbourUpdates) > before.updates
 	newDirty := w.redstone != nil && len(w.redstone.dirty) > len(before.dirty)
 	if !newUpdates && !newDirty && (w.redstone == nil || maps.EqualFunc(w.redstone.dirty, before.dirty, func(a, b redstoneDirty) bool { return a == b })) {
 		// Nothing changed in blocks, but a container may have (a player moving items): comparators look now.
 		if len(w.analogWatchers) > 0 {
-			if viewers, _ := w.allViewers(); len(viewers) > 0 || w.conf.Synchronous {
-				tx := newTx(w)
-				w.checkAnalogWatchers(tx)
-				tx.close()
-				tx.runDeferred()
-			}
+			tx := newTx(w)
+			w.checkAnalogWatchers(tx)
+			tx.close()
+			tx.runDeferred()
 		}
-		return
-	}
-	// A world nobody is in does not tick (ticker.tick): it does not react between ticks either.
-	if viewers, _ := w.allViewers(); len(viewers) == 0 && !w.conf.Synchronous {
 		return
 	}
 	// Set the earlier work aside and handle only the transaction's.

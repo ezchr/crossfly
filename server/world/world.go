@@ -1491,6 +1491,13 @@ func (w *World) allViewers() ([]Viewer, []*Loader) {
 	return viewers, loaders
 }
 
+// hasViewers reports whether anyone views the world, without allocating as allViewers does.
+func (w *World) hasViewers() bool {
+	w.viewerMu.Lock()
+	defer w.viewerMu.Unlock()
+	return len(w.viewers) > 0
+}
+
 // addWorldViewer adds a viewer to the world. Should only be used while the
 // viewer isn't viewing any chunks.
 func (w *World) addWorldViewer(l *Loader) {
