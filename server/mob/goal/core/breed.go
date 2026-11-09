@@ -186,14 +186,23 @@ func (g *followParent) CanUse(m *mob.Mob) bool {
 	}
 	var best *mob.Mob
 	bestD := math.MaxFloat64
-	for _, e := range nearby(m, 8, 4) {
+	pos := m.Position()
+	box := m.BBox().Grow(0).Extend(mgl64.Vec3{8, 4, 8}).Extend(mgl64.Vec3{-8, -4, -8})
+	// The nearest of the entities nearby (as the nearby list, sorted by
+	// distance, would give it), without sorting them first.
+	for e := range m.Tx().EntitiesWithin(box) {
+		if e.H() == m.H() {
+			continue
+		}
+		d := distSq(e.Position(), pos)
+		if d >= bestD {
+			continue
+		}
 		om, ok := mob.Of(e)
 		if !ok || om.Identifier() != m.Identifier() || ccore.IsBaby(om) || om.Dead() {
 			continue
 		}
-		if d := distSq(om.Position(), m.Position()); d <= bestD {
-			best, bestD = om, d
-		}
+		best, bestD = om, d
 	}
 	if best == nil || bestD < 9 {
 		return false

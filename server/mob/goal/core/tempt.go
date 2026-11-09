@@ -90,14 +90,18 @@ func (g *tempt) tempting(p *player.Player) bool {
 func (g *tempt) nearestPlayer(m *mob.Mob) (*player.Player, bool) {
 	var best *player.Player
 	bestD := g.radius * g.radius
+	pos := m.Position()
 	for e := range m.Tx().Players() {
+		// The distance first: it is the cheap test, the held item the dear one.
+		d := distSq(e.Position(), pos)
+		if d > bestD {
+			continue
+		}
 		p, ok := isPlayer(e)
 		if !ok || p.Dead() || !g.tempting(p) {
 			continue
 		}
-		if d := distSq(p.Position(), m.Position()); d <= bestD {
-			best, bestD = p, d
-		}
+		best, bestD = p, d
 	}
 	return best, best != nil
 }
