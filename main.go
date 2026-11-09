@@ -18,8 +18,9 @@ import (
 // Full, its features (Edition: core.go, full.go).
 type fileConfig struct {
 	server.UserConfig
-	Java     javaConfig
-	Commands commandsConfig
+	Java      javaConfig
+	Commands  commandsConfig
+	FlatWorld flatConfig
 	Edition
 }
 
@@ -61,8 +62,9 @@ func defaultConfig() fileConfig {
 			CompressionThreshold: 256,
 			ChunkRadius:          12,
 		},
-		Commands: commandsConfig{OperatorsFile: "ops.json"},
-		Edition:  defaultEdition(),
+		Commands:  commandsConfig{OperatorsFile: "ops.json"},
+		FlatWorld: defaultFlat(),
+		Edition:   defaultEdition(),
 	}
 }
 
@@ -82,6 +84,10 @@ func main() {
 	}
 	conf, err := fc.UserConfig.Config(log)
 	if err != nil {
+		log.Error("config.toml", "err", err)
+		os.Exit(1)
+	}
+	if err := fc.FlatWorld.apply(&conf); err != nil {
 		log.Error("config.toml", "err", err)
 		os.Exit(1)
 	}
