@@ -87,6 +87,7 @@ func main() {
 		log.Error("config.toml", "err", err)
 		os.Exit(1)
 	}
+	conf.ShutdownMessage = shutdownTranslation
 	if err := fc.FlatWorld.apply(&conf); err != nil {
 		log.Error("config.toml", "err", err)
 		os.Exit(1)

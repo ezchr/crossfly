@@ -269,7 +269,13 @@ func (s *Session) ClientData() login.ClientData {
 // Disconnect sends the reason and closes the connection.
 func (s *Session) Disconnect(message string) {
 	w := s.packet()
-	server.TextComponent(w, message)
+	// A Bedrock translation key Java knows ("%disconnect.disconnected") goes out as a Java
+	// translate component, so the client shows its own text instead of the raw key.
+	if c := bedrockText(message); replaceKey(&c, nil) {
+		c.Write(w)
+	} else {
+		server.TextComponent(w, message)
+	}
 	s.queue(v777.ClientboundPlayDisconnect, w)
 	s.CloseConnection() // the writer sends the reason first
 }
