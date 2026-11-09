@@ -1,8 +1,8 @@
 # Updating the Java crossplay
 
 How to move `server/java` to a new Java version, a new Bedrock version or a newer Dragonfly. Commands
-run from the repository root (`/root/javaproto/dragonfly`) with `GOWORK=off`. Reference data lives
-outside the repository, in `/root/javaproto/refs` (`$R` below).
+run from the repository root with `GOWORK=off`. Reference data lives outside the repository, in a
+folder of your choice (`$R` below).
 
 The Bedrock -> Java tables (`javamap`) are updated by `internal/javamapupdate`. It needs only Mojang's
 reports and Dragonfly's registries:
@@ -15,7 +15,7 @@ reports and Dragonfly's registries:
 GeyserMC's mappings are optional: `-geyser DIR` only adds a cross-check section to the report.
 
 ```sh
-R=/root/javaproto/refs
+R=$HOME/crossfly-refs
 export GOWORK=off
 ```
 
@@ -34,13 +34,13 @@ Example: 26.3 -> 26.4. Below, `v778` is the new protocol package and `v777` the 
    Also fetch `client.jar` (same JSON, `downloads.client`) for step 5.
 
 2. **Capture a vanilla join, then run javagen.**
-   1. Set up a vanilla 26.4 server: copy `/root/javaproto/vanilla262` to `/root/javaproto/vanilla264`, put
+   1. Set up a vanilla 26.4 server: copy your vanilla 26.2 server folder to a new `vanilla264` folder, put
       the new `server.jar` in, and pick a free `server-port`, e.g. 25604. Keep `online-mode=false`.
    2. Start it in tmux.
    3. Capture a join through the proxy, the way `tools/capture/vanilla262` was made:
 
    ```sh
-   T=/root/javaproto/tools
+   T=$HOME/crossfly-tools
    $T/pktcap/pktcap -listen 127.0.0.1:25664 -server 127.0.0.1:25604 \
        -packets $R/mojang-26.4/generated/reports/packets.json -out $T/capture/vanilla264 &
    VER=26.4 $T/client.sh 127.0.0.1:25664 40 /tmp/v264-client.log   # headless real client
@@ -84,7 +84,7 @@ Example: 26.3 -> 26.4. Below, `v778` is the new protocol package and `v777` the 
       - `carried-substitute` where Mojang removed or renamed a block.
 
       Add a rename to `javaRenames` in `handrules.go` and rerun when a stand-in is wrong.
-   3. Regenerate `javasession/fx_blocksound_gen.go` with `/root/javaproto/tools/fxgen`: compile and run
+   3. Regenerate `javasession/fx_blocksound_gen.go` with `$T/fxgen`: compile and run
       `FxDump.java` against the new server jar, then `fxgen.py DUMP OUT`. It is generated from the jar.
 
 5. **Find changed packet layouts.** Decompile both client jars and diff the packet classes:
@@ -115,9 +115,8 @@ Example: 26.3 -> 26.4. Below, `v778` is the new protocol package and `v777` the 
    Resolve conflicts in the hooks this branch adds to Dragonfly's packages (player session
    interface, `Server.LoadPlayer`/`AddPlayer`, the player list).
 2. **gophertunnel patch.** If the merge bumps gophertunnel, re-apply the local patch to the server
-   that runs this branch. The live server keeps a patched copy in
-   `/root/dragonfly/third_party/gophertunnel` (one line, `PlatformBroadcastMode`, see its
-   `PATCH.md`). Copy the new version there, re-apply the line and keep the `replace` in its go.mod.
+   that runs this branch, if it keeps a patched copy of gophertunnel (a `replace` in its go.mod):
+   copy the new version there and re-apply the patch.
 3. **Run the update tool.** The Java version did not change, so `go generate` is enough:
 
    ```sh
@@ -177,11 +176,11 @@ Live tests, against `cmd/dfjtest` (Java on 127.0.0.1:25620, Bedrock on 127.0.0.1
 go run ./server/java/cmd/dfjtest -noauth &                      # test server, superflat world
 go run ./server/java/protocol/cmd/jbot -addr 127.0.0.1:25620 -secs 20      # scripted Java client
 go run ./server/java/cmd/bedrockbot -addr 127.0.0.1:19160 -secs 20         # Bedrock client: sees the Java player?
-/root/javaproto/tools/client.sh 127.0.0.1:25620 40 /tmp/client.log           # real headless Java client
-VER=26.2 /root/javaproto/tools/client.sh 127.0.0.1:25620 40 /tmp/client262.log   # an older version
+$T/client.sh 127.0.0.1:25620 40 /tmp/client.log           # real headless Java client
+VER=26.2 $T/client.sh 127.0.0.1:25620 40 /tmp/client262.log   # an older version
 ```
 
 `client.sh` prints the client's connection and disconnect lines. The whole client log is in the
 log file. `jbot` flags `-break`, `-attack` and `-cmd` exercise block breaking, combat and commands.
 
-Do not test against the live server (`/root/dragonfly`).
+Do not test against a server people are playing on.
