@@ -300,6 +300,29 @@ func ParseBlockList(raw json.RawMessage) (BlockList, error) {
 // Has reports whether the list names b.
 func (l BlockList) Has(b world.Block) bool { return l.HasName(BlockName(b)) }
 
+// RuntimeIDs reports, indexed by runtime ID of reg, which block states are
+// in the list. It is worked out once per list and registry.
+func (l BlockList) RuntimeIDs(reg world.BlockRegistry) []bool {
+	key := blockListKey{reg: reg, names: strings.Join(l, "\x00")}
+	if v, ok := blockListIDs.Load(key); ok {
+		return v.([]bool)
+	}
+	blocks := reg.Blocks()
+	set := make([]bool, len(blocks))
+	for rid, b := range blocks {
+		set[rid] = b != nil && l.Has(b)
+	}
+	blockListIDs.Store(key, set)
+	return set
+}
+
+type blockListKey struct {
+	reg   world.BlockRegistry
+	names string
+}
+
+var blockListIDs sync.Map // blockListKey -> []bool
+
 // HasName reports whether the list has the normalised name n.
 func (l BlockList) HasName(n string) bool {
 	for _, x := range l {
@@ -315,19 +338,61 @@ func (l BlockList) HasName(n string) bool {
 // one ok accepts. method "random" picks a random match, anything else the
 // nearest.
 func FindBlock(m *mob.Mob, xz, y int, method string, ok func(p cube.Pos, b world.Block) bool) (cube.Pos, bool) {
+	return findBlock(m, xz, y, method, nil, ok)
+}
+
+// FindBlockIn is FindBlock for a search whose ok only accepts blocks in
+// list: positions whose block is not in it are skipped by runtime ID, without
+// making the block or calling ok, so the result is FindBlock's. Bees look
+// for a hive 16 blocks around (33x21x33 blocks) every tick while they have
+// none.
+func FindBlockIn(m *mob.Mob, xz, y int, method string, list BlockList, ok func(p cube.Pos, b world.Block) bool) (cube.Pos, bool) {
+	return findBlock(m, xz, y, method, list.RuntimeIDs(m.Tx().World().BlockRegistry()), ok)
+}
+
+// findBlock is FindBlock, skipping positions whose runtime ID is not set in
+// in (if not nil).
+func findBlock(m *mob.Mob, xz, y int, method string, in []bool, ok func(p cube.Pos, b world.Block) bool) (cube.Pos, bool) {
 	tx := m.Tx()
 	base := cube.PosFromVec3(m.Position())
+	r := tx.Range()
+	// With in, the 16x16x16 sections of the box whose palette holds none of
+	// the blocks are skipped (whole runs of z at once), and a box without any
+	// is not searched: the positions left are visited in the same order.
+	var (
+		sec sections
+		buf [96]bool
+	)
+	if in != nil {
+		sec.init(tx, base, xz, y, in, buf[:0])
+		if !sec.any {
+			return cube.Pos{}, false
+		}
+	}
 	var matches []cube.Pos
 	bestD := math.MaxFloat64
 	var best cube.Pos
 	found := false
 	for dy := -y; dy <= y; dy++ {
+		py := base[1] + dy
+		if py < r[0] || py > r[1] {
+			continue
+		}
 		for dx := -xz; dx <= xz; dx++ {
+			px := base[0] + dx
 			for dz := -xz; dz <= xz; dz++ {
-				p := base.Add(cube.Pos{dx, dy, dz})
-				if p[1] < tx.Range()[0] || p[1] > tx.Range()[1] {
-					continue
+				pz := base[2] + dz
+				if in != nil {
+					if !sec.may(px, py, pz) {
+						// Skip to the last z of this section.
+						dz += 15 - (pz & 15)
+						continue
+					}
+					if rid := tx.BlockRuntimeIDAt(cube.Pos{px, py, pz}); int(rid) >= len(in) || !in[rid] {
+						continue
+					}
 				}
+				p := cube.Pos{px, py, pz}
 				b := tx.Block(p)
 				if !ok(p, b) {
 					continue
@@ -350,6 +415,50 @@ func FindBlock(m *mob.Mob, xz, y int, method string, ok func(p cube.Pos, b world
 		return matches[m.Rand().IntN(len(matches))], true
 	}
 	return best, found
+}
+
+// sections tells which 16x16x16 sections of a search box may hold blocks of
+// a runtime ID set (World Tx.SectionMayHold).
+type sections struct {
+	x0, y0, z0, nx, ny int
+	ry0                int
+	flags              []bool
+	any                bool
+}
+
+// init works out the sections of the box around base, using buf if it is
+// large enough.
+func (s *sections) init(tx *world.Tx, base cube.Pos, xz, y int, in []bool, buf []bool) {
+	r := tx.Range()
+	lo, hi := max(base[1]-y, r[0]), min(base[1]+y, r[1])
+	s.ry0, s.x0, s.z0 = r[0], (base[0]-xz)>>4, (base[2]-xz)>>4
+	if lo > hi {
+		return
+	}
+	s.y0 = (lo - r[0]) >> 4
+	s.nx, s.ny = ((base[0]+xz)>>4)-s.x0+1, ((hi-r[0])>>4)-s.y0+1
+	nz := ((base[2] + xz) >> 4) - s.z0 + 1
+	n := s.nx * s.ny * nz
+	if n <= cap(buf) {
+		s.flags = buf[:n]
+	} else {
+		s.flags = make([]bool, n)
+	}
+	for iz := range nz {
+		for iy := range s.ny {
+			for ix := range s.nx {
+				p := cube.Pos{(s.x0 + ix) << 4, r[0] + (s.y0+iy)<<4, (s.z0 + iz) << 4}
+				if tx.SectionMayHold(p, in) {
+					s.flags[(iz*s.ny+iy)*s.nx+ix], s.any = true, true
+				}
+			}
+		}
+	}
+}
+
+// may reports whether the section of the position may hold one of the blocks.
+func (s *sections) may(x, y, z int) bool {
+	return s.flags[(((z>>4)-s.z0)*s.ny+((y-s.ry0)>>4)-s.y0)*s.nx+(x>>4)-s.x0]
 }
 
 // BlockCtx is a filter context with the block as "block".
