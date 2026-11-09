@@ -138,8 +138,20 @@ func velocity(e world.Entity) mgl64.Vec3 {
 	return mgl64.Vec3{}
 }
 
+// bedrockOnly is implemented by an entity, or the behaviour of one, that is never sent to Java players: they
+// are shown something else in its place (a Bedrock armour stand label that Java players see as a text display
+// of their own, for example).
+type bedrockOnly interface{ BedrockOnly() bool }
+
+// javaNameHidden is implemented by an entity, or the behaviour of one, whose name tag Java players are not
+// shown: they have their own copy of what it shows.
+type javaNameHidden interface{ HideJavaName() bool }
+
 // viewOtherEntity spawns a non-player entity.
 func (s *Session) viewOtherEntity(e world.Entity) {
+	if mobBool(e, bedrockOnly.BedrockOnly) {
+		return
+	}
 	typ, data, ok := javaEntity(e)
 	if ok {
 		// The client's own ids: entity types and the falling block's state.

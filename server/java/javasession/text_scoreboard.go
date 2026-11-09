@@ -237,7 +237,13 @@ func (s *Session) applyNameTag(e world.Entity, tag string) {
 	prefix.Write(w)
 	suffix.Write(w)
 	w.VarInt(1) // name tag: never; a text display riding the player draws it (namedisplay.go)
-	w.VarInt(0) // collision: always
+	if visible {
+		w.VarInt(0) // collision: always
+	} else {
+		// A player with no name shown (an NPC, or a player whose body rides something drawn in its place) is
+		// neither pushed by nor pushes Java clients.
+		w.VarInt(1) // collision: never
+	}
 	if colour >= 0 {
 		w.Bool(true)
 		w.VarInt(colour)

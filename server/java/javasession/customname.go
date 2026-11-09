@@ -24,7 +24,7 @@ type nameTagged interface {
 // viewCustomName sends e's name tag when it differs from the one last sent for id. A name tag
 // that is not always shown appears when the player looks at the entity, as on Bedrock.
 func (s *Session) viewCustomName(e world.Entity, id int32) {
-	if _, ok := e.(*player.Player); ok || isTextEntity(e) {
+	if _, ok := e.(*player.Player); ok || isTextEntity(e) || mobBool(e, javaNameHidden.HideJavaName) {
 		return
 	}
 	n, ok := e.(nameTagged)
