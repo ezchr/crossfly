@@ -77,7 +77,16 @@ func (t *Type) Open(tx *world.Tx, h *world.EntityHandle, data *world.EntityData)
 		data.Data = s
 	}
 	s.data = data
-	return &Mob{Ent: entity.Open(tx, h, data), data: data, s: s}
+	// A mob is opened for every lookup (each entity a target search passes
+	// over): within one transaction the same *Mob is handed out again.
+	// Transactions are never reused, so a *Mob of an earlier one never
+	// matches.
+	if c := s.cur; c != nil && c.data == data && c.Ent.Tx() == tx && c.Ent.H() == h {
+		return c
+	}
+	m := &Mob{Ent: entity.Open(tx, h, data), data: data, s: s}
+	s.cur = m
+	return m
 }
 
 // EncodeEntity ...

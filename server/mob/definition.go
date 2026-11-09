@@ -127,6 +127,12 @@ type (
 	// re-initialises such components (a re-added timer restarts). The list
 	// is cleared by the call.
 	InstanceReinit interface{ TakeReinit() []string }
+
+	// InstanceGeneration is implemented by instances that can tell whether
+	// their active components changed: Generation returns a new value after
+	// every change. The mob compares it with the value it last attached
+	// components for (Mob.ComponentsApplied).
+	InstanceGeneration interface{ Generation() uint64 }
 )
 
 // ParseDefinition parses one entity file with the installed parser, or with

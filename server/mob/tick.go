@@ -59,8 +59,11 @@ const deathTicks = 20
 // (and one that died earlier in this tick) only runs travel, despawn and send:
 // it still falls and is still shown until it is removed.
 func (s *state) Tick(e *entity.Ent, tx *world.Tx) *entity.Movement {
-	m := &Mob{Ent: e, data: s.data, s: s}
-	s.cur = m
+	m := s.cur
+	if m == nil || m.Ent != e {
+		m = &Mob{Ent: e, data: s.data, s: s}
+		s.cur = m
+	}
 	m.ensureInit()
 	s.ticks++
 	if s.immune > 0 {

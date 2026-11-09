@@ -199,19 +199,32 @@ func (l *Leaf) eval(ctx *Context) bool {
 	if l.Def == nil || ctx == nil || ctx.Self == nil {
 		return false
 	}
-	s := Scope{Ctx: ctx, Actor: ctx.Subject(l.Subject)}
-	if s.Actor == nil {
+	a := ctx.Subject(l.Subject)
+	if a == nil {
 		return false
 	}
-	s.Pos = s.Actor.Position()
+	// The scope is taken from the context (a test may evaluate filters of
+	// its own on the same context, so they are a stack), not allocated.
+	var s *Scope
+	d := ctx.depth
+	if d < len(ctx.scopes) {
+		s = &ctx.scopes[d]
+		ctx.depth = d + 1
+	} else {
+		s = &Scope{}
+	}
+	s.Ctx, s.Actor, s.Pos, s.Block = ctx, a, a.Position(), nil
 	if l.Subject == SubjectBlock {
 		if ctx.Block == nil {
+			ctx.depth = d
 			return false
 		}
 		s.Block = ctx.Block
 		s.Pos = ctx.Block.Position()
 	}
-	return l.Def.Eval(&l.Input, &s)
+	ok := l.Def.Eval(&l.Input, s)
+	ctx.depth = d
+	return ok
 }
 
 // Walk calls fn for every leaf in the filter tree.

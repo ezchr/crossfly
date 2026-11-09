@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"math/rand/v2"
 	"slices"
+	"unsafe"
 
 	"github.com/df-mc/dragonfly/server/block/cube"
 	"github.com/df-mc/dragonfly/server/entity"
@@ -32,6 +33,9 @@ func Of(e world.Entity) (*Mob, bool) {
 		return e, true
 	case *entity.Ent:
 		if s, ok := e.Behaviour().(*state); ok {
+			if c := s.cur; c != nil && c.Ent == e {
+				return c, true
+			}
 			m := &Mob{Ent: e, data: s.data, s: s}
 			s.cur = m
 			return m, true
@@ -333,13 +337,41 @@ func (m *Mob) Components() []string {
 
 // ComponentOf returns the first attached component of type T.
 func ComponentOf[T any](m *Mob) (T, bool) {
-	for _, c := range m.s.comps {
+	// Systems look up their component on every mob every tick, and most
+	// mobs do not have it: the answer is kept until the components change.
+	s := m.s
+	key := typeKey[T]()
+	for _, e := range s.compOf {
+		if e.key == key {
+			if e.comp == nil {
+				var zero T
+				return zero, false
+			}
+			return e.comp.(T), true
+		}
+	}
+	for _, c := range s.comps {
 		if t, ok := c.comp.(T); ok {
+			s.compOf = append(s.compOf, compOfEntry{key: key, comp: c.comp})
 			return t, true
 		}
 	}
+	s.compOf = append(s.compOf, compOfEntry{key: key})
 	var zero T
 	return zero, false
+}
+
+// compOfEntry is a ComponentOf answer: the component of the type key, or
+// nil if the mob has none.
+type compOfEntry struct {
+	key  unsafe.Pointer
+	comp Component
+}
+
+// typeKey identifies T: the type word of a *T in an interface.
+func typeKey[T any]() unsafe.Pointer {
+	k := any((*T)(nil))
+	return (*[2]unsafe.Pointer)(unsafe.Pointer(&k))[0]
 }
 
 // Fire runs an entity event (from the definition's "events") on the mob and

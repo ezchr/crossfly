@@ -63,6 +63,8 @@ type state struct {
 	goals   *GoalSelector
 	comps   []attachedComponent
 	tickers [stageCount][]Ticker
+	// compOf caches ComponentOf by type (nil: none) until comps change.
+	compOf []compOfEntry
 
 	immune     int
 	lastDamage float64
@@ -85,6 +87,11 @@ type state struct {
 	}
 
 	scratch map[any]any
+
+	// appliedGen is the instance generation (InstanceGeneration) the
+	// components were last applied for, if genKnown.
+	appliedGen uint64
+	genKnown   bool
 
 	// cur is the *Mob last opened (Of, Tick, Armour). Callbacks stored
 	// beyond one transaction (the armour inventory's) use it, never a *Mob
@@ -200,7 +207,24 @@ func (m *Mob) applyComponents() {
 		comps = append(comps, m.attach(c))
 	}
 	s.comps = comps
+	clear(s.compOf)
+	s.compOf = s.compOf[:0]
 	s.rebuildTickers()
+	if g, ok := s.inst.(InstanceGeneration); ok {
+		s.appliedGen, s.genKnown = g.Generation(), true
+	}
+}
+
+// ComponentsApplied reports whether the attached components are the
+// instance's active set: no event changed it since they were attached. It
+// is false if the instance cannot tell.
+func (m *Mob) ComponentsApplied() bool {
+	s := m.s
+	if !s.genKnown {
+		return false
+	}
+	g, ok := s.inst.(InstanceGeneration)
+	return ok && g.Generation() == s.appliedGen
 }
 
 func (m *Mob) detach(c attachedComponent) {

@@ -34,6 +34,8 @@ type Instance struct {
 	active    []activeComp // fold of the stack, in component order
 	activeIdx map[string]int
 	dirty     bool
+	// gen counts the times the active set was computed again.
+	gen       uint64
 	committed map[string]activeComp
 
 	props   []any
@@ -241,7 +243,15 @@ func (i *Instance) fold() []activeComp {
 		}
 	}
 	i.active, i.activeIdx, i.dirty = act, idx, false
+	i.gen++
 	return act
+}
+
+// Generation changes whenever the active component set may have changed
+// (mob.InstanceGeneration).
+func (i *Instance) Generation() uint64 {
+	i.fold()
+	return i.gen
 }
 
 // HasComponent reports whether the component is active now (uncommitted
