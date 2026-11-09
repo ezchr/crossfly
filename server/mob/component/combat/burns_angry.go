@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"math"
+	"strings"
 	"time"
 
 	"github.com/df-mc/dragonfly/server/block/cube"
@@ -77,7 +78,10 @@ type Angry struct {
 	broadcastTargets    []string
 	broadcastFilter     mob.Filter
 	filter              mob.Filter
-	calm                sense.Trigger
+	// filtered: the JSON has filters (AngryComponent's FilterGroup is not
+	// empty).
+	filtered bool
+	calm     sense.Trigger
 
 	timer    int
 	attacked bool
@@ -116,6 +120,11 @@ func newAngry(_ string, raw json.RawMessage) (mob.Component, error) {
 	if a.filter, err = mob.CompileFilter(v.Filters); err != nil {
 		return nil, err
 	}
+	switch f := strings.TrimSpace(string(v.Filters)); f {
+	case "", "null", "{}", "[]":
+	default:
+		a.filtered = true
+	}
 	if a.calm, err = sense.ParseTrigger(v.CalmEvent); err != nil {
 		return nil, err
 	}
@@ -149,9 +158,17 @@ func (a *Angry) RestartAngerTimer(m *mob.Mob) {
 // Remaining is the anger left in ticks (-1: forever).
 func (a *Angry) Remaining() int { return a.timer }
 
+// canGetAngry is AngryComponent::canGetAngry: with no target the mob stays
+// angry unless the component has filters (a llama hurt by a player is angry
+// before its hurt_by_target goal picks the player).
 func (a *Angry) canGetAngry(m *mob.Mob) (world.Entity, bool) {
 	t, ok := m.Target()
-	if !ok || !sense.Alive(t) {
+	if !ok {
+		// Once calm it stays calm: vanilla calm events remove the angry group
+		// anyway.
+		return nil, !a.filtered && !a.calmed
+	}
+	if !sense.Alive(t) {
 		return nil, false
 	}
 	ctx := m.Ctx()
@@ -168,7 +185,7 @@ func (a *Angry) tick(m *mob.Mob) {
 	a.calmed = false
 	m.UpdateMeta(func(meta *mob.Meta) { meta.Angry = true })
 	_, hurtTick, hurt := m.LastHurtBy()
-	if a.broadcast || (a.broadcastOnAttack && a.attacked) || (a.broadcastOnAttacked && hurt && hurtTick > m.Ticks()-2) {
+	if t != nil && (a.broadcast || (a.broadcastOnAttack && a.attacked) || (a.broadcastOnAttacked && hurt && hurtTick > m.Ticks()-2)) {
 		a.alertFriends(m, t)
 	}
 	a.attacked = false
