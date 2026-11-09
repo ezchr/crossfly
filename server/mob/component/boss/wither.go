@@ -256,13 +256,20 @@ func (w *Wither) tickSpawn(m *mob.Mob) {
 }
 
 // Explode is an explosion of power at pos caused by src: blocks break when
-// blocks is set (Dragonfly cannot spare them otherwise).
+// blocks is set (Dragonfly cannot spare them otherwise). Players a wither
+// or its skull kill with it leave a wither rose.
 func Explode(tx *world.Tx, src world.Entity, pos mgl64.Vec3, power float64, fire, blocks bool) {
+	var victims []world.Entity
+	if src != nil && isWitherOrSkull(src) {
+		r := power*2 + 1
+		victims = livePlayersNear(tx, cube.Box(pos[0]-r, pos[1]-r, pos[2]-r, pos[0]+r, pos[1]+r, pos[2]+r))
+	}
 	if blocks {
 		block.ExplosionConfig{SpawnFire: fire, Source: src}.Explode(tx, explosionAt{src: src, pos: pos, size: power})
-		return
+	} else {
+		combat.ExplodeEntitiesOnly(tx, explosionEntity{Entity: src, pos: pos}, power)
 	}
-	combat.ExplodeEntitiesOnly(tx, explosionEntity{Entity: src, pos: pos}, power)
+	plantForKilledPlayers(tx, victims)
 }
 
 // explosionAt is an entity explosion at a position other than the entity's.
@@ -508,6 +515,7 @@ func (w *Wither) dashHit(m *mob.Mob) {
 			l.Hurt(15, entity.AttackDamageSource{Attacker: m})
 		}
 	}
+	plantForKilledPlayers(m.Tx(), hit)
 }
 
 // witherImmune are the blocks the wither never breaks (WitherBoss::canDestroy).
