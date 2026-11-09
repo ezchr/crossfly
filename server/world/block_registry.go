@@ -386,7 +386,7 @@ func (br *BasicBlockRegistry) Finalize() {
 		if emitter, ok := b.(lightEmitter); ok {
 			info.setLight(emitter.LightEmissionLevel())
 		}
-		if _, ok := b.(NBTer); ok {
+		if _, ok := b.(NBTer); ok && !javaRedstoneExtensionOff(b) {
 			info.set(blockFlagNBT)
 		}
 		if _, ok := b.(RandomTicker); ok {

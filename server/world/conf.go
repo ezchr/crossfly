@@ -91,7 +91,20 @@ type Config struct {
 	// A Synchronous World must be driven from one goroutine. Do, Call and
 	// AdvanceTick are not safe to call concurrently, including from delayed
 	// item or death callbacks.
+
 	Synchronous bool
+	// SettleSynchronousTransactions enables normal between-tick neighbour and redstone reactions after each
+	// synchronous transaction. Leave false for isolated unit fixtures that deliberately manage their own queues.
+	// Deterministic integration tests may enable it to match a normally ticking server between commands.
+	SettleSynchronousTransactions bool
+	// AllowPistonDuplication lets pistons duplicate blocks as in vanilla Java Edition (TNT, rail and carpet duping).
+	// When false, the default on Paper servers, a piston moves the blocks as they are when it moves them, so a block
+	// removed while the piston broke the blocks in its way (a TNT that was ignited) is not moved as well.
+	AllowPistonDuplication bool
+	// EntitiesCreatePortals lets entities other than players create a nether portal in the other dimension when
+	// they go through one that has no linked portal there, as every entity does in vanilla Java Edition (TNT sent
+	// through a portal by a TNT bomber). When false, only players create portals.
+	EntitiesCreatePortals bool
 }
 
 // New creates a new World using the Config conf. The World returned will start
@@ -168,6 +181,12 @@ func (conf Config) New() *World {
 		conf:             conf,
 		ra:               conf.Dim.Range(),
 		set:              s,
+	}
+	if s.Raining {
+		w.rainIntensity = 1
+	}
+	if s.Thundering {
+		w.thunderIntensity = 1
 	}
 	w.chunkWorkers = newChunkWorkerPool(w)
 	w.weather = weather{w: w}

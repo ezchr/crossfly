@@ -59,10 +59,13 @@ func (s String) DeriveState(pos cube.Pos, src world.BlockSource) world.Block {
 }
 
 // Connects returns true if the tripwire connects to the block at the face
-// passed. Tripwire connects to other tripwire.
+// passed. Tripwire connects to other tripwire and, with Java redstone, to a hook facing it.
 func (String) Connects(pos cube.Pos, face cube.Face, src world.BlockSource) bool {
-	_, ok := src.Block(pos.Side(face)).(String)
-	return ok
+	b := src.Block(pos.Side(face))
+	if _, ok := b.(String); ok {
+		return true
+	}
+	return world.JavaRedstone() && tripwireHookFacing(b, face)
 }
 
 // HasLiquidDrops ...

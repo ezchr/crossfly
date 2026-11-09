@@ -98,6 +98,13 @@ type RedstonePowerAction interface {
 	RedstonePowerAction(pos cube.Pos, tx *Tx, oldPower, newPower int)
 }
 
+// RedstoneAnalogWatcher is implemented by blocks that read something that changes without a block update, such as how
+// full a container is (a comparator). RedstoneAnalogCheck is called once a tick after the blocks with block entities
+// ticked, and after a change made between ticks, for the watchers among the ticking block entities.
+type RedstoneAnalogWatcher interface {
+	RedstoneAnalogCheck(pos cube.Pos, tx *Tx)
+}
+
 // RedstonePowerContextAction may be implemented by action blocks that need the proposed update metadata to distinguish
 // self-caused redstone changes from external block updates.
 type RedstonePowerContextAction interface {
@@ -113,8 +120,15 @@ type RedstoneNonConductive interface {
 // and scheduled block ticks remain the semantic model for block behaviour; the engine just resolves wire/relayer power
 // and lets consumers and actions schedule any delayed or directional changes themselves.
 type redstoneEngine struct {
-	currentTick       int64
-	dirty             map[cube.Pos]redstoneDirty
+	currentTick int64
+	dirty       map[cube.Pos]redstoneDirty
+	// spareDirty is an empty map tick swaps in for dirty, so a tick does not copy the dirty set. Only maps that held
+	// few positions are kept: a map does not shrink, and ranging over or copying one costs its peak size.
+	spareDirty map[cube.Pos]redstoneDirty
+	// candidates is the reused buffer for the sorted dirty positions of a tick.
+	candidates []cube.Pos
+	// relevantRIDs caches isRedstoneRelevant by block runtime ID: 1 relevant, 2 not, 0 unknown.
+	relevantRIDs      []uint8
 	power             map[cube.Pos]int
 	output            map[cube.Pos]int
 	evaluating        map[cube.Pos]struct{}
@@ -181,17 +195,104 @@ func (e *redstoneEngine) invalidateAround(pos, changed cube.Pos, cause RedstoneU
 	e.invalidateAroundWith(pos, redstoneDirty{changed: changed, hasChanged: true, source: changed, hasSource: true, cause: cause}, r)
 }
 
-// invalidateAroundBlockChange marks pos and its direct neighbours dirty for a block change.
-func (e *redstoneEngine) invalidateAroundBlockChange(pos cube.Pos, before, after Block, cause RedstoneUpdateCause, r cube.Range) {
+// invalidateAroundBlockChange marks pos and its direct neighbours dirty for a block change. A change of a block that is
+// not redstone-relevant, with nothing redstone-relevant within reach (redstoneNearby), is skipped: graph compilation
+// would find nothing around it.
+func (e *redstoneEngine) invalidateAroundBlockChange(w *World, pos cube.Pos, before, after Block, cause RedstoneUpdateCause, r cube.Range) {
+	if e == nil || pos.OutOfBounds(r) {
+		return
+	}
+	relevant := isRedstoneRelevant(before) || isRedstoneRelevant(after)
+	if !relevant && !e.redstoneNearby(w, pos) {
+		return
+	}
 	d := redstoneDirty{
 		changed:                 pos,
 		hasChanged:              true,
-		changedRedstoneRelevant: isRedstoneRelevant(before) || isRedstoneRelevant(after),
+		changedRedstoneRelevant: relevant,
 		source:                  pos,
 		hasSource:               true,
 		cause:                   cause,
 	}
 	e.invalidateAroundWith(pos, d, r)
+}
+
+// invalidateAroundLiquidChange marks pos and its direct neighbours dirty for a liquid change, unless nothing
+// redstone-relevant is within reach (redstoneNearby).
+func (e *redstoneEngine) invalidateAroundLiquidChange(w *World, pos cube.Pos, r cube.Range) {
+	if e == nil || pos.OutOfBounds(r) || !e.redstoneNearby(w, pos) {
+		return
+	}
+	e.invalidateAround(pos, pos, RedstoneUpdateCauseBlockUpdate, r)
+}
+
+// redstoneReach is the Manhattan distance from a changed block within which graph compilation can find redstone:
+// the change marks pos and its neighbours dirty, and compile looks from every dirty position at its neighbours and,
+// through a conductor among them, at the conductor's neighbours (compileRegion, compileAdjacentRedstone).
+const redstoneReach = 3
+
+// redstoneNearby reports whether a redstone-relevant block, or a chunk that is not loaded, is within redstoneReach of
+// pos. If not, the positions a change at pos marks dirty compile an empty graph, so the change can be skipped.
+func (e *redstoneEngine) redstoneNearby(w *World, pos cube.Pos) bool {
+	r := w.Range()
+	var (
+		col      *Column
+		colPos   ChunkPos
+		colValid bool
+	)
+	for dy := -redstoneReach; dy <= redstoneReach; dy++ {
+		y := pos[1] + dy
+		if y < r[0] || y > r[1] {
+			continue
+		}
+		restY := redstoneReach - abs(dy)
+		for dx := -restY; dx <= restY; dx++ {
+			x := pos[0] + dx
+			restX := restY - abs(dx)
+			for dz := -restX; dz <= restX; dz++ {
+				z := pos[2] + dz
+				cp := ChunkPos{int32(x >> 4), int32(z >> 4)}
+				if !colValid || cp != colPos {
+					c, ok := w.chunks[cp]
+					if !ok {
+						// Unknown: a chunk loaded before the tick could hold redstone.
+						return true
+					}
+					col, colPos, colValid = c, cp, true
+				}
+				if e.relevantRuntimeID(w, col.Block(uint8(x), int16(y), uint8(z), 0)) {
+					return true
+				}
+			}
+		}
+	}
+	return false
+}
+
+// relevantRuntimeID reports whether the block with runtime ID rid is redstone-relevant. Relevance depends only on the
+// block's type, which a block entity stored at the position shares with the registered block.
+func (e *redstoneEngine) relevantRuntimeID(w *World, rid uint32) bool {
+	if int(rid) < len(e.relevantRIDs) {
+		switch e.relevantRIDs[rid] {
+		case 1:
+			return true
+		case 2:
+			return false
+		}
+	}
+	relevant := isRedstoneRelevant(w.conf.Blocks.BlockByRuntimeIDOrAir(rid))
+	if int(rid) >= len(e.relevantRIDs) {
+		if int(rid) >= 1<<20 {
+			return relevant
+		}
+		e.relevantRIDs = append(e.relevantRIDs, make([]uint8, int(rid)+1-len(e.relevantRIDs))...)
+	}
+	if relevant {
+		e.relevantRIDs[rid] = 1
+	} else {
+		e.relevantRIDs[rid] = 2
+	}
+	return relevant
 }
 
 // invalidateAroundWith marks pos and its direct neighbours dirty using the same update context.
@@ -276,13 +377,32 @@ func (e *redstoneEngine) tick(tx *Tx, tick int64) {
 		return
 	}
 	e.currentTick = tick
-	dirty := maps.Clone(e.dirty)
-	clear(e.dirty)
+	// Take the dirty set and continue with an empty one, instead of copying it: what this tick invalidates is
+	// evaluated in the next. A small set is cleared and reused for a later tick.
+	dirty := e.dirty
+	e.dirty, e.spareDirty = e.spareDirty, nil
+	if e.dirty == nil {
+		// A circuit that keeps many positions dirty gets a map sized like the last set, up to the reuse limit.
+		e.dirty = make(map[cube.Pos]redstoneDirty, min(len(dirty), redstoneDirtyReuseLimit))
+	}
+	defer func() {
+		if len(dirty) <= redstoneDirtyReuseLimit {
+			clear(dirty)
+			e.spareDirty = dirty
+		}
+	}()
 
-	candidates := slices.Collect(maps.Keys(dirty))
+	candidates := e.candidates[:0]
+	e.candidates = nil
+	for pos := range dirty {
+		candidates = append(candidates, pos)
+	}
 	slices.SortFunc(candidates, compareBlockPos)
 
 	graph := e.compile(tx, candidates)
+	if cap(candidates) <= redstoneDirtyReuseLimit {
+		e.candidates = candidates[:0]
+	}
 	cancelledSources, checkedSources := e.updateGraphSources(tx, graph, dirty)
 	previousSuppressed := e.suppressedSources
 	e.suppressedSources = cancelledSources
@@ -307,6 +427,9 @@ func (e *redstoneEngine) tick(tx *Tx, tick int64) {
 		}
 	}
 }
+
+// redstoneDirtyReuseLimit is the largest dirty set whose map, and candidate buffer, a tick keeps for reuse.
+const redstoneDirtyReuseLimit = 2048
 
 // redstoneDirtyContext returns the direct dirty context for pos, or the nearest dirty context that pulled pos into
 // the current graph. Graph compilation intentionally includes connected blocks that are not dirty themselves.
@@ -418,8 +541,10 @@ func (e *redstoneEngine) compileAdjacentRedstone(tx *Tx, pos cube.Pos, seen map[
 
 // redstoneBlockMayConduct reports whether a block should include its adjacent receivers in graph compilation.
 func (e *redstoneEngine) redstoneBlockMayConduct(tx *Tx, pos cube.Pos, b Block) bool {
+	// The block's name is looked up once for all faces: encoding some blocks (dust) builds a property map.
+	name, _ := b.EncodeBlock()
 	for _, face := range cube.Faces() {
-		if redstoneStrongPowerConductor(pos, b, tx, face) {
+		if redstoneNamedStrongPowerConductor(pos, b, name, tx, face) {
 			return true
 		}
 	}
@@ -494,6 +619,9 @@ func (e *redstoneEngine) update(tx *Tx, pos cube.Pos, d redstoneDirty, newPower 
 
 	if blockChanged {
 		tx.SetBlock(pos, after, &SetOpts{DisableRedstoneUpdates: true})
+		if _, far := after.(interface{ NotifiesNeighboursOfNeighbours() }); javaRedstone && far && oldPower != newPower {
+			tx.World().updateNeighboursOfNeighbours(pos)
+		}
 		e.invalidateAroundWith(pos, d.propagatedFrom(pos), tx.Range())
 		if postUpdater, ok := b.(RedstonePowerPostUpdater); ok {
 			postUpdater.RedstonePowerPostUpdate(pos, tx, b, after, oldPower, newPower)
@@ -1014,11 +1142,30 @@ type redstoneLightDiffuser interface {
 
 // redstoneStrongPowerConductor reports whether b can conduct strong power through face.
 func redstoneStrongPowerConductor(pos cube.Pos, b Block, src BlockSource, face cube.Face) bool {
+	name, _ := b.EncodeBlock()
+	return redstoneNamedStrongPowerConductor(pos, b, name, src, face)
+}
+
+// redstoneNamedStrongPowerConductor is redstoneStrongPowerConductor for a block whose encoded name is known.
+func redstoneNamedStrongPowerConductor(pos cube.Pos, b Block, name string, src BlockSource, face cube.Face) bool {
+	// Java decides by BlockState.isRedstoneConductor: a full collision shape, unless the block says otherwise
+	// (glass, leaves, ice and a few more never conduct; mud and soul sand always do). Slime does.
+	if javaRedstone {
+		switch javaConductorOverride[name] {
+		case -1:
+			return false
+		case 1:
+			return true
+		}
+	}
 	if !b.Model().FaceSolid(pos, face, src) {
 		return false
 	}
 	if _, ok := b.(RedstoneNonConductive); ok {
 		return false
+	}
+	if javaRedstone && javaConductorKnown[name] {
+		return true
 	}
 	if diffuser, ok := b.(redstoneLightDiffuser); ok && diffuser.LightDiffusionLevel() == 0 {
 		return false
@@ -1030,8 +1177,9 @@ func redstoneStrongPowerConductor(pos cube.Pos, b Block, src BlockSource, face c
 // conductivity rules. Blocks whose model depends on the blocks around them
 // read those from src.
 func RedstoneFullPowerConductor(pos cube.Pos, b Block, src BlockSource) bool {
+	name, _ := b.EncodeBlock()
 	for _, face := range cube.Faces() {
-		if !redstoneStrongPowerConductor(pos, b, src, face) {
+		if !redstoneNamedStrongPowerConductor(pos, b, name, src, face) {
 			return false
 		}
 	}
@@ -1165,6 +1313,16 @@ func redstoneStepFace(from, to cube.Pos) cube.Face {
 
 // classifyRedstoneBlock reports the redstone capabilities implemented by b.
 func classifyRedstoneBlock(b Block) (source, consumer, action, relayer bool) {
+	if JavaRedstoneInactive(b) {
+		// Its redstone methods do nothing without Java redstone.
+		return
+	}
+	if javaRedstone {
+		if _, ok := b.(CoreRedstoneOnly); ok {
+			// Not a redstone component in Java Edition (TNT).
+			return
+		}
+	}
 	_, source = b.(RedstonePowerSource)
 	_, consumer = b.(RedstonePowerConsumer)
 	_, action = b.(RedstonePowerAction)

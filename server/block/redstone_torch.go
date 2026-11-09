@@ -51,7 +51,10 @@ func (t RedstoneTorch) BreakInfo() BreakInfo {
 	})
 }
 
-func (t RedstoneTorch) UseOnBlock(pos cube.Pos, face cube.Face, _ mgl64.Vec3, tx *world.Tx, user item.User, ctx *item.UseContext) bool {
+func (t RedstoneTorch) UseOnBlock(pos cube.Pos, face cube.Face, clickPos mgl64.Vec3, tx *world.Tx, user item.User, ctx *item.UseContext) bool {
+	if world.JavaRedstone() {
+		return t.javaUseOnBlock(pos, face, clickPos, tx, user, ctx)
+	}
 	pos, face, used := firstReplaceable(tx, pos, face, t)
 	if !used || face == cube.FaceDown {
 		return false
@@ -79,6 +82,10 @@ func (t RedstoneTorch) UseOnBlock(pos cube.Pos, face cube.Face, _ mgl64.Vec3, tx
 
 // NeighbourUpdateTick breaks unsupported torches and otherwise schedules inverse-state refreshes.
 func (t RedstoneTorch) NeighbourUpdateTick(pos, changed cube.Pos, tx *world.Tx) {
+	if world.JavaRedstone() {
+		t.javaNeighbourUpdateTick(pos, tx)
+		return
+	}
 	facing := t.facing()
 	if !tx.Block(pos.Side(facing)).Model().FaceSolid(pos.Side(facing), facing.Opposite(), tx) {
 		tx.Redstone().Torch(pos).ClearBurnout()
@@ -99,6 +106,10 @@ func (t RedstoneTorch) NeighbourUpdateTick(pos, changed cube.Pos, tx *world.Tx) 
 // ScheduledTick refreshes the lit state after the torch's one-redstone-tick inversion delay.
 func (t RedstoneTorch) ScheduledTick(pos cube.Pos, tx *world.Tx, _ *rand.Rand) {
 	if tx == nil {
+		return
+	}
+	if world.JavaRedstone() {
+		t.javaScheduledTick(pos, tx)
 		return
 	}
 	var ok bool
@@ -156,6 +167,10 @@ func (t RedstoneTorch) RedstoneStrongPower(pos cube.Pos, tx *world.Tx, face cube
 // RedstonePowerActionUpdate schedules torch refreshes and keeps burnout from self-recovering through its own loop.
 func (t RedstoneTorch) RedstonePowerActionUpdate(pos cube.Pos, tx *world.Tx, update world.RedstoneUpdate) {
 	if tx == nil {
+		return
+	}
+	if world.JavaRedstone() {
+		t.check(pos, tx)
 		return
 	}
 	torch := tx.Redstone().Torch(pos)

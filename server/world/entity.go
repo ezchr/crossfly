@@ -549,6 +549,8 @@ type EntityRegistryConfig struct {
 	Snowball           func(opts EntitySpawnOpts, owner Entity) *EntityHandle
 	SplashPotion       func(opts EntitySpawnOpts, t any, owner Entity) *EntityHandle
 	Lightning          func(opts EntitySpawnOpts) *EntityHandle
+	// Minecart creates a minecart of a kind (item.MinecartKind). Optional: minecart items do nothing without it.
+	Minecart func(opts EntitySpawnOpts, kind int) *EntityHandle
 }
 
 // ArrowSpawnConfig holds the options used to spawn an arrow entity.

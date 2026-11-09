@@ -20,10 +20,14 @@ var _ world.RedstonePowerAction = TNT{}
 
 func (TNT) RedstoneNonConductive() {}
 
+// CoreRedstoneOnly: with Java redstone (Crossfly Full), TNT is no redstone action. As Java Edition's TntBlock, it
+// then only looks at its power when it is placed and when a neighbour updates it (tnt_java.go).
+func (TNT) CoreRedstoneOnly() {}
+
 // RedstonePowerAction primes TNT when it first receives redstone power. Redstone-primed TNT is not
 // blockable by shields.
 func (t TNT) RedstonePowerAction(pos cube.Pos, tx *world.Tx, oldPower, newPower int) {
-	if oldPower > 0 || newPower == 0 {
+	if world.JavaRedstone() || oldPower > 0 || newPower == 0 {
 		return
 	}
 	spawnTnt(pos, tx, world.TNTSpawnConfig{Fuse: time.Second * 4, UnblockableByShield: true})
@@ -111,5 +115,11 @@ func spawnTnt(pos cube.Pos, tx *world.Tx, conf world.TNTSpawnConfig) {
 	tx.PlaySound(pos.Vec3Centre(), sound.TNT{})
 	tx.SetBlock(pos, nil, nil)
 	opts := world.EntitySpawnOpts{Position: pos.Vec3Centre()}
-	tx.AddEntity(tx.World().EntityRegistry().Config().TNTWithConfig(opts, conf))
+	if world.JavaRedstone() {
+		// Java primes TNT at the bottom centre of the block (TntBlock.prime).
+		opts.Position = pos.Vec3Middle()
+	}
+	if spawn := tx.World().EntityRegistry().Config().TNTWithConfig; spawn != nil {
+		tx.AddEntity(spawn(opts, conf))
+	}
 }

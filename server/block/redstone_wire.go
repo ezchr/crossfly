@@ -22,6 +22,9 @@ type RedstoneWire struct {
 	// Connections holds the way the wire connects to each of its horizontal
 	// sides.
 	Connections WireConnections
+	// Dot preserves an isolated dust dot selected by the player. Connections replace it when a neighbour connects.
+	// Only with Java redstone (Crossfly Full).
+	Dot bool
 }
 
 func (r RedstoneWire) UseOnBlock(pos cube.Pos, face cube.Face, _ mgl64.Vec3, tx *world.Tx, user item.User, ctx *item.UseContext) bool {
@@ -119,6 +122,9 @@ func (r RedstoneWire) DeriveState(pos cube.Pos, src world.BlockSource) world.Blo
 // holds for it is kept.
 func (r RedstoneWire) updateConnections(pos cube.Pos, tx *world.Tx) bool {
 	connections := redstoneWireConnections(pos, loadedSource{tx: tx})
+	if connections.Uint8() != 0 {
+		r.Dot = false
+	}
 	if connections == r.Connections {
 		return false
 	}
@@ -213,6 +219,9 @@ func updateDiagonalRedstoneWires(pos cube.Pos, tx *world.Tx) {
 // with.
 func redstoneWireConnections(pos cube.Pos, src world.BlockSource) WireConnections {
 	links := redstoneWireLinksAround(pos, src)
+	if world.JavaRedstone() && redstoneWireIsDot(pos, src, links) {
+		return WireConnections{}
+	}
 	faces := redstoneWireShape(links, redstoneWireLinks.drawn)
 	connection := func(i int) WireConnection {
 		if !faces[i] {
@@ -232,7 +241,11 @@ func redstoneWireConnections(pos cube.Pos, src world.BlockSource) WireConnection
 
 // redstoneWirePoweredHorizontalFaces returns the horizontal faces connected by the wire shape.
 func redstoneWirePoweredHorizontalFaces(pos cube.Pos, src world.BlockSource) map[cube.Face]bool {
-	faces := redstoneWireShape(redstoneWireLinksAround(pos, src), redstoneWireLinks.connected)
+	links := redstoneWireLinksAround(pos, src)
+	if world.JavaRedstone() && redstoneWireIsDot(pos, src, links) {
+		return map[cube.Face]bool{}
+	}
+	faces := redstoneWireShape(links, redstoneWireLinks.connected)
 	connections := make(map[cube.Face]bool, len(faces))
 	for i, face := range cube.HorizontalFaces() {
 		if faces[i] {
@@ -365,6 +378,11 @@ func redstoneWireBlocksDrawnConnection(src world.BlockSource, pos cube.Pos, face
 // redstoneWireCanTransmitDown reports whether dust at pos may power dust one block lower.
 func redstoneWireCanTransmitDown(src world.BlockSource, pos cube.Pos) bool {
 	supportPos := pos.Side(cube.FaceDown)
+	if world.JavaRedstone() {
+		// As in Java Edition, only dust on a redstone conductor steps down: dust on glass, glowstone, a top slab,
+		// upside-down stairs or a hopper carries power up a staircase but not down it.
+		return world.RedstoneFullPowerConductor(supportPos, src.Block(supportPos), src)
+	}
 	support := src.Block(supportPos)
 	if !support.Model().FaceSolid(supportPos, cube.FaceUp, src) {
 		return false
@@ -384,6 +402,14 @@ func redstoneWireCanTransmitDown(src world.BlockSource, pos cube.Pos) bool {
 // connect to dust.
 func redstoneWireDirectConnection(src world.BlockSource, pos cube.Pos, face cube.Face) bool {
 	b := src.Block(pos)
+	if world.JavaRedstoneInactive(b) {
+		return false
+	}
+	if world.JavaRedstone() {
+		if connects, ok := javaWireConnection(b, face); ok {
+			return connects
+		}
+	}
 	switch b.(type) {
 	case RedstoneWire, world.RedstonePowerSource, world.RedstoneStrongPowerSource, world.RedstonePowerRelayer:
 		return true
@@ -443,4 +469,17 @@ func redstoneWireFaceHorizontal(face cube.Face) bool {
 	default:
 		return false
 	}
+}
+
+func redstoneWireIsDot(pos cube.Pos, src world.BlockSource, links [4]redstoneWireLinks) bool {
+	r, ok := src.Block(pos).(RedstoneWire)
+	if !ok || !r.Dot {
+		return false
+	}
+	for _, link := range links {
+		if link.drawn() {
+			return false
+		}
+	}
+	return true
 }

@@ -269,7 +269,7 @@ func (t *PortalTravelComputer) destinationSpawn(tx *world.Tx, sourceDim world.Di
 		}
 		return tx.World().Spawn().Vec3Middle(), true
 	}
-	if !t.CreatePortal {
+	if !t.CreatePortal && !tx.World().EntitiesCreatePortals() {
 		n, ok := portal.FindNetherPortal(tx, pos, portalSearchRadius)
 		if !ok {
 			return mgl64.Vec3{}, false

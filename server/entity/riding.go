@@ -87,3 +87,62 @@ type RiderHolder interface {
 type InteractTexter interface {
 	InteractText(user world.Entity) string
 }
+
+// RideableBehaviour may be implemented by the Behaviour of an Ent that can be ridden (a mob with
+// minecraft:rideable). The Ent itself is not a Rideable: RideableOf asks the behaviour.
+type RideableBehaviour interface {
+	Rideable(e *Ent) (Rideable, bool)
+}
+
+// RiderBehaviour may be implemented by the Behaviour of an Ent that can ride another entity
+// (any mob).
+type RiderBehaviour interface {
+	Rider(e *Ent) (Rider, bool)
+}
+
+// RideableOf returns e as a Rideable: e itself, or for an Ent the Rideable its behaviour provides.
+// Use it instead of a type assertion wherever an entity looked up by handle may be ridden.
+func RideableOf(e world.Entity) (Rideable, bool) {
+	if r, ok := e.(Rideable); ok {
+		return r, true
+	}
+	if ent, ok := e.(interface{ ent() *Ent }); ok {
+		if rb, ok := ent.ent().Behaviour().(RideableBehaviour); ok {
+			return rb.Rideable(ent.ent())
+		}
+	}
+	return nil, false
+}
+
+// RiderOf returns e as a Rider: e itself, or for an Ent the Rider its behaviour provides.
+func RiderOf(e world.Entity) (Rider, bool) {
+	if r, ok := e.(Rider); ok {
+		return r, true
+	}
+	if ent, ok := e.(interface{ ent() *Ent }); ok {
+		if rb, ok := ent.ent().Behaviour().(RiderBehaviour); ok {
+			return rb.Rider(ent.ent())
+		}
+	}
+	return nil, false
+}
+
+// ClientVehicle may be implemented by a Rideable that takes its position from the client of the
+// rider steering it (a horse the Bedrock client predicts, a vehicle a Java client drives with
+// move_vehicle). It reports whether the position was taken.
+type ClientVehicle interface {
+	ClientVehicleMove(rider world.Entity, pos mgl64.Vec3, yaw, pitch float64) bool
+}
+
+// VehicleJumper may be implemented by a Rideable whose controlling rider can make it jump: the
+// power jump of a horse, the dash of a camel. strength is 0..1.
+type VehicleJumper interface {
+	RiderJump(rider world.Entity, strength float64)
+}
+
+// VehicleJumpHolder may be implemented by a Rideable that works out the jump strength itself from
+// how long its controlling rider holds jump (Bedrock clients send no strength for a power jump).
+// It is told every input tick whether jump is held.
+type VehicleJumpHolder interface {
+	RiderJumpHeld(rider world.Entity, held bool)
+}

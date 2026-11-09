@@ -23,11 +23,14 @@ type EntityExplosionSource struct {
 	Entity Entity
 	// ExplosionSize is the size of the explosion. Defaults to 4 if 0.
 	ExplosionSize float64
+	// OffsetY raises the centre of the explosion above the entity's position (Java primed TNT explodes 1/16 of
+	// its height above its feet).
+	OffsetY float64
 }
 
 // Position ...
 func (e EntityExplosionSource) Position() mgl64.Vec3 {
-	return e.Entity.Position()
+	return e.Entity.Position().Add(mgl64.Vec3{0, e.OffsetY, 0})
 }
 
 // Size ...

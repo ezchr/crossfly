@@ -36,19 +36,41 @@ func (s flowingWaterDisplacer) CanDisplace(b world.Liquid) bool {
 // and the liquid block, the liquid will either spread or decrease in depth. Additionally, the liquid might
 // be turned into a solid block if a different liquid is next to it.
 func tickLiquid(b world.Liquid, pos cube.Pos, tx *world.Tx) {
-	if !source(b) && !sourceAround(b, pos, tx) {
-		var res world.Liquid
-		if b.LiquidDepth()-4 > 0 {
-			res = b.WithDepth(b.LiquidDepth()-2*b.SpreadDecay(), false)
-		}
-		ctx := tx.Event()
-		if tx.World().Handler().HandleLiquidDecay(ctx, pos, b, res); ctx.Cancelled() {
+	displacer, _ := tx.Block(pos).(world.LiquidDisplacer)
+	if !world.JavaRedstone() {
+		if !source(b) && !sourceAround(b, pos, tx) {
+			var res world.Liquid
+			if b.LiquidDepth()-4 > 0 {
+				res = b.WithDepth(b.LiquidDepth()-2*b.SpreadDecay(), false)
+			}
+			ctx := tx.Event()
+			if tx.World().Handler().HandleLiquidDecay(ctx, pos, b, res); ctx.Cancelled() {
+				return
+			}
+			tx.SetLiquid(pos, res)
 			return
 		}
-		tx.SetLiquid(pos, res)
-		return
+	} else if !source(b) {
+		// Java's FlowingFluid.tick: a flowing liquid first becomes what its surroundings give it (getNewLiquid),
+		// then spreads as that. Flowing liquid that nothing feeds any more disappears at once.
+		res := newLiquid(b, pos, tx, displacer)
+		if res == nil || res.LiquidDepth() != b.LiquidDepth() || res.LiquidFalling() != b.LiquidFalling() {
+			ctx := tx.Event()
+			if res == nil || res.LiquidDepth() < b.LiquidDepth() {
+				tx.World().Handler().HandleLiquidDecay(ctx, pos, b, res)
+			} else {
+				tx.World().Handler().HandleLiquidFlow(ctx, pos, pos, res, b)
+			}
+			if ctx.Cancelled() {
+				return
+			}
+			tx.SetLiquid(pos, res)
+			if res == nil {
+				return
+			}
+			b = res
+		}
 	}
-	displacer, _ := tx.Block(pos).(world.LiquidDisplacer)
 
 	canFlowBelow := canFlowInto(b, tx, pos.Side(cube.FaceDown), false)
 	if b.LiquidFalling() && !canFlowBelow {
@@ -79,6 +101,48 @@ func tickLiquid(b world.Liquid, pos cube.Pos, tx *world.Tx) {
 			}
 		}
 	}
+}
+
+// newLiquid is Java's FlowingFluid.getNewLiquid for the non-source liquid b at pos: falling if the same liquid
+// is above (and can pass), otherwise the deepest horizontal neighbour it can pass to less the spread decay, or nil
+// if that leaves nothing. Two horizontal water sources over a block water cannot flow into (or a source) make a
+// new source.
+func newLiquid(b world.Liquid, pos cube.Pos, tx *world.Tx, displacer world.LiquidDisplacer) world.Liquid {
+	passable := func(neighbour cube.Pos) bool {
+		if displacer != nil && displacer.SideClosed(pos, neighbour, tx) {
+			return false
+		}
+		if d, ok := tx.Block(neighbour).(world.LiquidDisplacer); ok && d.SideClosed(neighbour, pos, tx) {
+			return false
+		}
+		return true
+	}
+	highest, sources := 0, 0
+	for _, face := range cube.HorizontalFaces() {
+		neighbour := pos.Side(face)
+		l, ok := tx.Liquid(neighbour)
+		if !ok || l.LiquidType() != b.LiquidType() || !passable(neighbour) {
+			continue
+		}
+		if source(l) {
+			sources++
+		}
+		highest = max(highest, l.LiquidDepth())
+	}
+	if _, water := b.(Water); water && sources >= 2 {
+		below := pos.Side(cube.FaceDown)
+		if l, ok := tx.Liquid(below); (ok && l.LiquidType() == b.LiquidType() && source(l)) || !canFlowInto(b, tx, below, true) {
+			return b.WithDepth(8, false)
+		}
+	}
+	above := pos.Side(cube.FaceUp)
+	if l, ok := tx.Liquid(above); ok && l.LiquidType() == b.LiquidType() && passable(above) {
+		return b.WithDepth(8, true)
+	}
+	if depth := highest - b.SpreadDecay(); depth > 0 {
+		return b.WithDepth(depth, false)
+	}
+	return nil
 }
 
 // source checks if a liquid is a source block.

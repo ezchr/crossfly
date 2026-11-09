@@ -382,6 +382,11 @@ func (tx *Tx) World() *World {
 	return tx.w
 }
 
+// Closed reports whether the Tx's callback has completed: any other call on
+// it would panic. Code holding an entity opened in an older transaction (a
+// callback stored on an inventory) checks it before touching the world.
+func (tx *Tx) Closed() bool { return tx.closed }
+
 // CurrentTick returns the current tick of the transaction's world.
 func (tx *Tx) CurrentTick() int64 {
 	w := tx.World()

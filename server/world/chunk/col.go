@@ -23,7 +23,9 @@ type Entity struct {
 }
 
 type ScheduledBlockUpdate struct {
-	Pos   cube.Pos
-	Block uint32
-	Tick  int64
+	Pos          cube.Pos
+	Block        uint32
+	Tick         int64
+	Priority     int8
+	SubTickOrder int64
 }

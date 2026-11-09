@@ -293,6 +293,11 @@ func (e *Ent) Tick(tx *world.Tx, current int64) {
 	}
 	if m != nil {
 		m.Send()
+		if world.JavaRedstone() {
+			m.checkSteppers(tx)
+		}
+	} else if world.JavaRedstone() {
+		checkRedstoneInsiders(tx, e, e.Position())
 	}
 	if e.checkPortalInsiders() && e.finishPendingPortalTravel(tx) {
 		return
@@ -371,4 +376,32 @@ func (e *Ent) checkPortalInsiders() bool {
 		}
 	}
 	return false
+}
+
+// boostBehaviour is a Behaviour a rider speeds up with a held item (a pig with a carrot on a stick).
+type boostBehaviour interface {
+	BoostWith(e *Ent, rider world.Entity, held item.Stack) (damage int, ok bool)
+}
+
+// BoostWith lets rider, riding the entity, speed it up with held, if its Behaviour supports that. It
+// returns the damage the item takes.
+func (e *Ent) BoostWith(rider world.Entity, held item.Stack) (int, bool) {
+	if b, ok := e.Behaviour().(boostBehaviour); ok {
+		return b.BoostWith(e, rider, held)
+	}
+	return 0, false
+}
+
+// interactTextBehaviour is a Behaviour that names the interact button a player looking at the
+// entity sees.
+type interactTextBehaviour interface {
+	InteractText(e *Ent, user world.Entity) string
+}
+
+// InteractText implements InteractTexter through the Behaviour (a mob: "action.interact.mount").
+func (e *Ent) InteractText(user world.Entity) string {
+	if t, ok := e.Behaviour().(interactTextBehaviour); ok {
+		return t.InteractText(e, user)
+	}
+	return ""
 }

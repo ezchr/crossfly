@@ -17,6 +17,15 @@ import (
 	"github.com/go-gl/mathgl/mgl64"
 )
 
+// ownerHandle returns the handle of the owner passed, or nil if the projectile has no owner. Projectiles launched by
+// blocks such as dispensers are ownerless, so callers may pass a nil world.Entity.
+func ownerHandle(owner world.Entity) *world.EntityHandle {
+	if owner == nil {
+		return nil
+	}
+	return owner.H()
+}
+
 // ProjectileBehaviourConfig allows the configuration of projectiles. Calling
 // ProjectileBehaviourConfig.New() creates a ProjectileBehaviour using these
 // settings.
@@ -212,8 +221,20 @@ func (lt *ProjectileBehaviour) Tick(e *Ent, tx *world.Tx) *Movement {
 		}
 	case trace.BlockResult:
 		bpos := r.BlockPosition()
-		if h, ok := tx.Block(bpos).(block.ProjectileHitter); ok {
+
+		if h, ok := tx.Block(bpos).(block.PreciseProjectileHitter); ok {
+			h.ProjectileHitAt(bpos, tx, e, r.Face(), r.Position())
+		} else if h, ok := tx.Block(bpos).(block.ProjectileHitter); ok {
 			h.ProjectileHit(bpos, tx, e, r.Face())
+		}
+		// Java redstone: empty block models are skipped by the trace, so also
+		// notify the cell where the projectile stopped (a button). The block
+		// verifies the actual hit.
+		if world.JavaRedstone() {
+			rest := bpos.Side(r.Face())
+			if h, ok := tx.Block(rest).(block.ProjectileHitter); ok {
+				h.ProjectileHit(rest, tx, e, r.Face())
+			}
 		}
 		if lt.conf.SurviveBlockCollision {
 			lt.emitHitEffects(tx, result)
@@ -386,13 +407,15 @@ func (lt *ProjectileBehaviour) tickMovement(e *Ent, tx *world.Tx) (*Movement, tr
 	}
 
 	var (
-		end = pos.Add(vel)
-		hit trace.Result
-		ok  bool
+		end      = pos.Add(vel)
+		hit      trace.Result
+		onGround bool
+		ok       bool
 	)
 	if !mgl64.FloatEqual(end.Sub(pos).LenSqr(), 0) {
 		if hit, ok = trace.Perform(pos, end, tx, e.H().Type().BBox(e).Grow(1.0), lt.ignores(e)); ok {
-			if _, ok := hit.(trace.BlockResult); ok {
+			if r, ok := hit.(trace.BlockResult); ok {
+				onGround = world.JavaRedstone() && r.Face() == cube.FaceUp
 				// Undo the gravity because the velocity as a result of gravity
 				// at the point of collision should be 0.
 				vel[1] = (vel[1] + lt.mc.Gravity) / (1 - lt.mc.Drag)
@@ -409,7 +432,7 @@ func (lt *ProjectileBehaviour) tickMovement(e *Ent, tx *world.Tx) (*Movement, tr
 			end = hit.Position()
 		}
 	}
-	return &Movement{v: viewers, e: e, pos: end, vel: vel, dpos: end.Sub(pos), dvel: vel.Sub(velBefore), rot: rot}, hit
+	return &Movement{v: viewers, e: e, pos: end, vel: vel, dpos: end.Sub(pos), dvel: vel.Sub(velBefore), rot: rot, onGround: onGround}, hit
 }
 
 // ignores returns a function to ignore entities in trace.Perform that are

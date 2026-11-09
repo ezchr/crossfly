@@ -25,6 +25,9 @@ type Chest struct {
 
 	// Facing is the direction that the chest is facing.
 	Facing cube.Direction
+	// Trapped chests emit power while non-spectator viewers have them open (Crossfly Full, Java redstone).
+	Trapped bool
+	signal  int
 	// CustomName is the custom name of the chest. This name is displayed when the chest is opened, and may
 	// include colour codes.
 	CustomName string
@@ -128,11 +131,14 @@ func (c Chest) AddViewer(v ContainerViewer, tx *world.Tx, pos cube.Pos) {
 		c = tx.Block(pos).(Chest)
 	}
 	c.viewerMu.Lock()
-	defer c.viewerMu.Unlock()
 	if len(c.viewers) == 0 {
 		c.open(tx, pos)
 	}
 	c.viewers[v] = struct{}{}
+	c.viewerMu.Unlock()
+	if world.JavaRedstone() {
+		c.updateTrappedPower(pos, tx)
+	}
 }
 
 // RemoveViewer removes a viewer from the chest, so that slot updates in the inventory are no longer sent to
@@ -142,13 +148,17 @@ func (c Chest) RemoveViewer(v ContainerViewer, tx *world.Tx, pos cube.Pos) {
 		c = tx.Block(pos).(Chest)
 	}
 	c.viewerMu.Lock()
-	defer c.viewerMu.Unlock()
 	if len(c.viewers) == 0 {
+		c.viewerMu.Unlock()
 		return
 	}
 	delete(c.viewers, v)
 	if len(c.viewers) == 0 {
 		c.close(tx, pos)
+	}
+	c.viewerMu.Unlock()
+	if world.JavaRedstone() {
+		c.updateTrappedPower(pos, tx)
 	}
 }
 
@@ -175,7 +185,9 @@ func (c Chest) UseOnBlock(pos cube.Pos, face cube.Face, _ mgl64.Vec3, tx *world.
 		return
 	}
 	//noinspection GoAssignmentToReceiver
+	trapped := c.Trapped
 	c = NewChest()
+	c.Trapped = trapped
 	c.Facing = user.Rotation().Direction().Opposite()
 
 	// Check both sides of the chest to see if it is possible to pair with another chest.
@@ -199,6 +211,9 @@ func (c Chest) BreakInfo() BreakInfo {
 			if _, pair, ok := c.unpair(tx, pos); ok {
 				c.paired = false
 				tx.SetBlock(pairPos, pair, nil)
+				if world.JavaRedstone() {
+					pair.notifyTrappedBelow(pairPos, tx)
+				}
 			}
 		}
 
@@ -226,7 +241,7 @@ func (c Chest) Paired() bool {
 // pair pairs this chest with the given chest position.
 func (c Chest) pair(tx *world.Tx, pos, pairPos cube.Pos) (ch, pair Chest, ok bool) {
 	pair, ok = tx.Block(pairPos).(Chest)
-	if !ok || c.Facing != pair.Facing || pair.paired && (pair.pairX != pos[0] || pair.pairZ != pos[2]) {
+	if !ok || c.Trapped != pair.Trapped || c.Facing != pair.Facing || pair.paired && (pair.pairX != pos[0] || pair.pairZ != pos[2]) {
 		return c, pair, false
 	}
 	m := new(sync.RWMutex)
@@ -267,7 +282,7 @@ func (c Chest) unpair(tx *world.Tx, pos cube.Pos) (ch, pair Chest, ok bool) {
 	}
 
 	pair, ok = tx.Block(c.pairPos(pos)).(Chest)
-	if !ok || c.Facing != pair.Facing || pair.paired && (pair.pairX != pos[0] || pair.pairZ != pos[2]) {
+	if !ok || c.Trapped != pair.Trapped || c.Facing != pair.Facing || pair.paired && (pair.pairX != pos[0] || pair.pairZ != pos[2]) {
 		return c, pair, false
 	}
 
@@ -290,6 +305,7 @@ func (c Chest) unpair(tx *world.Tx, pos cube.Pos) (ch, pair Chest, ok bool) {
 		}
 	})
 	c.paired, pair.paired = false, false
+	c.signal, pair.signal = 0, 0
 	c.viewerMu, pair.viewerMu = new(sync.RWMutex), new(sync.RWMutex)
 	c.viewers, pair.viewers = make(map[ContainerViewer]struct{}, 1), make(map[ContainerViewer]struct{}, 1)
 	c.pairInv, pair.pairInv = nil, nil
@@ -303,10 +319,10 @@ func (c Chest) pairPos(pos cube.Pos) cube.Pos {
 
 // DecodeNBT ...
 func (c Chest) DecodeNBT(data map[string]any) any {
-	facing := c.Facing
+	facing, trapped := c.Facing, c.Trapped
 	//noinspection GoAssignmentToReceiver
 	c = NewChest()
-	c.Facing = facing
+	c.Facing, c.Trapped = facing, trapped
 	c.CustomName = nbtconv.String(data, "CustomName")
 
 	pairX, ok := data["pairx"]
@@ -327,10 +343,10 @@ func (c Chest) DecodeNBT(data map[string]any) any {
 // EncodeNBT ...
 func (c Chest) EncodeNBT() map[string]any {
 	if c.inventory == nil {
-		facing, customName := c.Facing, c.CustomName
+		facing, customName, trapped := c.Facing, c.CustomName, c.Trapped
 		//noinspection GoAssignmentToReceiver
 		c = NewChest()
-		c.Facing, c.CustomName = facing, customName
+		c.Facing, c.CustomName, c.Trapped = facing, customName, trapped
 	}
 	m := map[string]any{
 		"Items": nbtconv.InvToNBT(c.inventory),
@@ -348,13 +364,20 @@ func (c Chest) EncodeNBT() map[string]any {
 }
 
 // EncodeItem ...
-func (Chest) EncodeItem() (name string, meta int16) {
+func (c Chest) EncodeItem() (name string, meta int16) {
+	if c.Trapped {
+		return "minecraft:trapped_chest", 0
+	}
 	return "minecraft:chest", 0
 }
 
 // EncodeBlock ...
 func (c Chest) EncodeBlock() (name string, properties map[string]any) {
-	return "minecraft:chest", map[string]any{"minecraft:cardinal_direction": c.Facing.String()}
+	name = "minecraft:chest"
+	if c.Trapped {
+		name = "minecraft:trapped_chest"
+	}
+	return name, map[string]any{"minecraft:cardinal_direction": c.Facing.String()}
 }
 
 // allChests ...

@@ -115,11 +115,29 @@ func (c *MovementComputer) applyHorizontalForces(tx *world.Tx, pos, vel mgl64.Ve
 	return vel
 }
 
+// maxVelocity is the most an entity moves along an axis in a tick. Far past anything real, it keeps
+// the blocks looked up for a move bounded: a knockback enchantment at a huge level gave a mob a
+// velocity too large to allocate them for, which panicked the world.
+const maxVelocity = 32
+
+// limitVelocity makes vel safe to move by: NaN and infinite parts are dropped, the rest capped.
+func limitVelocity(vel mgl64.Vec3) mgl64.Vec3 {
+	for i, v := range vel {
+		if math.IsNaN(v) || math.IsInf(v, 0) {
+			vel[i] = 0
+			continue
+		}
+		vel[i] = min(max(v, -maxVelocity), maxVelocity)
+	}
+	return vel
+}
+
 // CheckCollision handles the collision of the entity with blocks, adapting the velocity of the entity if it
 // happens to collide with a block.
 // The final velocity and the Vec3 that the entity should move is returned.
 func (c *MovementComputer) CheckCollision(tx *world.Tx, e world.Entity, pos, vel mgl64.Vec3) (mgl64.Vec3, mgl64.Vec3) {
 	// TODO: Implement collision with other entities.
+	vel = limitVelocity(vel)
 	deltaX, deltaY, deltaZ := vel[0], vel[1], vel[2]
 
 	// Entities only ever have a single bounding box.

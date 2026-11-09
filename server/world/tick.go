@@ -1,6 +1,7 @@
 package world
 
 import (
+	"cmp"
 	"maps"
 	"math/rand/v2"
 	"slices"
@@ -46,6 +47,9 @@ func (w *World) AdvanceTick() {
 func (t ticker) tick(tx *Tx) {
 	viewers, loaders := tx.World().allViewers()
 	w := tx.World()
+	if javaRedstone {
+		w.ticked = true
+	}
 
 	w.set.Lock()
 	if s := w.set.Spawn; s[1] > tx.Range()[1] && w.Dimension() == Overworld {
@@ -69,6 +73,9 @@ func (t ticker) tick(tx *Tx) {
 		}
 	}
 
+	if javaRedstone {
+		w.updateWeatherIntensity()
+	}
 	rain, thunder, tick, tim, cycle := w.set.Raining, w.set.Thundering && w.set.Raining, w.set.CurrentTick, int(w.set.Time), w.set.TimeCycle
 
 	tryAdvanceDay := false
@@ -97,19 +104,65 @@ func (t ticker) tick(tx *Tx) {
 		w.tickLightning(tx)
 	}
 
-	t.tickEntities(tx, tick)
+	if !javaRedstone {
+		t.tickEntities(tx, tick)
+		for _, h := range tickHooks {
+			h(tx)
+		}
+		w.scheduledUpdates.tick(tx, tick)
+		t.tickBlocksRandomly(tx, loaders, tick)
+		t.performNeighbourUpdates(tx)
+		w.redstone.tick(tx, tick)
+		return
+	}
+	// Java Edition's tick order (Crossfly Full, Java redstone).
+	// Block ticks scheduled during this tick (by entities as well) count their delay from this world tick.
+	w.scheduledUpdates.currentTick = tick
+	clear(w.pistonDisplacement)
 	w.scheduledUpdates.tick(tx, tick)
+	// Java runs the neighbour updates a scheduled tick causes right away, so pistons they reach queue their
+	// block events for this tick, before block entities (moving blocks) tick: a sticky piston turned off by an
+	// observer then retracts while its blocks are still moving and drops them, as in flying machines.
+	t.flushUpdates(tx, tick)
+	w.runBlockEvents(tx, func() { t.flushUpdates(tx, tick) })
+	// Java (ServerLevel.tick) ticks entities after block ticks and block events and before block entities: TNT
+	// primed by a block event this tick burns its first fuse tick now, as in Java.
+	t.tickEntities(tx, tick)
+	for _, h := range tickHooks {
+		h(tx)
+	}
+	t.flushUpdates(tx, tick)
 	t.tickBlocksRandomly(tx, loaders, tick)
 	t.performNeighbourUpdates(tx)
 	w.redstone.tick(tx, tick)
+	// Block events queued from here on (a piston its moved blocks updated as they landed) wait for the next tick, as
+	// Java Edition runs block events once a tick, before block entities tick.
 }
 
 // performNeighbourUpdates performs all block updates that came as a result of a neighbouring block being changed.
 func (t ticker) performNeighbourUpdates(tx *Tx) {
+	if !javaRedstone {
+		t.performNeighbourUpdateRound(tx)
+		return
+	}
+	// Updates caused by these updates run in the same tick, as Java Edition runs a chain of neighbour updates at once
+	// (a line of powered rails turns on together). The cap stops a block that keeps updating itself.
+	for done := 0; len(tx.World().neighbourUpdates) > 0 && done < maxChainedNeighbourUpdates; {
+		done += t.performNeighbourUpdateRound(tx)
+	}
+}
+
+// maxChainedNeighbourUpdates is how many neighbour updates may run in one tick before the rest wait for the next.
+const maxChainedNeighbourUpdates = 1 << 16
+
+// performNeighbourUpdateRound runs the neighbour updates queued so far and returns how many there were.
+func (t ticker) performNeighbourUpdateRound(tx *Tx) int {
 	updates := slices.Clone(tx.World().neighbourUpdates)
 	clear(tx.World().neighbourUpdates)
 	tx.World().neighbourUpdates = tx.World().neighbourUpdates[:0]
 
+	tx.World().neighbourUpdateDepth++
+	defer func() { tx.World().neighbourUpdateDepth-- }()
 	for _, update := range updates {
 		pos, changedNeighbour := update.pos, update.neighbour
 		if ticker, ok := tx.Block(pos).(NeighbourUpdateTicker); ok {
@@ -121,6 +174,7 @@ func (t ticker) performNeighbourUpdates(tx *Tx) {
 			}
 		}
 	}
+	return len(updates)
 }
 
 // tickBlocksRandomly executes random block ticks in loaded chunks within range of loaders.
@@ -187,9 +241,42 @@ func (t ticker) tickBlocksRandomly(tx *Tx, loaders []*Loader, tick int64) {
 			rb.RandomTick(pos, tx, tx.World().r)
 		}
 	}
+	if !javaRedstone {
+		for _, pos := range blockEntities {
+			if tb, ok := tx.Block(pos).(TickerBlock); ok {
+				tb.Tick(tick, pos, tx)
+			}
+		}
+		return
+	}
+	// Java ticks block entities in the order they were added; map order would make machines random.
+	order := func(pos cube.Pos) uint64 {
+		if c, ok := tx.World().chunks[chunkPosFromBlockPos(pos)]; ok {
+			return c.blockEntityTickOrder(pos)
+		}
+		return 0
+	}
+	slices.SortFunc(blockEntities, func(a, b cube.Pos) int {
+		if oa, ob := order(a), order(b); oa != ob {
+			return cmp.Compare(oa, ob)
+		}
+		return compareBlockPos(a, b)
+	})
 	for _, pos := range blockEntities {
 		if tb, ok := tx.Block(pos).(TickerBlock); ok {
 			tb.Tick(tick, pos, tx)
+			// Java runs a block entity's updates before the next one ticks: a moved block that arrives updates a
+			// piston beside it while the rest of its line is still moving (and so cannot be pushed yet).
+			t.flushUpdates(tx, tick)
+		}
+	}
+	// Then what watches the block entities (comparators reading containers), once every block entity has ticked.
+	w := tx.World()
+	w.analogWatchers = w.analogWatchers[:0]
+	for _, pos := range blockEntities {
+		if aw, ok := tx.Block(pos).(RedstoneAnalogWatcher); ok {
+			w.analogWatchers = append(w.analogWatchers, pos)
+			aw.RedstoneAnalogCheck(pos, tx)
 		}
 	}
 }
@@ -284,13 +371,16 @@ type scheduledTickQueue struct {
 	ticks         []scheduledTick
 	furthestTicks map[scheduledTickIndex]int64
 	currentTick   int64
+	nextOrder     int64
 }
 
 type scheduledTick struct {
-	pos   cube.Pos
-	b     Block
-	bhash uint64
-	t     int64
+	pos      cube.Pos
+	b        Block
+	bhash    uint64
+	t        int64
+	priority TickPriority
+	order    int64
 }
 
 type scheduledTickIndex struct {
@@ -308,7 +398,66 @@ func newScheduledTickQueue(tick int64) *scheduledTickQueue {
 // queue.
 func (queue *scheduledTickQueue) tick(tx *Tx, tick int64) {
 	queue.currentTick = tick
+	if !javaRedstone {
+		queue.tickInOrder(tx, tick)
+		return
+	}
 
+	// Collect before invoking callbacks: they may schedule, cancel or retarget future work.
+	due := make([]scheduledTick, 0)
+	future := queue.ticks[:0]
+	for _, t := range queue.ticks {
+		if t.t <= tick {
+			due = append(due, t)
+		} else {
+			future = append(future, t)
+		}
+	}
+	queue.ticks = future
+	maps.DeleteFunc(queue.furthestTicks, func(_ scheduledTickIndex, t int64) bool { return t <= tick })
+	slices.SortStableFunc(due, func(a, b scheduledTick) int {
+		if d := cmp.Compare(a.t, b.t); d != 0 {
+			return d
+		}
+		if d := cmp.Compare(a.priority, b.priority); d != 0 {
+			return d
+		}
+		return cmp.Compare(a.order, b.order)
+	})
+	w := tx.World()
+	// Java Edition keeps one scheduled tick per block type and position. Ticks here are kept per state, so blocks
+	// schedule every state they may have by then; once one tick of a block type ran at a position, the others of
+	// that type due in the same tick are dropped, as they would not exist in Java.
+	type posType struct {
+		pos  cube.Pos
+		base uint64
+	}
+	ran := make(map[posType]bool)
+	for _, t := range due {
+		b := tx.Block(t.pos)
+		var key posType
+		if t.b != nil {
+			base, _ := t.b.Hash()
+			key = posType{pos: t.pos, base: base}
+			if ran[key] {
+				continue
+			}
+		}
+		if ticker, ok := b.(ScheduledTicker); ok && w.conf.Blocks.BlockHash(b) == t.bhash {
+			if t.b != nil {
+				ran[key] = true
+			}
+			ticker.ScheduledTick(t.pos, tx, w.r)
+		} else if liquid, ok := tx.additionalLiquid(t.pos); ok && w.conf.Blocks.BlockHash(liquid) == t.bhash {
+			if ticker, ok := liquid.(ScheduledTicker); ok {
+				ticker.ScheduledTick(t.pos, tx, w.r)
+			}
+		}
+	}
+}
+
+// tickInOrder runs the due ticks in the order they were scheduled, without Java Edition's priorities.
+func (queue *scheduledTickQueue) tickInOrder(tx *Tx, tick int64) {
 	w := tx.World()
 	for _, t := range queue.ticks {
 		if t.t > tick {
@@ -338,13 +487,18 @@ func (queue *scheduledTickQueue) tick(tx *Tx, tick int64) {
 // update with the same position and block type is already scheduled at a later
 // time than the newly scheduled update.
 func (queue *scheduledTickQueue) schedule(br BlockRegistry, pos cube.Pos, b Block, delay time.Duration) {
+	queue.schedulePriority(br, pos, b, delay, TickPriorityNormal)
+}
+
+func (queue *scheduledTickQueue) schedulePriority(br BlockRegistry, pos cube.Pos, b Block, delay time.Duration, priority TickPriority) {
 	resTick := queue.currentTick + int64(max(delay/(time.Second/20), 1))
 	index := scheduledTickIndex{pos: pos, hash: br.BlockHash(b)}
 	if t, ok := queue.furthestTicks[index]; ok && t >= resTick && t > queue.currentTick {
 		return
 	}
 	queue.furthestTicks[index] = resTick
-	queue.ticks = append(queue.ticks, scheduledTick{pos: pos, t: resTick, b: b, bhash: index.hash})
+	queue.nextOrder++
+	queue.ticks = append(queue.ticks, scheduledTick{pos: pos, t: resTick, b: b, bhash: index.hash, priority: priority, order: queue.nextOrder})
 }
 
 // retarget moves the ticks scheduled at pos for from over to to, for a block whose state changed
@@ -389,6 +543,14 @@ func (queue *scheduledTickQueue) removeChunk(pos ChunkPos) {
 // add adds a slice of scheduled ticks to the queue. It assumes no duplicate
 // ticks are present in the slice.
 func (queue *scheduledTickQueue) add(ticks []scheduledTick) {
+	for i := range ticks {
+		if ticks[i].order == 0 {
+			queue.nextOrder++
+			ticks[i].order = queue.nextOrder
+		} else {
+			queue.nextOrder = max(queue.nextOrder, ticks[i].order)
+		}
+	}
 	queue.ticks = append(queue.ticks, ticks...)
 	for _, t := range ticks {
 		index := scheduledTickIndex{pos: t.pos, hash: t.bhash}

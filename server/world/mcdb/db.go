@@ -350,7 +350,9 @@ func (db *DB) scheduledUpdates(k dbKey) ([]chunk.ScheduledBlockUpdate, int64, er
 			db.conf.Log.Error("read scheduled updates: decode block state: " + err.Error())
 			continue
 		}
-		updates[i] = chunk.ScheduledBlockUpdate{Pos: blockPosFromNBT(tick), Block: block, Tick: t}
+		priority, _ := tick["df_priority"].(int32)
+		order, _ := tick["df_sub_tick_order"].(int64)
+		updates[i] = chunk.ScheduledBlockUpdate{Pos: blockPosFromNBT(tick), Block: block, Tick: t, Priority: int8(priority), SubTickOrder: order}
 	}
 	return updates, int64(m.CurrentTick), nil
 }
@@ -495,6 +497,9 @@ func (db *DB) storeScheduledUpdates(batch *leveldb.Batch, k dbKey, tick int64, u
 		list[i] = map[string]any{
 			"x": int32(update.Pos[0]), "y": int32(update.Pos[1]), "z": int32(update.Pos[2]),
 			"time": update.Tick, "blockState": bpe.EncodeBlockState(update.Block),
+		}
+		if world.JavaRedstone() {
+			list[i]["df_priority"], list[i]["df_sub_tick_order"] = int32(update.Priority), update.SubTickOrder
 		}
 	}
 	b, err := nbt.MarshalEncoding(scheduledUpdates{CurrentTick: int32(tick), TickList: list}, nbt.LittleEndian)

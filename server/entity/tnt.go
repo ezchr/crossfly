@@ -22,6 +22,10 @@ func NewTNTWithConfig(opts world.EntitySpawnOpts, conf world.TNTSpawnConfig) *wo
 	if opts.Velocity.Len() == 0 {
 		angle := rand.Float64() * math.Pi * 2
 		opts.Velocity = mgl64.Vec3{-math.Sin(angle) * 0.02, 0.1, -math.Cos(angle) * 0.02}
+		if world.JavaRedstone() {
+			// Java's PrimedTnt: 0.02 sideways in a random direction and 0.2 (a float) up.
+			opts.Velocity[1] = float64(float32(0.2))
+		}
 	}
 	return opts.New(TNTType, tntBehaviourConfig{TNTSpawnConfig: conf})
 }
@@ -47,7 +51,10 @@ func (conf tntBehaviourConfig) New() *tntBehaviour {
 	confPassive := tntConf
 	confPassive.ExistenceDuration = conf.Fuse
 	confPassive.Expire = func(e *Ent, tx *world.Tx) {
-		explodeTNT(e, tx, b)
+		if !b.exploded {
+			b.exploded = true
+			explodeTNT(e, tx, b)
+		}
 	}
 	b.PassiveBehaviour = confPassive.New()
 	return b
@@ -58,13 +65,24 @@ type tntBehaviour struct {
 	*PassiveBehaviour
 	source              *world.EntityHandle
 	unblockableByShield bool
+	exploded            bool
 }
 
-// explodeTNT creates an explosion for primed TNT.
+// Tick ticks primed TNT. With Java redstone it ticks as Java Edition's PrimedTnt (tnt_java.go).
+func (b *tntBehaviour) Tick(e *Ent, tx *world.Tx) *Movement {
+	if world.JavaRedstone() {
+		return b.javaTick(e, tx)
+	}
+	return b.PassiveBehaviour.Tick(e, tx)
+}
+
+// explodeTNT creates an explosion for primed TNT, with Java redstone centred 1/16 of its height above its feet as in
+// Java Edition.
 func explodeTNT(e *Ent, tx *world.Tx, b *tntBehaviour) {
 	tntExplosionConfig(tx, b).Explode(tx, world.EntityExplosionSource{
 		Entity:        e,
 		ExplosionSize: 4,
+		OffsetY:       tntExplosionOffset(),
 	})
 }
 
@@ -121,4 +139,12 @@ func tntFuseAndUnblockableByShield(data any) (time.Duration, bool) {
 	default:
 		panic("invalid TNT behaviour type")
 	}
+}
+
+// tntExplosionOffset is how far above primed TNT's feet it explodes: 1/16 of its height in Java Edition.
+func tntExplosionOffset() float64 {
+	if world.JavaRedstone() {
+		return 0.98 * 0.0625
+	}
+	return 0
 }

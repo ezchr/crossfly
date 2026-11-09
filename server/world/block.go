@@ -210,3 +210,57 @@ func replaceable(w *World, c *Column, pos cube.Pos, with Block) bool {
 type BlockAction interface {
 	BlockAction()
 }
+
+// BlockStateChangeListener is notified when an adjacent block changes its runtime state. Unlike neighbour
+// notifications, these updates also occur for state writes that suppress ordinary block updates.
+type BlockStateChangeListener interface {
+	BlockStateChanged(pos, changed cube.Pos, tx *Tx)
+}
+
+// BlockPlacementListener handles placement over a different block type, before adjacent state-change listeners.
+type BlockPlacementListener interface {
+	BlockPlaced(pos cube.Pos, previous Block, tx *Tx)
+}
+
+// BlockRemovalListener handles removal after the replacement has been installed, before neighbour updates.
+type BlockRemovalListener interface {
+	BlockRemoved(pos cube.Pos, replacement Block, tx *Tx)
+}
+
+// JavaRedstoneExtension is implemented by blocks of Crossfly Full that are redstone components only with Java
+// redstone (a lectern, a chest, a door). With Java redstone off, the redstone engine passes them by, as in Crossfly
+// Core.
+type JavaRedstoneExtension interface {
+	JavaRedstoneExtension()
+}
+
+// JavaRedstoneNBT is implemented by blocks of Crossfly Full that keep saved data only for Java redstone (redstone
+// dust its dot). With Java redstone off, they have no block entity, as in Crossfly Core.
+type JavaRedstoneNBT interface {
+	JavaRedstoneNBT()
+}
+
+// javaRedstoneExtensionOff reports whether b only has its NBT for Java redstone, which is off.
+func javaRedstoneExtensionOff(b Block) bool {
+	if !fullBuild || javaRedstone {
+		return false
+	}
+	_, ok := b.(JavaRedstoneNBT)
+	return ok
+}
+
+// JavaRedstoneInactive reports whether b is a JavaRedstoneExtension while Java redstone is off: a block whose
+// redstone methods are then to be passed by.
+func JavaRedstoneInactive(b Block) bool {
+	if !fullBuild || javaRedstone {
+		return false
+	}
+	_, ok := b.(JavaRedstoneExtension)
+	return ok
+}
+
+// CoreRedstoneOnly is implemented by blocks that are redstone components only without Java redstone (TNT, which in
+// Java Edition reacts to block updates instead).
+type CoreRedstoneOnly interface {
+	CoreRedstoneOnly()
+}

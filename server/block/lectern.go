@@ -25,6 +25,9 @@ type Lectern struct {
 	Book item.Stack
 	// Page is the page the Lectern is currently on in the book.
 	Page int
+	// Powered is true for the two ticks of the pulse a lectern gives when its page is turned (Crossfly Full, Java
+	// redstone).
+	Powered bool
 }
 
 // Model ...
@@ -123,9 +126,17 @@ func (l Lectern) TurnPage(pos cube.Pos, tx *world.Tx, page int) error {
 		return fmt.Errorf("page number %d is out of bounds", page)
 	}
 	l.Page = page
+	if !world.JavaRedstone() {
+		tx.SetBlock(pos, l, nil)
+		return nil
+	}
+	// Java Edition's signalPageChange: a two tick pulse.
+	l.Powered = true
 	tx.SetBlock(pos, l, nil)
+	tx.ScheduleBlockUpdate(pos, l, time.Second/10)
 	return nil
 }
+
 
 // EncodeNBT ...
 func (l Lectern) EncodeNBT() map[string]any {
@@ -157,7 +168,7 @@ func (Lectern) EncodeItem() (name string, meta int16) {
 func (l Lectern) EncodeBlock() (string, map[string]any) {
 	return "minecraft:lectern", map[string]any{
 		"minecraft:cardinal_direction": l.Facing.String(),
-		"powered_bit":                  uint8(0), // We don't support redstone, anyway.
+		"powered_bit":                  boolByte(l.Powered),
 	}
 }
 

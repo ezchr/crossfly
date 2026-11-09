@@ -8,6 +8,7 @@ import (
 	"iter"
 	"maps"
 	"math/rand/v2"
+	"reflect"
 	"slices"
 	"sync"
 	"sync/atomic"
@@ -81,6 +82,17 @@ type World struct {
 	scheduledUpdates *scheduledTickQueue
 	redstone         *redstoneEngine
 	neighbourUpdates []neighbourUpdate
+	// neighbourUpdateDepth is above zero while neighbour updates are being run.
+	neighbourUpdateDepth            int
+	blockEvents                     []blockEvent
+	rainIntensity, thunderIntensity float32
+	pistonDisplacement              map[*EntityHandle]mgl64.Vec3
+	// blockEntitySeq numbers block entities as they are created (Column.blockEntityOrder).
+	blockEntitySeq uint64
+	// ticked is set by a tick, so that handleTransactions settles only the transactions that ran between ticks.
+	ticked bool
+	// analogWatchers are the positions of the RedstoneAnalogWatchers found in the last tick.
+	analogWatchers []cube.Pos
 
 	viewerMu sync.Mutex
 	viewers  map[*Loader]Viewer
@@ -140,7 +152,17 @@ func (w *World) exec(f execFunc) <-chan struct{} {
 	c := make(chan struct{})
 	ntx := normalTransaction{c: c, f: f}
 	if w.conf.Synchronous {
+		if !javaRedstone || !w.conf.SettleSynchronousTransactions {
+			ntx.Run(w)
+			return c
+		}
+		before := w.pending()
 		ntx.Run(w)
+		if w.ticked {
+			w.ticked = false
+		} else {
+			w.settle(before)
+		}
 		return c
 	}
 	w.queue <- ntx
@@ -197,7 +219,17 @@ func (w *World) handleTransactions() {
 	for {
 		select {
 		case tx := <-w.queue:
+			if !javaRedstone {
+				tx.Run(w)
+				continue
+			}
+			before := w.pending()
 			tx.Run(w)
+			if w.ticked {
+				w.ticked = false
+			} else {
+				w.settle(before)
+			}
 		case <-w.queueClosing:
 			w.queueing.Done()
 			return
@@ -336,6 +368,10 @@ type SetOpts struct {
 	// holds for the position, for a change that does not affect the power the
 	// block receives or emits, such as the shape of redstone wire.
 	KeepRedstonePower bool
+	// DisableShapeUpdates makes SetBlock not tell neighbouring blocks that a state next to them
+	// changed (BlockStateChangeListener, such as an observer), like Java Edition's
+	// UPDATE_KNOWN_SHAPE flag (a strict /setblock).
+	DisableShapeUpdates bool
 }
 
 // setBlock writes a block to the position passed. If a chunk is not yet loaded
@@ -368,11 +404,21 @@ func (tx *Tx) setBlock(pos cube.Pos, b Block, opts *SetOpts) {
 	rid := w.conf.Blocks.BlockRuntimeID(b)
 	redstoneAfterRelevant := isRedstoneRelevant(b)
 	needOldBlock := !opts.DisableRedstoneUpdates || !redstoneAfterRelevant
-	needOldRID := needOldBlock || (rid != w.conf.Blocks.AirRuntimeID() && !opts.DisableLiquidDisplacement)
+	// Java redstone: shape/state listeners also need the previous state when ordinary neighbour updates are
+	// suppressed.
+	needOldRID := javaRedstone || needOldBlock || (rid != w.conf.Blocks.AirRuntimeID() && !opts.DisableLiquidDisplacement)
 
 	var oldRID uint32
 	if needOldRID {
 		oldRID = c.Block(x, y, z, 0)
+	}
+	var (
+		oldFiltering   uint8
+		previousEntity Block
+	)
+	if javaRedstone {
+		oldFiltering = max(w.conf.Blocks.FilteringBlock(oldRID), w.conf.Blocks.FilteringBlock(c.Block(x, y, z, 1)))
+		previousEntity = c.BlockEntities[pos]
 	}
 	var oldBlock Block
 	if needOldBlock {
@@ -393,8 +439,20 @@ func (tx *Tx) setBlock(pos cube.Pos, b Block, opts *SetOpts) {
 	c.SetBlock(x, y, z, 0, rid)
 	if w.conf.Blocks.NBTBlock(rid) {
 		c.BlockEntities[pos] = b
+		if !javaRedstone {
+			// Block entities tick in no particular order.
+		} else if fresh, ok := b.(FreshBlockEntity); (ok && fresh.FreshBlockEntity()) || previousEntity == nil || reflect.TypeOf(previousEntity) != reflect.TypeOf(b) {
+			w.blockEntitySeq++
+			if c.blockEntityOrder == nil {
+				c.blockEntityOrder = make(map[cube.Pos]uint64)
+			}
+			c.blockEntityOrder[pos] = w.blockEntitySeq
+		}
 	} else {
 		delete(c.BlockEntities, pos)
+		if javaRedstone {
+			delete(c.blockEntityOrder, pos)
+		}
 	}
 
 	viewers := slices.Clone(c.viewers)
@@ -430,6 +488,9 @@ func (tx *Tx) setBlock(pos cube.Pos, b Block, opts *SetOpts) {
 		}
 	}
 
+	if javaRedstone && oldFiltering != max(w.conf.Blocks.FilteringBlock(c.Block(x, y, z, 0)), w.conf.Blocks.FilteringBlock(c.Block(x, y, z, 1))) {
+		w.invalidateCurrentSky(chunkPosFromBlockPos(pos))
+	}
 	if !opts.KeepRedstonePower && (redstoneAfterRelevant || (needOldBlock && isRedstoneRelevant(oldBlock))) {
 		w.redstone.forget(pos)
 	}
@@ -438,11 +499,56 @@ func (tx *Tx) setBlock(pos cube.Pos, b Block, opts *SetOpts) {
 		viewer.ViewBlockUpdate(pos, b, 0)
 	}
 
+	if javaRedstone {
+		tx.notifyStateListeners(pos, b, oldBlock, rid, oldRID, previousEntity, opts)
+	}
 	if !opts.DisableBlockUpdates {
 		w.doBlockUpdatesAround(pos)
 	}
 	if !opts.DisableRedstoneUpdates {
-		w.redstone.invalidateAroundBlockChange(pos, oldBlock, b, RedstoneUpdateCauseBlockUpdate, w.Range())
+		w.redstone.invalidateAroundBlockChange(w, pos, oldBlock, b, RedstoneUpdateCauseBlockUpdate, w.Range())
+	}
+}
+
+// notifyStateListeners tells the blocks that listen for it that the block at pos was removed, placed or changed its
+// state (BlockRemovalListener, BlockPlacementListener, BlockStateChangeListener), as Java Edition's shape updates. rid
+// is the runtime ID set and b the block now there.
+func (tx *Tx) notifyStateListeners(pos cube.Pos, b, oldBlock Block, rid, oldRID uint32, previousEntity Block, opts *SetOpts) {
+	w := tx.World()
+	x, y, z := uint8(pos[0]), int16(pos[1]), uint8(pos[2])
+	c := tx.chunk(chunkPosFromBlockPos(pos))
+	if oldRID != rid {
+		previous := oldBlock
+		if previous == nil {
+			previous = w.conf.Blocks.BlockByRuntimeIDOrAir(oldRID)
+		}
+		if previousEntity != nil {
+			previous = previousEntity
+		}
+		if listener, ok := previous.(BlockRemovalListener); ok {
+			listener.BlockRemoved(pos, b, tx)
+		}
+	}
+	if listener, ok := b.(BlockPlacementListener); ok {
+		listener.BlockPlaced(pos, w.conf.Blocks.BlockByRuntimeIDOrAir(oldRID), tx)
+	}
+
+	stateChanged := oldRID != c.Block(x, y, z, 0)
+	if old, ok := previousEntity.(interface{ BlockStateKey() uint64 }); ok {
+		if current, ok := c.BlockEntities[pos].(interface{ BlockStateKey() uint64 }); ok {
+			stateChanged = stateChanged || old.BlockStateKey() != current.BlockStateKey()
+		}
+	}
+	if stateChanged && !opts.DisableShapeUpdates {
+		for _, face := range cube.Faces() {
+			neighbour := pos.Side(face)
+			if neighbour.OutOfBounds(w.Range()) {
+				continue
+			}
+			if listener, ok := tx.Block(neighbour).(BlockStateChangeListener); ok {
+				listener.BlockStateChanged(neighbour, pos, tx)
+			}
+		}
 	}
 }
 
@@ -554,6 +660,9 @@ func (tx *Tx) buildStructure(pos cube.Pos, s Structure) {
 			}
 			c.SetBlock(0, 0, 0, 0, c.Block(0, 0, 0, 0)) // Make sure the heightmap is recalculated.
 			c.modified = true
+			if javaRedstone {
+				w.invalidateCurrentSky(chunkPos)
+			}
 
 			// After setting all blocks of the structure within a single chunk,
 			// we show the new chunk to all viewers once.
@@ -610,10 +719,13 @@ func (tx *Tx) setLiquid(pos cube.Pos, b Liquid) {
 	}
 	chunkPos := chunkPosFromBlockPos(pos)
 	c := tx.chunk(chunkPos)
+	if javaRedstone {
+		w.invalidateCurrentSky(chunkPos)
+	}
 	if b == nil {
 		w.removeLiquids(c, pos)
 		w.doBlockUpdatesAround(pos)
-		w.redstone.invalidateAround(pos, pos, RedstoneUpdateCauseBlockUpdate, w.Range())
+		w.redstone.invalidateAroundLiquidChange(w, pos, w.Range())
 		return
 	}
 	x, y, z := uint8(pos[0]), int16(pos[1]), uint8(pos[2])
@@ -637,7 +749,7 @@ func (tx *Tx) setLiquid(pos cube.Pos, b Liquid) {
 	c.modified = true
 
 	w.doBlockUpdatesAround(pos)
-	w.redstone.invalidateAround(pos, pos, RedstoneUpdateCauseBlockUpdate, w.Range())
+	w.redstone.invalidateAroundLiquidChange(w, pos, w.Range())
 }
 
 // removeLiquids removes any liquid blocks that may be present at a specific
@@ -1136,6 +1248,13 @@ func (w *World) doBlockUpdatesAround(pos cube.Pos) {
 	}, w.Range())
 }
 
+// blockEvent is a block event queued with Tx.QueueBlockEvent (Java redstone).
+type blockEvent struct {
+	pos   cube.Pos
+	block Block
+	event int
+}
+
 // neighbourUpdate represents a position that needs to be updated because of a
 // neighbour that changed.
 type neighbourUpdate struct {
@@ -1556,11 +1675,15 @@ func (w *World) closeUnusedChunks(tx *Tx) {
 // Column represents the data of a chunk including the (block) entities and
 // viewers and loaders.
 type Column struct {
-	modified bool
+	modified   bool
+	currentSky *chunk.Chunk
 
 	*chunk.Chunk
 	Entities      []*EntityHandle
 	BlockEntities map[cube.Pos]Block
+	// blockEntityOrder is when each block entity was created (World.blockEntitySeq): block entities tick in
+	// that order, as Java ticks its block entity tickers in the order they were added.
+	blockEntityOrder map[cube.Pos]uint64
 
 	viewers []Viewer
 	loaders []*Loader
@@ -1587,7 +1710,7 @@ func (w *World) columnTo(col *Column, pos ChunkPos) *chunk.Column {
 		c.BlockEntities = append(c.BlockEntities, chunk.BlockEntity{Pos: pos, Data: be.(NBTer).EncodeNBT()})
 	}
 	for _, t := range scheduled {
-		c.ScheduledBlocks = append(c.ScheduledBlocks, chunk.ScheduledBlockUpdate{Pos: t.pos, Block: w.conf.Blocks.BlockRuntimeID(t.b), Tick: t.t})
+		c.ScheduledBlocks = append(c.ScheduledBlocks, chunk.ScheduledBlockUpdate{Pos: t.pos, Block: w.conf.Blocks.BlockRuntimeID(t.b), Tick: t.t, Priority: int8(t.priority), SubTickOrder: t.order})
 	}
 	return c
 }
@@ -1631,12 +1754,32 @@ func (w *World) columnFrom(c *chunk.Column, _ ChunkPos) *Column {
 	for _, t := range c.ScheduledBlocks {
 		bl := w.conf.Blocks.BlockByRuntimeIDOrAir(t.Block)
 		scheduled = append(scheduled, scheduledTick{
-			pos:   t.Pos,
-			b:     bl,
-			bhash: w.conf.Blocks.BlockHash(bl),
-			t:     w.scheduledUpdates.currentTick + (t.Tick - savedTick),
+			pos:      t.Pos,
+			b:        bl,
+			bhash:    w.conf.Blocks.BlockHash(bl),
+			t:        w.scheduledUpdates.currentTick + (t.Tick - savedTick),
+			priority: TickPriority(t.Priority), order: t.SubTickOrder,
 		})
 	}
 	w.scheduledUpdates.add(scheduled)
 	return col
+}
+
+// AllowPistonDuplication reports whether pistons duplicate blocks as in vanilla Java Edition. See
+// Config.AllowPistonDuplication.
+func (w *World) AllowPistonDuplication() bool { return w.conf.AllowPistonDuplication }
+
+// EntitiesCreatePortals reports whether entities other than players create nether portals in this world when
+// they arrive through a portal with no linked one. See Config.EntitiesCreatePortals.
+func (w *World) EntitiesCreatePortals() bool { return w.conf.EntitiesCreatePortals }
+
+// FreshBlockEntity is implemented by blocks whose block entity is a new one each time the block is set (a
+// moving piston), even over one of the same type: it then ticks after the block entities already there.
+type FreshBlockEntity interface {
+	FreshBlockEntity() bool
+}
+
+// blockEntityTickOrder returns when the block entity at pos was created, 0 if unknown (loaded from disk).
+func (c *Column) blockEntityTickOrder(pos cube.Pos) uint64 {
+	return c.blockEntityOrder[pos]
 }

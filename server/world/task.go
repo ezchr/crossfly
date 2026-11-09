@@ -363,7 +363,17 @@ func (w *World) scheduleTask(task *Task, f func(tx *Tx) error) *Task {
 	}
 	if w.conf.Synchronous {
 		w.scheduleMu.Unlock()
+		if !javaRedstone || !w.conf.SettleSynchronousTransactions {
+			st.Run(w)
+			return task
+		}
+		before := w.pending()
 		st.Run(w)
+		if w.ticked {
+			w.ticked = false
+		} else {
+			w.settle(before)
+		}
 		return task
 	}
 	select {

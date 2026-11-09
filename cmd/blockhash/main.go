@@ -275,7 +275,7 @@ func (b *hashBuilder) ftype(structName, s string, expr ast.Expr, directives map[
 	case "WireConnections":
 		// Four sides with three connections each make 81 combinations.
 		return "uint64(" + s + ".Uint8())", 7
-	case "WoodType", "LeavesType", "FlowerType", "DoubleFlowerType", "Colour":
+	case "WoodType", "LeavesType", "FlowerType", "DoubleFlowerType", "Colour", "ButtonType", "PressurePlateType":
 		// Assuming these were all based on metadata, it should be safe to assume a bit size of 4 for this.
 		return "uint64(" + s + ".Uint8())", 4
 	case "SaplingType":

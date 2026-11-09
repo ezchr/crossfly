@@ -130,6 +130,9 @@ func (w Water) ScheduledTick(pos cube.Pos, tx *world.Tx, _ *rand.Rand) {
 					return
 				}
 				tx.SetLiquid(pos, res)
+				if world.JavaRedstone() {
+					w = res
+				}
 			}
 		}
 	}

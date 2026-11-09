@@ -85,6 +85,12 @@ type EntityLander interface {
 
 // EntityInsider represents a block that reacts to an entity going inside its 1x1x1 axis
 // aligned bounding box.
+// PlayerWillBreaker is implemented by blocks that change before a player breaks them, depending on the item held,
+// such as tripwire cut with shears.
+type PlayerWillBreaker interface {
+	PlayerWillBreak(pos cube.Pos, held item.Stack, tx *world.Tx)
+}
+
 type EntityInsider interface {
 	// EntityInside is called when an entity goes inside the block's 1x1x1 axis aligned bounding box.
 	EntityInside(pos cube.Pos, tx *world.Tx, e world.Entity)
@@ -194,6 +200,11 @@ func firstReplaceable(tx *world.Tx, pos cube.Pos, face cube.Face, with world.Blo
 		return side, face, true
 	}
 	return pos, face, false
+}
+
+// entityIntersects checks whether an entity overlaps a box.
+func entityIntersects(e world.Entity, box cube.BBox) bool {
+	return e.H().Type().BBox(e).Translate(e.Position()).IntersectsWith(box)
 }
 
 // place places the block passed at the position passed. If the user implements the block.Placer interface, it
@@ -401,4 +412,10 @@ func newOreSmeltInfo(product item.Stack, experience float64) item.SmeltInfo {
 // newFuelInfo returns a new FuelInfo with the given values.
 func newFuelInfo(duration time.Duration) item.FuelInfo {
 	return item.FuelInfo{Duration: duration}
+}
+
+// PreciseProjectileHitter receives the trace's exact face intersection rather than the projectile's current centre.
+// Targets need this to calculate Java's hit-accuracy signal strength.
+type PreciseProjectileHitter interface {
+	ProjectileHitAt(pos cube.Pos, tx *world.Tx, e world.Entity, face cube.Face, hit mgl64.Vec3)
 }

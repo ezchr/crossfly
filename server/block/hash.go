@@ -29,6 +29,7 @@ const (
 	hashBookshelf
 	hashBrewingStand
 	hashBricks
+	hashButton
 	hashCactus
 	hashCake
 	hashCalcite
@@ -54,6 +55,7 @@ const (
 	hashCopperBars
 	hashCopperChain
 	hashCopperDoor
+	hashIronDoor
 	hashCopperGolemStatue
 	hashCopperGrate
 	hashCopperLantern
@@ -61,6 +63,7 @@ const (
 	hashCopperTorch
 	hashCopperTrapdoor
 	hashCoral
+	hashCoralFan
 	hashCoralBlock
 	hashCraftingTable
 	hashDeadBush
@@ -73,6 +76,7 @@ const (
 	hashDiorite
 	hashDirt
 	hashDirtPath
+	hashDispenser
 	hashDoubleFlower
 	hashDoubleTallGrass
 	hashDragonEgg
@@ -163,6 +167,7 @@ const (
 	hashPolishedTuff
 	hashPortal
 	hashPotato
+	hashPressurePlate
 	hashPrismarine
 	hashPumpkin
 	hashPumpkinSeeds
@@ -176,7 +181,22 @@ const (
 	hashRawIron
 	hashRedShrub
 	hashRedstoneBlock
+	hashObserver
+	hashPiston
+	hashPistonHead
+	hashMovingPiston
+	hashTarget
+	hashDaylightDetector
+	hashRedstoneComparator
+	hashTripwireHook
+	hashCopperBulb
+	hashRail
+	hashPoweredRail
+	hashActivatorRail
+	hashDetectorRail
+	hashRedstoneLamp
 	hashRedstoneOre
+	hashRedstoneRepeater
 	hashRedstoneTorch
 	hashRedstoneWire
 	hashReinforcedDeepslate
@@ -379,7 +399,7 @@ func (c Carrot) Hash() (uint64, uint64) {
 }
 
 func (c Chest) Hash() (uint64, uint64) {
-	return hashChest, uint64(c.Facing)
+	return hashChest, uint64(c.Facing) | uint64(boolByte(c.Trapped))<<2
 }
 
 func (ChiseledQuartz) Hash() (uint64, uint64) {
@@ -735,7 +755,7 @@ func (l Leaves) Hash() (uint64, uint64) {
 }
 
 func (l Lectern) Hash() (uint64, uint64) {
-	return hashLectern, uint64(l.Facing)
+	return hashLectern, uint64(l.Facing) | uint64(boolByte(l.Powered))<<2
 }
 
 func (l Lever) Hash() (uint64, uint64) {
