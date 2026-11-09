@@ -983,6 +983,7 @@ func (p *Player) kill(src world.DamageSource) {
 	p.Handler().HandleDeath(p, src, &keepInv)
 	p.StopSneaking()
 	p.StopSprinting()
+	p.StopGliding()
 
 	pos := p.Position()
 	if !keepInv && p.GameMode() != world.GameModeSpectator {
@@ -1084,6 +1085,7 @@ func (p *Player) respawn(f func(p *Player)) {
 	p.sendFood()
 	p.Extinguish()
 	p.ResetFallDistance()
+	p.StopGliding()
 
 	p.Handler().HandleRespawn(p, &pos, &w)
 
@@ -1332,15 +1334,24 @@ func (p *Player) Crawling() bool {
 
 // StartGliding makes the player start gliding if it is not currently doing so.
 func (p *Player) StartGliding() {
-	if p.gliding {
-		return
-	}
-	chest := p.Armour().Chestplate()
-	if _, ok := chest.Item().(item.Elytra); !ok || chest.Durability() < 2 {
+	if p.gliding || !p.canGlide() {
 		return
 	}
 	p.gliding = true
 	p.updateState()
+}
+
+// canGlide reports whether the player may glide, the part of vanilla's LivingEntity.canGlide that
+// does not depend on the client: it wears an elytra its next damage does not break, and it rides
+// nothing. The player's tick ends a glide once this no longer holds, however the elytra went (taken
+// out of the slot by another player, cleared by a command, broken).
+func (p *Player) canGlide() bool {
+	if p.riddenEntity != nil {
+		return false
+	}
+	chest := p.Armour().Chestplate()
+	_, ok := chest.Item().(item.Elytra)
+	return ok && chest.Durability() >= 2
 }
 
 // Gliding checks if the player is currently gliding.
@@ -2968,6 +2979,7 @@ func (p *Player) Teleport(pos mgl64.Vec3) {
 		return
 	}
 	p.dismountEntity(p.tx, false)
+	p.StopGliding()
 	p.forceTeleport(pos)
 }
 
@@ -3386,7 +3398,9 @@ func (p *Player) Tick(tx *world.Tx, current int64) {
 		}
 	}
 
-	if _, ok := p.Armour().Chestplate().Item().(item.Elytra); ok && p.Gliding() {
+	if p.gliding && !p.canGlide() {
+		p.StopGliding()
+	} else if p.gliding {
 		if p.glideTicks += 1; p.glideTicks%20 == 0 {
 			d := p.damageItem(p.Armour().Chestplate(), 1)
 			p.armour.SetChestplate(d)
@@ -3470,6 +3484,7 @@ func (p *Player) Tick(tx *world.Tx, current int64) {
 	p.conn().SendHudUpdates()
 
 	if p.prevWorld != tx.World() && p.prevWorld != nil {
+		p.StopGliding()
 		p.Handler().HandleChangeWorld(p, p.prevWorld, tx.World())
 	}
 	p.prevWorld = tx.World()
