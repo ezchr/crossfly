@@ -617,20 +617,15 @@ func (c *lootComponent) OnDeath(m *mob.Mob, src world.DamageSource) {
 }
 
 // headDrops are the heads mobs drop when a charged creeper kills them (BDS
-// Mob::die: skull data by actor type; zombies, skeletons and piglins
-// include their sub-types).
+// Mob::die: skull data by actor type). ActorClassTree::isInstanceOf with a
+// full actor type compares the type byte exactly, so strays, husks,
+// drowned, zombie villagers and piglin brutes drop nothing.
 var headDrops = map[string]int16{
-	"minecraft:skeleton":           0,
-	"minecraft:stray":              0,
-	"minecraft:wither_skeleton":    1,
-	"minecraft:zombie":             2,
-	"minecraft:husk":               2,
-	"minecraft:drowned":            2,
-	"minecraft:zombie_villager":    2,
-	"minecraft:zombie_villager_v2": 2,
-	"minecraft:creeper":            4,
-	"minecraft:piglin":             6,
-	"minecraft:piglin_brute":       6,
+	"minecraft:skeleton":        0,
+	"minecraft:wither_skeleton": 1,
+	"minecraft:zombie":          2,
+	"minecraft:creeper":         4,
+	"minecraft:piglin":          6,
 }
 
 func init() {

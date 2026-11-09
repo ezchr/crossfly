@@ -520,6 +520,13 @@ func TestChargedCreeperHead(t *testing.T) {
 		if n := countItems(takeItems(tx), "zombie_head"); n != 1 {
 			t.Fatalf("%d zombie heads, want 1", n)
 		}
+		// Mob::die matches the actor type exactly: a husk drops no head.
+		h := w.SpawnTx(tx, "minecraft:husk", mgl64.Vec3{0.5, 1, 2.5}, mob.SpawnOptions{Event: "minecraft:as_adult"})
+		hm, _ := h.Mob(tx)
+		hm.Hurt(1000, entity.ExplosionDamageSource{Source: world.EntityExplosionSource{Entity: cm, ExplosionSize: 3}})
+		if n := countItems(takeItems(tx), "zombie_head"); n != 0 {
+			t.Fatalf("a husk dropped %d zombie heads, want 0", n)
+		}
 	})
 }
 
