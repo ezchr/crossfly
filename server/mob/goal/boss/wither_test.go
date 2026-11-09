@@ -8,6 +8,7 @@ import (
 	"github.com/df-mc/dragonfly/server/block"
 	"github.com/df-mc/dragonfly/server/block/cube"
 	"github.com/df-mc/dragonfly/server/entity"
+	"github.com/df-mc/dragonfly/server/item"
 	"github.com/df-mc/dragonfly/server/mob"
 	bc "github.com/df-mc/dragonfly/server/mob/component/boss"
 	"github.com/df-mc/dragonfly/server/mob/component/combat"
@@ -185,25 +186,113 @@ func TestWitherHighestDamageTarget(t *testing.T) {
 	})
 }
 
-// TestWitherSpawnPattern: three wither skeleton skulls on a T of soul sand
-// make a wither and clear the pattern.
+// buildWitherT builds the soul sand T with wither skeleton skulls on top
+// along axis (x or z) around (0, 1..3, 0), all but the skull at skip.
+func buildWitherT(tx *world.Tx, axis cube.Pos, skull block.SkullType, skip int) {
+	sk := block.Skull{Type: skull, Attach: block.StandingAttachment(cube.OrientationFromYaw(0))}
+	tx.SetBlock(cube.Pos{0, 1, 0}, block.SoulSand{}, nil)
+	for k := -1; k <= 1; k++ {
+		p := cube.Pos{axis[0] * k, 2, axis[2] * k}
+		tx.SetBlock(p, block.SoulSoil{}, nil)
+		if k != skip {
+			tx.SetBlock(p.Side(cube.FaceUp), sk, nil)
+		}
+	}
+}
+
+// TestWitherSpawnPattern: placing the last wither skeleton skull on a T of
+// soul sand / soul soil (SkullBlock::checkMobSpawn through the skull's
+// placement) makes a wither, clears the nine pattern blocks and turns the
+// wither for a T along x; the wither stands where BuildMatch puts the centre
+// (first skull + (1, -2, 1)).
 func TestWitherSpawnPattern(t *testing.T) {
-	w := setup(t, mobtest.Options{}, "minecraft:boss")
-	var spawned bool
-	w.Do(func(tx *world.Tx) {
-		skull := block.Skull{Type: block.WitherSkeletonSkull(), Attach: block.StandingAttachment(cube.OrientationFromYaw(0))}
-		tx.SetBlock(cube.Pos{0, 1, 0}, block.SoulSand{}, nil)
-		for x := -1; x <= 1; x++ {
-			tx.SetBlock(cube.Pos{x, 2, 0}, block.SoulSand{}, nil)
-			tx.SetBlock(cube.Pos{x, 3, 0}, skull, nil)
-		}
-		spawned = bc.TrySpawnWither(tx, cube.Pos{1, 3, 0})
-		if _, ok := tx.Block(cube.Pos{0, 2, 0}).(block.Air); !ok {
-			t.Errorf("pattern not cleared")
-		}
-	})
-	if !spawned || len(w.Mobs(bc.WitherID)) != 1 {
-		t.Fatalf("spawned %v, withers %d", spawned, len(w.Mobs(bc.WitherID)))
+	for _, tc := range []struct {
+		name string
+		axis cube.Pos
+		at   mgl64.Vec3
+		yaw  float64
+	}{
+		{"along x", cube.Pos{1, 0, 0}, mgl64.Vec3{0.5, 1.05, 1.5}, 90},
+		{"along z", cube.Pos{0, 0, 1}, mgl64.Vec3{1.5, 1.05, 0.5}, 0},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			w := setup(t, mobtest.Options{}, "minecraft:boss")
+			p := w.AddPlayer("builder", mgl64.Vec3{5.5, 1, 5.5})
+			w.Do(func(tx *world.Tx) {
+				buildWitherT(tx, tc.axis, block.WitherSkeletonSkull(), 1)
+				user, _ := p.Entity(tx)
+				last := cube.Pos{tc.axis[0], 2, tc.axis[2]}
+				block.Skull{Type: block.WitherSkeletonSkull()}.UseOnBlock(last, cube.FaceUp, mgl64.Vec3{}, tx, user.(item.User), &item.UseContext{})
+				for _, q := range []cube.Pos{{0, 1, 0}, {0, 2, 0}, {0, 3, 0}, last, last.Side(cube.FaceUp)} {
+					if _, ok := tx.Block(q).(block.Air); !ok {
+						t.Errorf("pattern block %v not cleared: %T", q, tx.Block(q))
+					}
+				}
+			})
+			withers := w.Mobs(bc.WitherID)
+			if len(withers) != 1 {
+				t.Fatalf("withers %d, want 1", len(withers))
+			}
+			with(t, w, withers[0], func(tx *world.Tx, m *mob.Mob) {
+				if !near(m.Position(), tc.at, 1e-6) {
+					t.Errorf("wither at %v, want %v", m.Position(), tc.at)
+				}
+				if m.Yaw() != tc.yaw {
+					t.Errorf("wither yaw %v, want %v", m.Yaw(), tc.yaw)
+				}
+			})
+		})
+	}
+}
+
+// TestWitherSpawnPatternRules: other skulls, a block where the T's lower
+// corners must be air, peaceful, or a skull not yet placed make no wither;
+// the T lying on the ground works too (the pattern is matched any way
+// round).
+func TestWitherSpawnPatternRules(t *testing.T) {
+	cases := []struct {
+		name  string
+		opts  mobtest.Options
+		build func(tx *world.Tx)
+		want  int
+	}{
+		{"skeleton skulls", mobtest.Options{}, func(tx *world.Tx) {
+			buildWitherT(tx, cube.Pos{1, 0, 0}, block.SkeletonSkull(), 9)
+		}, 0},
+		{"corner filled", mobtest.Options{}, func(tx *world.Tx) {
+			buildWitherT(tx, cube.Pos{1, 0, 0}, block.WitherSkeletonSkull(), 9)
+			tx.SetBlock(cube.Pos{1, 1, 0}, block.Dirt{}, nil)
+		}, 0},
+		{"peaceful", mobtest.Options{Difficulty: world.DifficultyPeaceful}, func(tx *world.Tx) {
+			buildWitherT(tx, cube.Pos{1, 0, 0}, block.WitherSkeletonSkull(), 9)
+		}, 0},
+		{"two skulls", mobtest.Options{}, func(tx *world.Tx) {
+			buildWitherT(tx, cube.Pos{1, 0, 0}, block.WitherSkeletonSkull(), -1)
+		}, 0},
+		{"lying flat", mobtest.Options{}, func(tx *world.Tx) {
+			sk := block.Skull{Type: block.WitherSkeletonSkull(), Attach: block.StandingAttachment(0)}
+			for x := -1; x <= 1; x++ {
+				tx.SetBlock(cube.Pos{x, 1, 0}, sk, nil)
+				tx.SetBlock(cube.Pos{x, 1, 1}, block.SoulSand{}, nil)
+			}
+			tx.SetBlock(cube.Pos{0, 1, 2}, block.SoulSand{}, nil)
+		}, 1},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			w := setup(t, tc.opts, "minecraft:boss")
+			w.Do(func(tx *world.Tx) {
+				tc.build(tx)
+				for x := -1; x <= 1; x++ {
+					for _, p := range []cube.Pos{{x, 3, 0}, {x, 1, 0}} {
+						bc.TrySpawnWither(tx, p)
+					}
+				}
+			})
+			if n := len(w.Mobs(bc.WitherID)); n != tc.want {
+				t.Fatalf("withers %d, want %d", n, tc.want)
+			}
+		})
 	}
 }
 

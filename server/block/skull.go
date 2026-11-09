@@ -63,6 +63,7 @@ func (s Skull) UseOnBlock(pos cube.Pos, face cube.Face, _ mgl64.Vec3, tx *world.
 		s.Attach = WallAttachment(face.Direction())
 	}
 	place(tx, pos, s, user, ctx)
+	skullPlaced(tx, pos)
 	return placed(ctx)
 }
 

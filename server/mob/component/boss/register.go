@@ -9,6 +9,7 @@
 package boss
 
 import (
+	"github.com/df-mc/dragonfly/server/block"
 	"github.com/df-mc/dragonfly/server/mob"
 	"github.com/df-mc/dragonfly/server/mob/component/combat"
 	"github.com/df-mc/dragonfly/server/world"
@@ -37,6 +38,9 @@ func init() {
 	mob.RegisterSystem(mob.System{Name: "boss/wither/freeze", Stage: mob.StageControls, Order: 900, Tick: witherFreeze})
 	mob.RegisterSystem(mob.System{Name: "boss/warden", Stage: mob.StageEnvironment, Order: 50, Tick: wardenTick})
 	mob.RegisterHurtHook(mob.HurtHook{Name: "boss/vibration", Hurt: vibrationHurtHook})
+
+	// SkullItem::_useOn -> SkullBlock::checkMobSpawn.
+	block.SetSkullSpawner(TrySpawnWither)
 
 	combat.RegisterProjectile("minecraft:wither_skull", func(m *mob.Mob, t world.Entity, _ int, _ float64) bool {
 		ShootWitherSkull(m, 0, t.Position(), false)
