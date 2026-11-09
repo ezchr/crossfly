@@ -149,6 +149,7 @@ func (s *Session) ViewEntity(e world.Entity) {
 	// already invisible was drawn with its skin until its state next changed.
 	s.ViewEntityState(p)
 	s.noteRiding(e)
+	s.viewLeashHolder(e, id) // mob_leash.go
 }
 
 // StopShowingEntity hides e from this player for good (player.HideEntity): it goes from their
@@ -199,6 +200,7 @@ func (s *Session) HideEntity(e world.Entity) {
 	s.hideGhost(e)
 	s.forgetEntityText(e)
 	s.forgetRiding(e.H())
+	s.forgetLeash(e.H(), id) // mob_leash.go
 	s.hideMobBossBarOf(e.H())
 	if p, ok := e.(*player.Player); ok {
 		s.hideTabFor(p.UUID()) // online players stay listed

@@ -253,11 +253,11 @@ func DropTowards(m *mob.Mob, s item.Stack, target mgl64.Vec3) {
 	dropItem(m.Tx(), from, v, s)
 }
 
-// Caravans (Mob::joinCaravan/leaveCaravan/getCaravanHead) and leashes, as
-// far as follow_caravan and the wandering trader need them.
+// Caravans (Mob::joinCaravan/leaveCaravan/getCaravanHead) and leashes (the
+// leads of package mob/component/core), as far as follow_caravan and the
+// wandering trader need them.
 type caravanKey struct{}
 type tailKey struct{}
-type leashKey struct{}
 
 // CaravanHead returns the mob m follows in a caravan.
 func CaravanHead(m *mob.Mob) (*mob.Mob, bool) {
@@ -305,26 +305,14 @@ func LeaveCaravan(m *mob.Mob) {
 	m.SetData(caravanKey{}, nil)
 }
 
-// SetLeashHolder leashes m to holder (nil unleashes).
+// SetLeashHolder leashes m to holder (nil unleashes, dropping the lead).
 func SetLeashHolder(m *mob.Mob, holder world.Entity) {
 	if holder == nil {
-		m.SetData(leashKey{}, nil)
+		core.Unleash(m)
 		return
 	}
-	m.SetData(leashKey{}, holder.H())
+	core.Leash(m, holder)
 }
 
-// Leashed reports whether m is leashed (to a live entity).
-func Leashed(m *mob.Mob) bool {
-	if c, ok := mob.ComponentOf[interface{ LeashHolder() (world.Entity, bool) }](m); ok {
-		if _, ok := c.LeashHolder(); ok {
-			return true
-		}
-	}
-	v, ok := m.Data(leashKey{})
-	if !ok {
-		return false
-	}
-	e, ok := v.(*world.EntityHandle).Entity(m.Tx())
-	return ok && !dead(e)
-}
+// Leashed reports whether m is leashed (Actor::isLeashed).
+func Leashed(m *mob.Mob) bool { return core.Leashed(m) }

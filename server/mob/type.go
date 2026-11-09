@@ -48,13 +48,30 @@ func TypeFor(id string) (*Type, bool) {
 	return t, ok
 }
 
-// Types returns every registered mob type, in registration order.
+// extraTypes are entity types that come with the mobs but are no mobs (the
+// leash knot of package mob/component/core), added with RegisterEntityType.
+var extraTypes []world.EntityType
+
+// RegisterEntityType adds an entity type that is not a mob but comes with
+// them to Types, after the mob types (only once a mob type is registered, so
+// the mobs off still register nothing). Call it from init only.
+func RegisterEntityType(t world.EntityType) {
+	typesMu.Lock()
+	defer typesMu.Unlock()
+	extraTypes = append(extraTypes, t)
+}
+
+// Types returns every registered mob type, in registration order, followed
+// by the types added with RegisterEntityType.
 func Types() []world.EntityType {
 	typesMu.RLock()
 	defer typesMu.RUnlock()
-	out := make([]world.EntityType, 0, len(order))
+	out := make([]world.EntityType, 0, len(order)+len(extraTypes))
 	for _, id := range order {
 		out = append(out, types[id])
+	}
+	if len(order) > 0 {
+		out = append(out, extraTypes...)
 	}
 	return out
 }

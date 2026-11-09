@@ -219,6 +219,7 @@ func (s *Session) HideEntity(e world.Entity) {
 		delete(s.entityRuntimeIDs, e.H())
 		delete(s.entities, id)
 	}
+	delete(s.leashHolders, id)
 	s.entityMutex.Unlock()
 	if !ok {
 		// The entity was already removed some other way. We don't need to send a packet.
@@ -373,6 +374,7 @@ func (s *Session) viewEntityDismountHandles(rider, rideable *world.EntityHandle,
 }
 
 func (s *Session) viewEntityLinks(e world.Entity) {
+	s.viewLeashHolder(e) // mob_leash.go
 	if rideable, ok := entity.RideableOf(e); ok {
 		controller := rideable.ControllingRider()
 		for _, rider := range rideable.Riders() {
@@ -1351,10 +1353,14 @@ func (s *Session) ViewEntityAction(e world.Entity, a world.EntityAction) {
 	case interface{ ActorEvent() uint8 }:
 		// Mob actions that are plain actor events (packet.ActorEvent*): a
 		// sheep eating grass, the elder guardian curse, the dragon breath...
-		s.writePacket(&packet.ActorEvent{
+		pk := &packet.ActorEvent{
 			EntityRuntimeID: s.entityRuntimeID(e),
 			EventType:       act.ActorEvent(),
-		})
+		}
+		if d, ok := act.(interface{ ActorEventData() int32 }); ok {
+			pk.EventData = d.ActorEventData() // a leash snapping
+		}
+		s.writePacket(pk)
 	}
 }
 

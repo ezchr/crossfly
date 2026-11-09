@@ -35,6 +35,9 @@ func (mobName) Type() string { return "EntityType" }
 func (mobName) Options(cmd.Source) []string {
 	var out []string
 	for _, t := range mob.Types() {
+		if _, ok := t.(*mob.Type); !ok {
+			continue // the leash knot
+		}
 		out = append(out, strings.TrimPrefix(t.EncodeEntity(), "minecraft:"), t.EncodeEntity())
 	}
 	slices.Sort(out)

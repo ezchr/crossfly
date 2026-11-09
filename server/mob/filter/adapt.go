@@ -18,6 +18,7 @@ import (
 	"github.com/df-mc/dragonfly/server/player"
 	"github.com/df-mc/dragonfly/server/world"
 	"github.com/go-gl/mathgl/mgl64"
+	"github.com/sandertv/gophertunnel/minecraft/protocol"
 )
 
 // This file adapts Dragonfly entities and *world.Tx to the filter
@@ -228,6 +229,9 @@ func (a EntityActor) Flag(f Flag) bool {
 	}
 	pos := a.E.Position()
 	switch f {
+	case FlagLeashed:
+		// Actor::isLeashed: the LEASHED actor flag (package mob/component/core).
+		return m != nil && m.ActorFlag(protocol.EntityDataFlagLeashed)
 	case FlagInWater:
 		if m != nil {
 			return m.Physics().InWater
@@ -446,6 +450,17 @@ func (a EntityActor) Related(r Relation) Actor {
 		if m := a.mob(); m != nil && m.Owner() != nil && a.Tx != nil {
 			if o, ok := m.Owner().Entity(a.Tx); ok {
 				return Wrap(a.Tx, o)
+			}
+		}
+	case RelationLeashHolder:
+		// The leash holder actor data (package mob/component/core).
+		if m := a.mob(); m != nil && a.Tx != nil && m.ActorFlag(protocol.EntityDataFlagLeashed) {
+			if v, ok := m.ActorData(protocol.EntityDataKeyLeashHolder); ok {
+				if h, ok := v.(*world.EntityHandle); ok {
+					if e, ok := h.Entity(a.Tx); ok {
+						return Wrap(a.Tx, e)
+					}
+				}
 			}
 		}
 	case RelationLastHurtBy:

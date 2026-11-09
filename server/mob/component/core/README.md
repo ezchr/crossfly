@@ -29,9 +29,10 @@ Sources: BDS 1.21.3 dump (`AgeableComponent`, `BreedableComponent`,
 | `breedable` + `offspring` | breed items put adults in love (600 ticks), `CanMate`/`Mate` make the baby (`entity_born`, inherited properties, mixed sheep colour, `on_bred` xp), 60 s cooldown |
 | `interact` | filters, cooldown, use/hurt/transform item, `spawn_items` loot, sounds, event (milk, shear, saddle, ignite) |
 | `loot`, `equipment`, `experience_reward` | loot tables on death (+ furnace_smelt when burning, Looting from the killer's hands), spawn gear rolled on the first tick and put in its slot like BDS `Actor::equip`, slot drop chances; xp drops with the corpse 20 ticks after death |
-| `spawn_entity` | timed item drops / spawns with filters (chicken eggs) |
+| `spawn_entity` | timed item drops / spawns with filters (chicken eggs); `should_leash` (the wandering trader's llamas) |
+| `leashable` | leads (leash.go, leash_knot.go): a lead leashes the mob, the holder unleashes it (the lead drops), pull/path/break by soft/hard/max distance or the `presets` picked for the holder, `can_be_stolen`, `on_leash`/`on_unleash`, `unleash_on_removal`, saved as the holder's UUID; leads tied to fences make a `minecraft:leash_knot` (`KnotType`, `BindPlayerMobs`); `Leash`/`Unleash`/`DropLeash`/`Leashed`/`LeashHolder` for other packages |
 | `timer`, `ambient_sound_interval`, `hurt_on_condition`, `breathable` | timers, ambient sounds, per-tick damage, air supply and drowning |
-| `nameable`, `is_hidden_when_invisible`, `leashable`, `leashable_to`, `balloonable` | no-ops / stubs |
+| `nameable`, `is_hidden_when_invisible`, `leashable_to`, `balloonable` | no-ops / stubs |
 
 Equipment drops on death are mob-wide (`DropEquipmentOnDeath`, a
 `mob.DeathHook`, BDS `Mob::dropEquipmentOnDeath`): 8.5% per slot unless
@@ -56,8 +57,9 @@ data, `record_*`, ...) resolve to Dragonfly items in `items.go`.
 
 ## Not modelled
 
-Leads (riding is in package mob, riding.go, and mob/component/ride),
-the minecraft:home restriction in
+Leads to other mobs and boats (`leashable_to`), the 1.26 leash `spring_type`
+and `rotation_adjustment`, cutting leads with shears (riding is in package
+mob, riding.go, and mob/component/ride), the minecraft:home restriction in
 RandomPos, game rules (mobGriefing, doMobLoot), in-love actor flag (hearts are
 sent as actor events every 10 ticks).
 

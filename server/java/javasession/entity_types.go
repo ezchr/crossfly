@@ -223,6 +223,7 @@ func (s *Session) viewOtherEntity(e world.Entity) {
 	}
 	s.viewModel(e, id, pos, rot)
 	s.noteRiding(e)
+	s.viewLeashHolder(e, id) // mob_leash.go
 }
 
 // viewEntityMeta sends entity data a freshly spawned entity needs: an item entity's item.

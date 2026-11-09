@@ -158,7 +158,7 @@ func SetMarkVariant(m *mob.Mob, v int32) { setIntValue(m, "minecraft:mark_varian
 
 // nop is a component that has nothing to do on the server (nameable is read
 // by the core through its key, is_hidden_when_invisible is client-side) or is
-// a stub (leashable: leads are not modelled yet).
+// a stub (leashable_to, balloonable).
 type nop struct{}
 
 func newNop(string, json.RawMessage) (mob.Component, error) { return nop{}, nil }

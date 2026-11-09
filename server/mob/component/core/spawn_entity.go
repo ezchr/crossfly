@@ -6,6 +6,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"strings"
 
 	"github.com/df-mc/dragonfly/server/entity"
 	"github.com/df-mc/dragonfly/server/mob"
@@ -30,6 +31,7 @@ type spawnEntry struct {
 	Sound     string          `json:"spawn_sound"`
 	Num       int             `json:"num_to_spawn"`
 	SingleUse bool            `json:"single_use"`
+	Leash     bool            `json:"should_leash"`
 	Filters   json.RawMessage `json:"filters"`
 	ItemEvent *Trigger        `json:"spawn_item_event"`
 
@@ -70,6 +72,9 @@ func newSpawnEntity(key string, raw json.RawMessage) (mob.Component, error) {
 		e.filter = f
 		if e.Item == "" && e.Entity == "" {
 			e.Item = "egg"
+		}
+		if e.Entity != "" && !strings.Contains(e.Entity, ":") {
+			e.Entity = "minecraft:" + e.Entity // wandering_trader.json: "trader_llama"
 		}
 		c.entries = append(c.entries, e)
 	}
@@ -132,7 +137,10 @@ func (e *spawnEntry) spawn(m *mob.Mob) {
 			if ev == "" {
 				ev = mob.EventBorn
 			}
-			_, _ = mob.Spawn(tx, e.Entity, pos, mob.SpawnOptions{Rotation: m.Rotation(), Event: ev})
+			spawned, err := mob.Spawn(tx, e.Entity, pos, mob.SpawnOptions{Rotation: m.Rotation(), Event: ev})
+			if err == nil && e.Leash {
+				Leash(spawned, m) // should_leash: the wandering trader's llamas
+			}
 		}
 	}
 	if e.Sound != "" {

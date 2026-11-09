@@ -196,6 +196,7 @@ func (s *Session) ViewEntityState(e world.Entity) {
 	s.viewMinecart(e, id)
 	s.viewMobData(e, id)      // mob flags, health, baby, variants... (mobdata.go)
 	s.viewMobEquipment(e, id) // saddle and body armour
+	s.viewLeash(e, id)        // the lead it is tied with (mob_leash.go)
 	_, isStateful := e.(stateful)
 	_, isLiving := mobAs[mobHealth](e)
 	if !isStateful && !isLiving {

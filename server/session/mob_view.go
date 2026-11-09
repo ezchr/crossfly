@@ -150,6 +150,9 @@ func (s *Session) addMobMetadata(e any, m protocol.EntityMetadata) {
 	// the warden's heartbeat, ... An entity handle is sent as its runtime id.
 	if x, ok := e.(interface{ ExtraActorData() map[uint32]any }); ok {
 		for k, v := range x.ExtraActorData() {
+			if k == protocol.EntityDataKeyLeashHolder {
+				s.noteLeashHolder(e, v) // mob_leash.go
+			}
 			if h, ok := v.(*world.EntityHandle); ok {
 				id := int64(-1)
 				if h != nil {

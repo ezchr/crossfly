@@ -74,6 +74,7 @@ type Session struct {
 	// mobEquip is the saddle and body armour last sent for each mob (viewMobEquipment), under entMu.
 	mobEquip     map[int32]string
 	riders       map[*world.EntityHandle][]*world.EntityHandle // vehicle -> riders (riding.go)
+	leashes      map[int32]*leashLink                          // leashed mob id -> its leash (mob_leash.go)
 	deferred     map[*world.EntityHandle]struct{}              // Bedrock players waiting for their skin (deferForSkin)
 	tracks       map[int32]*track
 	modelParts   map[int32][]int32      // entity id -> its model's part ids (entitymodel.go)

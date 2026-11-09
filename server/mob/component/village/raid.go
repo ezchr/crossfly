@@ -646,11 +646,8 @@ func (t *traderScheduler) tick(tx *world.Tx, m *Manager) {
 			}
 		}
 		t.existing, t.spawning = mm.H(), false
-		for range 2 {
-			if l, ok := m.trySpawnMob(tx, "minecraft:trader_llama", "minecraft:from_wandering_trader", mm.Position(), 10, 4, 4); ok {
-				SetLeashHolder(l, mm)
-			}
-		}
+		// Its two trader llamas come from its own minecraft:spawn_entity
+		// (should_leash), as in BDS: the scheduler spawns only the trader.
 	}
 }
 
