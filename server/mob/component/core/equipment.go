@@ -337,8 +337,9 @@ func damageDrop(m *mob.Mob, s item.Stack) item.Stack {
 	return s.WithDurability(max(maxD-dmg, 1))
 }
 
-// sourceEntity is the entity a damage source names: the attacker, or the
-// owner of a projectile.
+// sourceEntity is the entity a damage source names
+// (ActorDamageSource::getDamagingEntityUniqueID): the attacker, the owner of
+// a projectile, or the entity that exploded (a creeper).
 func sourceEntity(src world.DamageSource) world.Entity {
 	switch s := src.(type) {
 	case entity.AttackDamageSource:
@@ -348,6 +349,10 @@ func sourceEntity(src world.DamageSource) world.Entity {
 			return s.Owner
 		}
 		return s.Projectile
+	case entity.ExplosionDamageSource:
+		if es, ok := s.Source.(world.EntityExplosionSource); ok {
+			return es.Entity
+		}
 	}
 	return nil
 }
