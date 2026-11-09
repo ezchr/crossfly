@@ -11,7 +11,6 @@ import (
 	"github.com/df-mc/dragonfly/server/mob"
 	"github.com/df-mc/dragonfly/server/mob/goal/combat"
 	"github.com/df-mc/dragonfly/server/mob/goal/misc/kit"
-	"github.com/go-gl/mathgl/mgl64"
 	"github.com/sandertv/gophertunnel/minecraft/protocol"
 )
 
@@ -93,10 +92,10 @@ func (g *chargeAttack) AppendDebugInfo(b *strings.Builder) { b.WriteString("Char
 
 // knockbackRoar is minecraft:behavior.knockback_roar (ravager, BDS
 // KnockbackRoarGoal): the mob stops and roars for duration (1 s, roaring
-// actor flag); attack_time (0.5 s) in, every living entity within
-// knockback_range (4) passing knockback_filters is pushed away with
+// actor flag); attack_time (0.5 s) in, every living entity in its box grown
+// by knockback_range (4) passing knockback_filters is pushed away with
 // knockback_horizontal_strength / knockback_vertical_strength (4/4) and,
-// passing damage_filters, takes knockback_damage (6). on_roar_start /
+// of those, the ones passing damage_filters take knockback_damage (6). on_roar_start /
 // on_roar_end fire, then cooldown_time (0.1 s) passes before the next
 // roar. knockback_height_cap (0.4) caps the vertical push.
 type knockbackRoar struct {
@@ -174,32 +173,30 @@ func (g *knockbackRoar) Tick(m *mob.Mob) {
 	if g.timer != g.attackAt {
 		return
 	}
+	// KnockbackRoarGoal::tick: the AABB grown by the range (no distance
+	// check), knockback first, damage only to the ones knocked back.
 	for _, e := range kit.Around(m, g.rng, g.rng) {
 		l, ok := e.(entity.Living)
-		if !ok || !kit.Alive(e) || kit.DistSq(e.Position(), m.Position()) > g.rng*g.rng {
+		if !ok || !kit.Alive(e) {
 			continue
 		}
 		ctx := kit.OtherCtx(m, e)
-		if g.dmgFilter.Test(ctx) && g.damage > 0 {
-			l.Hurt(g.damage, entity.AttackDamageSource{Attacker: m})
+		if !g.kbFilter.Test(ctx) {
+			continue
 		}
-		if g.kbFilter.Test(ctx) && kit.Alive(e) {
-			roarPush(m, l, g.h, g.v, g.hcap)
+		roarPush(m, l, g.h, g.v, g.hcap)
+		if g.damage > 0 && g.dmgFilter.Test(ctx) {
+			l.Hurt(g.damage, entity.AttackDamageSource{Attacker: m})
 		}
 	}
 }
 
-// roarPush pushes l away from m: horizontal strength over the distance
-// (the closer, the harder; BDS KnockbackRoarGoal::_knockback), vertical
-// capped at hcap.
+// roarPush is the Mob::knockback call of KnockbackRoarGoal::tick: l is
+// pushed away from m by 0.4 x the horizontal strength
+// (KnockbackRules::getScaledKnockbackForce x 0.4) and up by the vertical
+// strength capped at hcap, with knockback resistance applied by KnockBack.
 func roarPush(m *mob.Mob, l entity.Living, h, v, hcap float64) {
-	d := l.Position().Sub(m.Position())
-	d[1] = 0
-	dist := math.Max(d.Len(), 0.001)
-	strength := h / math.Max(dist, 1) * 0.2
-	dir := d.Mul(1 / dist)
-	vel := mgl64.Vec3{dir[0] * strength, math.Min(v*0.1, hcap), dir[2] * strength}
-	l.SetVelocity(l.Velocity().Add(vel))
+	l.KnockBack(m.Position(), h*0.4, math.Min(v, hcap))
 }
 
 // Stop ...
