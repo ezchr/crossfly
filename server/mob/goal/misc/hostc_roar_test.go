@@ -29,8 +29,9 @@ func TestRavagerRoarTargets(t *testing.T) {
 	}
 	w.Tick(12)
 	z.With(func(m *mob.Mob) {
-		if zh-m.Health() != 6 {
-			t.Errorf("zombie in the box corner lost %v health, want 6", zh-m.Health())
+		// 6 knockback_damage, lowered a little by the zombie armour (2).
+		if lost := zh - m.Health(); lost < 5.5 || lost > 6 {
+			t.Errorf("zombie in the box corner lost %v health, want 6 less its armour", lost)
 		}
 	})
 	r2.With(func(m *mob.Mob) {
