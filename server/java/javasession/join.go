@@ -17,6 +17,10 @@ import (
 	"golang.org/x/text/language"
 )
 
+// skinPartCape is the cape bit of the Java Skin Customization settings. A player who turned their cape off is not
+// shown with it to Java players, nor to Bedrock players (cape.go, Crossfly Full).
+const skinPartCape = 0x01
+
 // simulationDistance is the simulation distance in chunks Java clients are told.
 const simulationDistance = 4
 
@@ -80,7 +84,7 @@ func join(conf Config, tabs *tabList, jp *jserver.Player) {
 	pc.UUID = id
 	pc.XUID = xuid
 	pc.Locale, _ = language.Parse(strings.ReplaceAll(jp.Info.Locale, "_", "-"))
-	pc.Skin = javaSkin(jp.Profile.Properties)
+	pc.Skin = javaSkin(jp.Profile.Properties, capesOn() && jp.Info.SkinParts&skinPartCape != 0)
 
 	radius := int32(conf.ChunkRadius)
 	if v := int32(jp.Info.ViewDistance); v > 1 && v < radius {

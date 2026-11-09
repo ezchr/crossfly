@@ -37,20 +37,28 @@ var (
 	skinClient = &http.Client{Timeout: 4 * time.Second}
 )
 
-// javaSkin returns the Bedrock skin for a Java profile.
-func javaSkin(props []jserver.Property) skin.Skin {
+// javaSkin returns the Bedrock skin for a Java profile, with the profile's cape (cape.go) if it
+// has one and showCape is set.
+func javaSkin(props []jserver.Property, showCape bool) skin.Skin {
 	texURL, slim := textureURL(props)
+	capeURL := ""
+	if showCape {
+		capeURL = capeTextureURL(props)
+	}
+	cape := fetchCape(capeURL)
+	s := steveSkin()
 	if texURL != "" {
 		if v, ok := skinCache.Load(texURL); ok {
-			return v.(skin.Skin)
-		}
-		if img, err := fetchTexture(texURL); err == nil {
-			s := bedrockSkin(img, slim)
+			s = v.(skin.Skin)
+		} else if img, err := fetchTexture(texURL); err == nil {
+			s = bedrockSkin(img, slim)
 			skinCache.Store(texURL, s)
-			return s
 		}
 	}
-	return steveSkin()
+	if c, id, ok := cape(); ok {
+		s = withCape(s, c, id)
+	}
+	return s
 }
 
 // textureURL reads the skin URL and model from a signed "textures" property.
@@ -81,7 +89,11 @@ func textureURL(props []jserver.Property) (string, bool) {
 	return "", false
 }
 
-// fetchTexture downloads a skin PNG, only from Mojang's texture server.
+// maxTextureSize caps the width and height of a texture fetchTexture decodes (HD capes are the
+// largest), so a small PNG cannot claim a huge image.
+const maxTextureSize = 2048
+
+// fetchTexture downloads a skin or cape PNG, only from Mojang's texture server.
 func fetchTexture(raw string) (image.Image, error) {
 	u, err := url.Parse(raw)
 	if err != nil || !strings.HasSuffix(u.Hostname(), "textures.minecraft.net") {
@@ -99,7 +111,18 @@ func fetchTexture(raw string) (image.Image, error) {
 	if resp.StatusCode != http.StatusOK {
 		return nil, io.ErrUnexpectedEOF
 	}
-	return png.Decode(io.LimitReader(resp.Body, 1<<20))
+	b, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+	if err != nil {
+		return nil, err
+	}
+	cfg, err := png.DecodeConfig(bytes.NewReader(b))
+	if err != nil {
+		return nil, err
+	}
+	if cfg.Width > maxTextureSize || cfg.Height > maxTextureSize {
+		return nil, io.ErrUnexpectedEOF
+	}
+	return png.Decode(bytes.NewReader(b))
 }
 
 var (
