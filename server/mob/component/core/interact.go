@@ -39,6 +39,10 @@ type interaction struct {
 	EquipItemSlot   string  `json:"equip_item_slot"`
 	DropItemSlot    string  `json:"drop_item_slot"`
 	DropItemYOffset float64 `json:"drop_item_y_offset"`
+	// Admire and Barter hand the held item to the piglin's admire_item and
+	// barter components (interact_pickup.go).
+	Admire bool `json:"admire"`
+	Barter bool `json:"barter"`
 
 	sounds []string
 }
@@ -107,6 +111,7 @@ func (in *interaction) run(m *mob.Mob, user item.User, held item.Stack, ctx *mob
 	for _, s := range in.sounds {
 		PlayMobSound(m, s)
 	}
+	before := held
 	creative := IsCreative(user)
 	if !creative {
 		if in.HurtItem > 0 && !held.Empty() {
@@ -141,6 +146,7 @@ func (in *interaction) run(m *mob.Mob, user item.User, held item.Stack, ctx *mob
 			DropItems(m, []item.Stack{s}, in.DropItemYOffset)
 		}
 	}
+	in.runPickup(m, user, before)
 	in.OnInteract.Fire(m, ctx)
 	return held
 }

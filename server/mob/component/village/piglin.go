@@ -342,3 +342,23 @@ func ThrowItems(m *mob.Mob, stacks []item.Stack) {
 
 // IsAdmiring reports whether the mob admires an item (pickup_items stops).
 func (a *Admire) IsAdmiring() bool { return a.Admiring }
+
+func init() { core.SetInteractPickup(interactPickedUp) }
+
+// interactPickedUp is the admire/barter part of the InteractComponent
+// interaction lambda: a player handing the piglin a gold ingot by hand
+// counts as the piglin picking it up from that player (the thrown-ingot
+// path of Shareables.PickedUp): admire gets one of the item unless the
+// piglin admires something already, barter gets the player as its thrower.
+func interactPickedUp(m *mob.Mob, user item.User, held item.Stack, admire, barter bool) {
+	if admire {
+		if a, ok := AdmireOf(m); ok && !a.Admiring {
+			a.PickedUp(m, held.Grow(1-held.Count()), user)
+		}
+	}
+	if barter {
+		if b, ok := BarterOf(m); ok {
+			b.PickedUp(m, user)
+		}
+	}
+}
