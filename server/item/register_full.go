@@ -20,11 +20,13 @@ func RegisterJavaRedstone() {
 	})
 }
 
-// RegisterMobItems registers the items of Crossfly Full's mobs: the saddle and horse armour. Call it before the
-// server is configured.
+// RegisterMobItems registers the items of Crossfly Full's mobs: the saddle, horse armour and the seeds sniffers
+// dig up. Call it before the server is configured.
 func RegisterMobItems() {
 	registerMobItems.Do(func() {
 		world.RegisterItem(Saddle{})
+		world.RegisterItem(TorchflowerSeeds{})
+		world.RegisterItem(PitcherPod{})
 		for _, t := range HorseArmourTiers() {
 			world.RegisterItem(HorseArmour{Tier: t})
 		}
