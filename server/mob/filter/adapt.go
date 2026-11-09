@@ -53,7 +53,7 @@ func FromMob(c *mob.FilterContext) *Context {
 		ctx.Block = TxBlock{B: c.Block, Pos: c.BlockPos, Tx: tx}
 	}
 	if c.Damage != nil {
-		ctx.Damage = &Damage{Cause: DamageCause(c.Damage)}
+		ctx.Damage = &Damage{Cause: DamageCause(c.Damage), Fatal: c.DamageFatal}
 	}
 	return ctx
 }
@@ -174,6 +174,9 @@ func (a EntityActor) HasFamily(f string) bool {
 
 // HasComponent ...
 func (a EntityActor) HasComponent(name string) bool {
+	if eff, ok := EffectComponent(name); ok {
+		return a.HasEffect(eff)
+	}
 	if l := a.live(); l != nil {
 		return l.HasComponent(name)
 	}
@@ -549,6 +552,13 @@ func (a EntityActor) PropertyValue(name string) (any, bool) {
 		return m.Instance().Property(name)
 	}
 	return nil, false
+}
+
+// EffectComponent reports whether a has_component name is an effect
+// ("minecraft:effect.weakness"), which BDS's ActorHasComponentTest answers
+// with the active mob effects, and returns the effect name.
+func EffectComponent(name string) (string, bool) {
+	return strings.CutPrefix(name, "minecraft:effect.")
 }
 
 // HasEffect ...

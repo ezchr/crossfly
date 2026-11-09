@@ -78,7 +78,7 @@ func (tc *testContext) fill(c *mob.FilterContext) {
 		ctx.Block = TxBlock{B: c.Block, Pos: c.BlockPos, Tx: tx}
 	}
 	if c.Damage != nil {
-		ctx.Damage = &Damage{Cause: DamageCause(c.Damage)}
+		ctx.Damage = &Damage{Cause: DamageCause(c.Damage), Fatal: c.DamageFatal}
 	}
 }
 

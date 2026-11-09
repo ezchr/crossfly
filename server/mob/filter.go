@@ -34,6 +34,9 @@ type FilterContext struct {
 	Item item.Stack
 	// Damage is the damage source for has_damage / damage_sensor.
 	Damage world.DamageSource
+	// DamageFatal reports that Damage kills the mob (has_damage fatal):
+	// DamageSensorComponent::recordGenericDamage records damage >= health.
+	DamageFatal bool
 }
 
 // Filter is a compiled filter tree (all_of/any_of/none_of over tests).

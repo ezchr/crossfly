@@ -5,6 +5,7 @@ package combat
 import (
 	"encoding/json"
 	"fmt"
+	"math"
 	"slices"
 
 	"github.com/df-mc/dragonfly/server/entity"
@@ -253,6 +254,9 @@ func (s *DamageSensor) ModifyDamage(m *mob.Mob, d *mob.Damage) {
 	cause := sense.DamageCause(d.Source)
 	ctx := m.Ctx()
 	ctx.Other, ctx.Damager, ctx.Damage = d.Attacker, d.Attacker, d.Source
+	// DamageSensorComponent::recordGenericDamage: fatal is the damage before
+	// the sensor changes it against the health (an int in BDS).
+	ctx.DamageFatal = d.Amount >= math.Trunc(m.Health())
 	if d.Attacker == nil {
 		if _, ok := d.Source.(entity.LightningDamageSource); ok {
 			ctx.Other = nearbyLightning(m)

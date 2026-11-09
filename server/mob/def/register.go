@@ -222,7 +222,12 @@ func (e *MobEntity) NameTag() string { return e.M.NameTag() }
 
 // HasComponent is the live component set (group changes of the running
 // event included).
-func (e *MobEntity) HasComponent(name string) bool { return e.Inst.HasComponent(name) }
+func (e *MobEntity) HasComponent(name string) bool {
+	if eff, ok := filter.EffectComponent(name); ok {
+		return e.EntityActor.HasEffect(eff)
+	}
+	return e.Inst.HasComponent(name)
+}
 
 // HandleAction implements the mob-side event responses.
 func (e *MobEntity) HandleAction(a event.Action, ctx *filter.Context) bool {
