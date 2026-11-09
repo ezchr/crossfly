@@ -502,18 +502,8 @@ func (c *Inventory) DecodeNBT(_ *mob.Mob, d map[string]any) {
 	c.saved = items
 }
 
-// strength is the minecraft:strength value (llama).
-func strength(m *mob.Mob) int {
-	raw, ok := m.ComponentJSON("minecraft:strength")
-	if !ok {
-		return 0
-	}
-	var v struct {
-		Value int `json:"value"`
-	}
-	_ = json.Unmarshal(raw, &v)
-	return v.Value
-}
+// strength is the mob's strength (llama: actor data, core.Strength).
+func strength(m *mob.Mob) int { return core.Strength(m) }
 
 // takes reports whether the slot accepts s: an accepted_items descriptor, or
 // one of the legacy names of the entity files Dragonfly encodes otherwise

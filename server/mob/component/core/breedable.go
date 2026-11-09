@@ -28,7 +28,10 @@ const (
 //	require_tame (default true), require_full_health, breed_items,
 //	breeds_with ({mate: {baby_type, breed_event}} or a list of
 //	{mate_type, baby_type, breed_event}), love_filters, allow_sitting,
-//	extra_baby_chance, breed_cooldown (seconds, default 60)
+//	extra_baby_chance, breed_cooldown (seconds, default 60),
+//	environment_requirements ({blocks, count, radius} or a list: panda
+//	bamboo), and the 1.21 inheritance keys minecraft:offspring took over
+//	(mutation_factor, blend_attributes, ...; see inheritance)
 type Breedable struct {
 	requireTame, requireFullHealth, allowSitting bool
 	items                                        []breedItem
@@ -36,6 +39,8 @@ type Breedable struct {
 	loveFilter                                   mob.Filter
 	extraBabyChance                              float64
 	cooldownTicks                                int
+	environment                                  []envRequirement
+	inherit                                      inheritance
 
 	love      int // ticks of love mode left
 	cooldown  int // ticks before it may breed again
@@ -63,12 +68,22 @@ func newBreedable(key string, raw json.RawMessage) (mob.Component, error) {
 		LoveFilters       json.RawMessage `json:"love_filters"`
 		ExtraBabyChance   float64         `json:"extra_baby_chance"`
 		BreedCooldown     *float64        `json:"breed_cooldown"`
+		Environment       json.RawMessage `json:"environment_requirements"`
 	}{}
 	if err := decode(raw, &j); err != nil {
 		return nil, fmt.Errorf("%v: %w", key, err)
 	}
+	inherit, err := parseInheritance(raw)
+	if err != nil {
+		return nil, fmt.Errorf("%v: %w", key, err)
+	}
+	env, err := parseEnvRequirements(j.Environment)
+	if err != nil {
+		return nil, fmt.Errorf("%v: environment_requirements: %w", key, err)
+	}
 	b := &Breedable{requireTame: true, requireFullHealth: j.RequireFullHealth, allowSitting: j.AllowSitting,
-		extraBabyChance: j.ExtraBabyChance, cooldownTicks: ticksOf(defaultBreedCooling), with: map[string]breedType{}}
+		extraBabyChance: j.ExtraBabyChance, cooldownTicks: ticksOf(defaultBreedCooling), with: map[string]breedType{},
+		environment: env, inherit: inherit}
 	if j.RequireTame != nil {
 		b.requireTame = *j.RequireTame
 	}
@@ -166,6 +181,15 @@ func (b *Breedable) SetInLove(m *mob.Mob, cause world.Entity) {
 	ShowAction(m, LoveHeartsAction{})
 }
 
+// LoveCause returns the player who put the mob in love, if still there
+// (BreedableComponent::getLoveCause).
+func (b *Breedable) LoveCause(m *mob.Mob) (world.Entity, bool) {
+	if b.loveCause == nil || m.Tx() == nil {
+		return nil, false
+	}
+	return b.loveCause.Entity(m.Tx())
+}
+
 // ResetLove ends love mode and starts the breeding cooldown.
 func (b *Breedable) ResetLove() {
 	b.love, b.cooldown = 0, b.cooldownTicks
@@ -211,6 +235,12 @@ func (b *Breedable) canBreed(m *mob.Mob, user item.User, held item.Stack) (breed
 func (b *Breedable) Interact(m *mob.Mob, user item.User, held item.Stack, _ mgl64.Vec3) (item.Stack, bool) {
 	it, ok := b.canBreed(m, user, held)
 	if !ok {
+		return held, false
+	}
+	if !b.meetsEnvironment(m) {
+		// BreedableComponent::getInteraction: the breed item is kept and the
+		// mob plays its can't-breed sound (panda without bamboo around).
+		PlayMobSound(m, "cant_breed")
 		return held, false
 	}
 	var cause world.Entity
@@ -317,9 +347,17 @@ func (b *Breedable) handleMate(m, partner *mob.Mob) *mob.Mob {
 	if err != nil {
 		return nil
 	}
+	inh := b.inherit
+	if off != nil {
+		inh = off.inherit
+	}
+	if inh.blend {
+		inh.apply(m, partner, baby)
+	}
 	if off != nil {
 		off.inheritAfterBirth(m, partner, baby)
 	}
+	b.assignTrust(m, partner, baby)
 	DropExperience(m, BredExperience(m))
 	return baby
 }
@@ -344,11 +382,16 @@ func (b *Breedable) DecodeNBT(_ *mob.Mob, d map[string]any) {
 //	combine_parent_colors  mix the parents' minecraft:color (sheep)
 //	property_inheritance   {property: {}} copied from a random parent
 //	inherit_tamed          (default true) the baby is tamed by the owner
+//	mutation_factor, mutation_strategy, random_*_mutation_interval,
+//	deny_parents_variant, blend_attributes, parent_centric_attribute_blending
+//	                       variant, markings, colour, attribute and strength
+//	                       inheritance (inheritance, inherit.go)
 type offspring struct {
 	pairs         map[string]string
 	combineColors bool
 	properties    []string
 	inheritTamed  bool
+	inherit       inheritance
 }
 
 func newOffspring(key string, raw json.RawMessage) (mob.Component, error) {
@@ -361,7 +404,11 @@ func newOffspring(key string, raw json.RawMessage) (mob.Component, error) {
 	if err := decode(raw, &j); err != nil {
 		return nil, fmt.Errorf("%v: %w", key, err)
 	}
-	o := &offspring{pairs: map[string]string{}, combineColors: j.CombineColors, inheritTamed: true}
+	inherit, err := parseInheritance(raw)
+	if err != nil {
+		return nil, fmt.Errorf("%v: %w", key, err)
+	}
+	o := &offspring{pairs: map[string]string{}, combineColors: j.CombineColors, inheritTamed: true, inherit: inherit}
 	for k, v := range j.Pairs {
 		o.pairs[normaliseID(k)] = normaliseID(v)
 	}

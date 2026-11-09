@@ -243,8 +243,12 @@ func newStrength(key string, raw json.RawMessage) (mob.Component, error) {
 	return s, nil
 }
 
-// Attach ...
-func (*Strength) Attach(*mob.Mob) {}
+// Attach sets the mob's strength and maximum (StrengthDescription: actor
+// data 75/76, kept when the component goes; see core.Strength).
+func (s *Strength) Attach(m *mob.Mob) {
+	core.SetStrengthMax(m, s.Max)
+	core.SetStrength(m, s.Value)
+}
 
 // Detach ...
 func (*Strength) Detach(*mob.Mob) {}

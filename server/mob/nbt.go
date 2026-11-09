@@ -5,11 +5,16 @@ package mob
 import (
 	"github.com/df-mc/dragonfly/server/internal/nbtconv"
 	"github.com/df-mc/dragonfly/server/item"
+	"github.com/sandertv/gophertunnel/minecraft/protocol"
 )
 
 // NBT layout of a mob (besides the world's own Pos/Motion/Rotation/Fire/...):
 //
 //	Health           float32
+//	MaxHealth        float32
+//	Attributes       {name: base float32} of the attributes used
+//	Variant, MarkVariant int32; Color, Color2 byte (Actor::addAdditionalSaveData)
+//	Strength, StrengthMax int32 (llamas; absent when unset)
 //	HeadYaw, BodyYaw float32
 //	Persistent       byte
 //	HomePos          [3]int32 (absent without a home)
@@ -23,6 +28,29 @@ func (s *state) encodeNBT() map[string]any {
 		"HeadYaw":    float32(s.headYaw),
 		"BodyYaw":    float32(s.bodyYaw),
 		"Persistent": boolByte(s.persistent),
+		"MaxHealth":  float32(s.health.MaxHealth()),
+		// The variant data BDS keeps on the actor (bred babies get theirs
+		// from their parents, without a minecraft:variant component).
+		"Variant":     s.meta.Variant,
+		"MarkVariant": s.meta.MarkVariant,
+		"Color":       s.meta.Color,
+		"Color2":      s.meta.Color2,
+	}
+	// Rolled (minecraft:movement ranges) or bred (attribute blending)
+	// attributes keep their value.
+	if attrs := s.attrs.All(); len(attrs) > 0 {
+		am := make(map[string]any, len(attrs))
+		for _, a := range attrs {
+			am[a.Name] = float32(a.Base)
+		}
+		out["Attributes"] = am
+	}
+	d, _ := s.scratch[actorDataKey{}].(map[uint32]any)
+	if v, ok := d[protocol.EntityDataKeyStrength].(int32); ok {
+		out["Strength"] = v
+	}
+	if v, ok := d[protocol.EntityDataKeyStrengthMax].(int32); ok {
+		out["StrengthMax"] = v
 	}
 	if s.home != nil {
 		out["HomePos"] = nbtconv.PosToInt32Slice(*s.home)
@@ -66,6 +94,32 @@ func (s *state) encodeNBT() map[string]any {
 // the components attached.
 func (m *Mob) decodeNBT(d map[string]any) {
 	s := m.s
+	if mh := nbtconv.Float32(d, "MaxHealth"); mh > 0 {
+		s.health.SetMaxHealth(float64(mh))
+	}
+	if am, ok := d["Attributes"].(map[string]any); ok {
+		for name, v := range am {
+			if f, ok := v.(float32); ok {
+				a := s.attrs.Get(name)
+				if float64(f) > a.Max {
+					a.Max = float64(f)
+				}
+				a.SetBase(float64(f))
+			}
+		}
+	}
+	if _, ok := d["Variant"]; ok {
+		s.meta.Variant = nbtconv.Int32(d, "Variant")
+		s.meta.MarkVariant = nbtconv.Int32(d, "MarkVariant")
+		s.meta.Color = nbtconv.Uint8(d, "Color")
+		s.meta.Color2 = nbtconv.Uint8(d, "Color2")
+	}
+	if v, ok := d["StrengthMax"].(int32); ok {
+		m.SetActorData(protocol.EntityDataKeyStrengthMax, v)
+	}
+	if v, ok := d["Strength"].(int32); ok {
+		m.SetActorData(protocol.EntityDataKeyStrength, v)
+	}
 	if h := nbtconv.Float32(d, "Health"); h > 0 {
 		s.health.AddHealth(float64(h) - s.health.Health())
 	}

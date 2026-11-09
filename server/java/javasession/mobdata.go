@@ -10,6 +10,7 @@ import (
 	v777 "github.com/df-mc/dragonfly/server/java/protocol/v777"
 	"github.com/df-mc/dragonfly/server/java/protocol/wire"
 	"github.com/df-mc/dragonfly/server/world"
+	"github.com/sandertv/gophertunnel/minecraft/protocol"
 	"github.com/sandertv/gophertunnel/minecraft/protocol/packet"
 )
 
@@ -169,8 +170,8 @@ func init() {
 	mobKinds["minecraft:parrot"].extra = intVariant(20) // the same ids: red_blue, blue, green, yellow_blue, gray
 	set("rabbit", mobKind{ageable: true, extra: intVariant(18)})
 	set("mooshroom", mobKind{ageable: true, extra: intVariant(18)})
-	mobKinds["minecraft:llama"].extra = intVariant(21)
-	mobKinds["minecraft:trader_llama"].extra = intVariant(21)
+	mobKinds["minecraft:llama"].extra = llamaData
+	mobKinds["minecraft:trader_llama"].extra = llamaData
 	set("axolotl", mobKind{ageable: true, extra: func(_ *Session, d *mobData, e world.Entity, _ string) {
 		if v, ok := mobAs[mobVariant](e); ok {
 			// Bedrock 1 cyan / 3 wild, Java 1 wild / 3 cyan; lucy 0, gold 2 and blue 4 are the same.
@@ -309,6 +310,17 @@ func intVariant(index byte) func(*Session, *mobData, world.Entity, string) {
 			d.varInt(index, v.Variant())
 		}
 	}
+}
+
+// llamaData is a llama's strength (Llama.DATA_STRENGTH_ID, Bedrock actor data
+// 75) and variant.
+func llamaData(s *Session, d *mobData, e world.Entity, typ string) {
+	if x, ok := e.(interface{ ExtraActorData() map[uint32]any }); ok {
+		if v, ok := x.ExtraActorData()[protocol.EntityDataKeyStrength].(int32); ok {
+			d.varInt(20, v)
+		}
+	}
+	intVariant(21)(s, d, e, typ)
 }
 
 // cubeData is a slime's or magma cube's size (AbstractCubeMob.ID_SIZE): the Bedrock Variant is the
