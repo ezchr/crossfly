@@ -139,6 +139,15 @@ func (srv *Server) Accept() iter.Seq[*player.Player] {
 				return
 			}
 			srv.pmu.Lock()
+			if other, ok := srv.p[inc.p.handle.UUID()]; ok && other != inc.p {
+				// Another login of the player got in between this one's check and now.
+				srv.pmu.Unlock()
+				srv.pwg.Done()
+				_ = inc.p.handle.Close()
+				inc.s.Disconnect("Already logged in.")
+				inc.s.CloseConnection()
+				continue
+			}
 			srv.p[inc.p.handle.UUID()] = inc.p
 			srv.pmu.Unlock()
 
@@ -486,6 +495,12 @@ func (srv *Server) wait() {
 // channel.
 func (srv *Server) finaliseConn(ctx context.Context, conn session.Conn, l Listener) {
 	id := uuid.MustParse(conn.IdentityData().Identity)
+	// Before the player data is loaded: the old session saves it as it closes.
+	if srv.TakeOver(id) != nil {
+		_ = l.Disconnect(conn, "Already logged in.")
+		srv.conf.Log.Debug("spawn failed: already logged in", "raddr", conn.RemoteAddr())
+		return
+	}
 	data := srv.defaultGameData()
 
 	d, w, err := srv.conf.PlayerProvider.Load(id, srv.dimension)

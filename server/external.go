@@ -1,7 +1,9 @@
 package server
 
 import (
+	"context"
 	"errors"
+	"time"
 
 	"github.com/df-mc/dragonfly/server/player"
 	"github.com/df-mc/dragonfly/server/session"
@@ -47,9 +49,55 @@ func (srv *Server) LoadPlayer(id uuid.UUID) (player.Config, *world.World) {
 	return d, w
 }
 
-// ErrAlreadyOnline is returned by AddPlayer when a player with the same UUID
-// is already online.
+// ErrAlreadyOnline is returned by AddPlayer and TakeOver when a player with
+// the same UUID is already online.
 var ErrAlreadyOnline = errors.New("already logged in")
+
+// DuplicateLoginMessage is what a player's old session is disconnected with
+// when they log in again (TakeOver), as in vanilla.
+const DuplicateLoginMessage = "You logged in from another location."
+
+// takeOverTimeout is how long TakeOver waits for the old session to close.
+const takeOverTimeout = 5 * time.Second
+
+// TakeOver makes room for a new login of the player with this UUID, as vanilla
+// does: a player still online under it is disconnected with
+// DuplicateLoginMessage, and TakeOver returns once their data is saved and the
+// UUID is free, or ErrAlreadyOnline if that took longer than takeOverTimeout.
+//
+// The old session is usually one whose connection died without the server
+// noticing yet: a RakNet client that vanishes (a relay or proxy dropping its
+// connection to the server, a crashed game) is only timed out after up to half
+// a minute, and refusing the new login meanwhile locked the player out.
+//
+// Call it before loading the player's data (LoadPlayer), so the new login gets
+// what the old session saved. Listener logins do this themselves.
+func (srv *Server) TakeOver(id uuid.UUID) error {
+	deadline := time.Now().Add(takeOverTimeout)
+	kicked := false
+	for {
+		h, ok := srv.Player(id)
+		if !ok {
+			return nil
+		}
+		if time.Now().After(deadline) {
+			return ErrAlreadyOnline
+		}
+		if !kicked {
+			ctx, cancel := context.WithDeadline(context.Background(), deadline)
+			_, err := player.Call(ctx, h, func(_ *world.Tx, p *player.Player) (struct{}, error) {
+				p.Disconnect(DuplicateLoginMessage)
+				return struct{}{}, nil
+			})
+			cancel()
+			// Not in a world (yet): the join is still on its way in. Try again.
+			if kicked = err == nil; kicked {
+				srv.conf.Log.Info("Player logged in again: disconnected the old session.", "uuid", id)
+			}
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+}
 
 // AddPlayer adds a player controlled by an external session. conf comes from
 // LoadPlayer with Name, XUID, UUID, Locale and Skin filled in. The player is

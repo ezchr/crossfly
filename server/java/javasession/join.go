@@ -79,6 +79,16 @@ func join(conf Config, tabs *tabList, jp *jserver.Player) {
 			return
 		}
 	}
+	// A session still online under this UUID is replaced, before the data is loaded: it saves the
+	// data as it closes.
+	if err := conf.Server.TakeOver(id); err != nil {
+		conf.Log.Info("refused java login", "name", jp.Profile.Name, "xuid", xuid, "reason", err)
+		var w wire.Writer
+		jserver.TextComponent(&w, "You are already logged in.")
+		jp.Conn.Send(v777.ClientboundPlayDisconnect, w.B)
+		jp.Conn.Close()
+		return
+	}
 	pc, w := conf.Server.LoadPlayer(id)
 	pc.Name = jp.Profile.Name
 	pc.UUID = id
