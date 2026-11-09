@@ -10,6 +10,10 @@ import (
 
 var registerJavaRedstone, registerMobItems, registerSpawnEggs sync.Once
 
+// mobItems holds the functions that register more items of Crossfly Full's mobs, appended to from the init
+// functions of the files that define them.
+var mobItems []func()
+
 // RegisterJavaRedstone registers the items of Crossfly Full's Java redstone: the minecarts. Call it before the
 // server is configured, with block.RegisterJavaRedstone.
 func RegisterJavaRedstone() {
@@ -29,6 +33,9 @@ func RegisterMobItems() {
 		world.RegisterItem(PitcherPod{})
 		for _, t := range HorseArmourTiers() {
 			world.RegisterItem(HorseArmour{Tier: t})
+		}
+		for _, f := range mobItems {
+			f()
 		}
 	})
 }

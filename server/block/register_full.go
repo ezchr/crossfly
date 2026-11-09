@@ -9,7 +9,21 @@ import (
 	"github.com/df-mc/dragonfly/server/world"
 )
 
-var registerJavaRedstone sync.Once
+var registerJavaRedstone, registerMobBlocks sync.Once
+
+// mobBlocks holds the functions that register the blocks of Crossfly Full's mobs, appended to from the init
+// functions of the files that define them.
+var mobBlocks []func()
+
+// RegisterMobBlocks registers the blocks of Crossfly Full's mobs: the blocks that only work with mobs, such
+// as eggs that hatch. Call it before the server is configured, with item.RegisterMobItems.
+func RegisterMobBlocks() {
+	registerMobBlocks.Do(func() {
+		for _, f := range mobBlocks {
+			f()
+		}
+	})
+}
 
 // RegisterJavaRedstone registers the redstone components of Crossfly Full (pistons, observers, repeaters,
 // comparators, buttons, pressure plates, dispensers, droppers, rails, lamps, targets, daylight detectors, tripwire

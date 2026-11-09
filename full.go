@@ -90,6 +90,7 @@ func (e Edition) register(log *slog.Logger) error {
 	}
 	if e.mobs() {
 		entity.SetMobs(true)
+		block.RegisterMobBlocks()
 		item.RegisterMobItems()
 		existing := map[string]bool{}
 		for _, t := range entity.DefaultRegistry.Types() {
