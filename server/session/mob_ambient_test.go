@@ -5,6 +5,7 @@ import (
 
 	"github.com/df-mc/dragonfly/server/world"
 	"github.com/go-gl/mathgl/mgl64"
+	"github.com/sandertv/gophertunnel/minecraft/protocol"
 	"github.com/sandertv/gophertunnel/minecraft/protocol/packet"
 )
 
@@ -32,5 +33,33 @@ func TestClientSideMobSoundNotSent(t *testing.T) {
 	pk := only[*packet.LevelSoundEvent](t, s)
 	if pk.SoundType != "ambient" || pk.EntityType != "minecraft:cow" {
 		t.Fatalf("sound %q of %q", pk.SoundType, pk.EntityType)
+	}
+}
+
+// ambientDataMob carries the ambient actor data server/mob sets on every mob.
+type ambientDataMob struct{}
+
+func (ambientDataMob) ExtraActorData() map[uint32]any {
+	return map[uint32]any{
+		protocol.EntityDataKeyAmbientSoundInterval:      float32(6),
+		protocol.EntityDataKeyAmbientSoundIntervalRange: float32(16),
+		protocol.EntityDataKeyAmbientSoundEventName:     "ambient.baby",
+	}
+}
+
+// TestAmbientActorDataSent: actor data 108-110, from which the Bedrock
+// client plays ambient sounds, reach the client as float, float and string.
+func TestAmbientActorDataSent(t *testing.T) {
+	s := newTestSession()
+	md := protocol.NewEntityMetadata()
+	s.addMobMetadata(ambientDataMob{}, md)
+	for key, want := range map[uint32]any{
+		protocol.EntityDataKeyAmbientSoundInterval:      float32(6),
+		protocol.EntityDataKeyAmbientSoundIntervalRange: float32(16),
+		protocol.EntityDataKeyAmbientSoundEventName:     "ambient.baby",
+	} {
+		if md[key] != want {
+			t.Errorf("data %d = %#v, want %#v", key, md[key], want)
+		}
 	}
 }

@@ -5,6 +5,7 @@ package core
 import (
 	"encoding/json"
 	"fmt"
+	"math"
 
 	"github.com/df-mc/dragonfly/server/block"
 	"github.com/df-mc/dragonfly/server/block/cube"
@@ -12,6 +13,7 @@ import (
 	"github.com/df-mc/dragonfly/server/entity/effect"
 	"github.com/df-mc/dragonfly/server/mob"
 	"github.com/df-mc/dragonfly/server/world"
+	"github.com/sandertv/gophertunnel/minecraft/protocol"
 )
 
 // ambientSound is minecraft:ambient_sound_interval: plays the ambient sound
@@ -23,6 +25,7 @@ type ambientSound struct {
 	event      string
 	names      []ambientName
 	left       int
+	sync       int // ticks since actor data 110 was updated from event_names
 }
 
 type ambientName struct {
@@ -67,21 +70,40 @@ func (c *ambientSound) reset(m *mob.Mob) {
 	c.left = ticksOf(c.value + m.Rand().Float64()*c.rng)
 }
 
-func (c *ambientSound) Attach(m *mob.Mob) { c.reset(m) }
-func (c *ambientSound) Detach(*mob.Mob)   {}
+// Attach sets actor data 108-110, from which the Bedrock client plays the
+// sound (AmbientSoundIntervalDefinition::initialize).
+func (c *ambientSound) Attach(m *mob.Mob) {
+	c.reset(m)
+	c.sync = 0
+	setAmbientData(m, c.value, c.rng, c.event)
+}
 
+// Detach goes back to the mob's hardcoded defaults (ambient_hardcoded.go).
+func (c *ambientSound) Detach(m *mob.Mob) { setDefaultAmbientData(m) }
+
+// Tick updates the event name of actor data 110 from event_names every
+// round(value*10) ticks (AmbientSoundServerSystem::_tickAmbientSoundComponent)
+// and plays the sound for Java viewers on the client's timer: BDS sends no
+// ambient sound, the Bedrock client plays it itself.
 func (c *ambientSound) Tick(m *mob.Mob) {
+	if len(c.names) > 0 {
+		if c.sync++; c.sync > int(math.Round(c.value*10)) {
+			c.sync = 0
+			m.SetActorData(protocol.EntityDataKeyAmbientSoundEventName, c.Event(m))
+		}
+	}
 	if c.left--; c.left > 0 {
 		return
 	}
 	c.reset(m)
-	PlayMobSound(m, c.Event(m))
+	playClientAmbient(m, c.Event(m))
 }
 
-// Event returns the ambient sound event to play now.
+// Event returns the ambient sound event to play now: the first event_names
+// entry whose condition is above 0 (FLT_EPSILON in BDS), else event_name.
 func (c *ambientSound) Event(m *mob.Mob) string {
 	for _, n := range c.names {
-		if n.cond.Eval(m) != 0 {
+		if n.cond.Eval(m) > 1.1920929e-7 {
 			return n.event
 		}
 	}
