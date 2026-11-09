@@ -48,8 +48,9 @@ type textState struct {
 	scoreShown    map[uuid.UUID]string // the score holder the score tag was sent for
 	belowName     bool
 
-	// Hash of the last commands tree sent.
+	// Hash of the last commands tree sent, and the tree, for command_suggestion requests.
 	cmdHash uint64
+	cmdTree *cmdTree
 
 	// The sign edit OpenSign allowed.
 	sign signGrant

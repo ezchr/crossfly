@@ -1,7 +1,10 @@
 package cmd
 
 import (
+	"strings"
 	"testing"
+
+	"github.com/google/uuid"
 
 	"github.com/go-gl/mathgl/mgl64"
 )
@@ -108,6 +111,51 @@ func TestJavaSelectorArguments(t *testing.T) {
 	for _, bad := range []string{"@e[limit=0]", "@e[distance=..]", "@e[distance=-1]", "@e[sort=closest]", "@e[tag=x]"} {
 		if _, _, err := parseSelector(bad, src); err == nil {
 			t.Errorf("%s: no error", bad)
+		}
+	}
+}
+
+type uuidTarget struct {
+	fakeTarget
+	id uuid.UUID
+}
+
+func (u uuidTarget) UUID() uuid.UUID { return u.id }
+
+// A target may be given as a UUID, as Java Edition clients do for the entity under the crosshair.
+func TestUUIDTargets(t *testing.T) {
+	a, b := uuid.New(), uuid.New()
+	pool := []Target{fakeTarget{"no uuid", mgl64.Vec3{}}, uuidTarget{fakeTarget{"a", mgl64.Vec3{}}, a}, uuidTarget{fakeTarget{"b", mgl64.Vec3{}}, b}}
+	for _, s := range []string{b.String(), strings.ToUpper(b.String())} {
+		id, ok := parseUUID(s)
+		if !ok {
+			t.Fatalf("%s is not parsed as a UUID", s)
+		}
+		got, ok := targetByUUID(pool, id)
+		if !ok || got.(uuidTarget).name != "b" {
+			t.Fatalf("%s matched %v, %v", s, got, ok)
+		}
+	}
+	if _, ok := targetByUUID(pool, uuid.New()); ok {
+		t.Fatal("an unknown UUID matched a target")
+	}
+	for _, s := range []string{"Steve", "TestPlayer", strings.ReplaceAll(a.String(), "-", ""), "@a"} {
+		if _, ok := parseUUID(s); ok {
+			t.Errorf("%q parsed as a UUID", s)
+		}
+	}
+}
+
+// A Java client knows a player with a name of over 16 characters by its first 16.
+func TestParsePlayerJavaName(t *testing.T) {
+	players := []NamedTarget{fakeTarget{"Ezchr", mgl64.Vec3{}}, fakeTarget{"AVeryLongGamertag1", mgl64.Vec3{}}, fakeTarget{"TwinsWithLongNameA", mgl64.Vec3{}}, fakeTarget{"TwinsWithLongNameB", mgl64.Vec3{}}}
+	for name, want := range map[string]string{"ezchr": "Ezchr", "AVeryLongGamertag1": "AVeryLongGamertag1", "averylonggamerta": "AVeryLongGamertag1", "TwinsWithLongNam": "", "AVeryLongGamert": ""} {
+		got, err := parser{}.parsePlayer(name, players)
+		switch {
+		case want == "" && err == nil:
+			t.Errorf("%q matched %v", name, got)
+		case want != "" && (err != nil || got.(fakeTarget).name != want):
+			t.Errorf("%q: %v, %v; want %s", name, got, err, want)
 		}
 	}
 }

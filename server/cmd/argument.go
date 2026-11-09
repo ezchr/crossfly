@@ -11,6 +11,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"unicode/utf8"
 )
 
 // Line represents a command line holding command arguments that were passed upon the execution of the
@@ -354,6 +355,14 @@ func (p parser) parseTargets(line *Line, tx *world.Tx) ([]Target, error) {
 	if !ok {
 		return nil, line.UsageError()
 	}
+	if id, ok := parseUUID(first); ok {
+		// A UUID, as Java Edition takes: the player or entity with it.
+		entities, _ := targets(tx)
+		if t, ok := targetByUUID(entities, id); ok {
+			return []Target{t}, nil
+		}
+		return nil, MessageNoTargets.F()
+	}
 	if !strings.HasPrefix(first, "@") {
 		_, players := targets(tx)
 		target, err := p.parsePlayer(first, players)
@@ -392,5 +401,24 @@ func (p parser) parsePlayer(name string, players []NamedTarget) (Target, error) 
 	}); ind != -1 {
 		return players[ind], nil
 	}
+	// Java Edition names are at most 16 characters: Java clients know a player with a longer
+	// (Bedrock) name by its first 16, and suggest that. It is taken if only one player fits.
+	if utf8.RuneCountInString(name) == javaNameLength {
+		var found Target
+		for _, t := range players {
+			if r := []rune(t.Name()); len(r) > javaNameLength && strings.EqualFold(string(r[:javaNameLength]), name) {
+				if found != nil {
+					return nil, MessagePlayerNotFound.F()
+				}
+				found = t
+			}
+		}
+		if found != nil {
+			return found, nil
+		}
+	}
 	return nil, MessagePlayerNotFound.F()
 }
+
+// javaNameLength is the longest player name Java Edition has.
+const javaNameLength = 16

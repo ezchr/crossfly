@@ -42,8 +42,15 @@ func (s *Session) handleTextPacket(id int32, body []byte) (handled bool, err err
 			return true, nil
 		}
 		s.inTx(func(c session.Controllable) { c.ExecuteCommand("/" + command) })
-	case v777.ServerboundPlayChatAck, v777.ServerboundPlayChatSessionUpdate, v777.ServerboundPlayCommandSuggestion:
-		// Nothing to do: no signed chat, no server-side suggestions yet.
+	case v777.ServerboundPlayCommandSuggestion:
+		id := r.VarInt()
+		line := r.String(32500)
+		if r.Err != nil {
+			return true, r.Err
+		}
+		s.inTx(func(c session.Controllable) { s.answerSuggestions(c, id, line) })
+	case v777.ServerboundPlayChatAck, v777.ServerboundPlayChatSessionUpdate:
+		// Nothing to do: no signed chat.
 	case v777.ServerboundPlayCustomClickAction:
 		ident := r.String(32767)
 		payload := r.ByteArray(65536)

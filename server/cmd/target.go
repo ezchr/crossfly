@@ -4,6 +4,7 @@ import (
 	"github.com/df-mc/dragonfly/server/internal/sliceutil"
 	"github.com/df-mc/dragonfly/server/world"
 	"github.com/go-gl/mathgl/mgl64"
+	"github.com/google/uuid"
 	"slices"
 )
 
@@ -29,4 +30,35 @@ func targets(tx *world.Tx) (entities []Target, players []NamedTarget) {
 	ent := sliceutil.Convert[Target](slices.Collect(tx.Entities()))
 	pl := sliceutil.Convert[NamedTarget](slices.Collect(tx.Players()))
 	return ent, pl
+}
+
+// parseUUID parses a target given as a UUID in its usual 36 character form
+// (8-4-4-4-12 hexadecimal digits), as Java Edition clients send for the entity
+// they look at. A player name is never that long.
+func parseUUID(s string) (uuid.UUID, bool) {
+	if len(s) != 36 {
+		return uuid.Nil, false
+	}
+	id, err := uuid.Parse(s)
+	return id, err == nil
+}
+
+// targetByUUID returns the Target in pool with the UUID passed: a player's
+// UUID, or the UUID of an entity's handle.
+func targetByUUID(pool []Target, id uuid.UUID) (Target, bool) {
+	for _, t := range pool {
+		var tid uuid.UUID
+		switch v := t.(type) {
+		case interface{ UUID() uuid.UUID }:
+			tid = v.UUID()
+		case world.Entity:
+			tid = v.H().UUID()
+		default:
+			continue
+		}
+		if tid == id {
+			return t, true
+		}
+	}
+	return nil, false
 }
