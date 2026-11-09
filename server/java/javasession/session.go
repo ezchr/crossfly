@@ -180,9 +180,13 @@ func (s *Session) queue(id int32, w *wire.Writer) {
 		s.CloseConnection()
 		return
 	}
-	select {
-	case s.wake <- struct{}{}:
-	default:
+	if n == 1 {
+		// Only the first packet since the writer took its last batch wakes it: the writer takes the
+		// packets queued after it along (a tick queues hundreds of entity moves).
+		select {
+		case s.wake <- struct{}{}:
+		default:
+		}
 	}
 }
 
