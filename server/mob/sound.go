@@ -28,6 +28,11 @@ type Sound struct {
 	Identifier string
 	// Baby makes the client pick the baby variant/pitch.
 	Baby bool
+	// ClientSide marks a sound the Bedrock client plays by itself, so the
+	// Bedrock session drops it and only Java hears it: ambient sounds of
+	// mobs without ambient_sound_interval (BDS sends no LevelSoundEvent,
+	// the client plays them from actor data 108-110).
+	ClientSide bool
 }
 
 // Play ...
@@ -38,6 +43,10 @@ func (Sound) Play(*world.World, mgl64.Vec3) {}
 func (s Sound) LevelSoundEvent() (event, entityType string, baby bool) {
 	return s.Event, s.Identifier, s.Baby
 }
+
+// BedrockClientSide reports whether the Bedrock client plays the sound by
+// itself (see ClientSide).
+func (s Sound) BedrockClientSide() bool { return s.ClientSide }
 
 // PlaySound plays a sound event of the mob at its position.
 func (m *Mob) PlaySound(event string) {

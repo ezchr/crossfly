@@ -63,6 +63,11 @@ func javaMobSoundName(event, typ string) (string, bool) {
 	case short == "shulker_bullet" && event == "hurt":
 		// A projectile: the client plays no hurt sound of its own.
 		return "minecraft:entity.shulker_bullet.hurt", true
+	case short == "mooshroom" && (event == "ambient" || event == "ambient.baby"):
+		// Java's mooshroom is a cow (MushroomCow extends AbstractCow).
+		return "minecraft:entity.cow.ambient", true
+	case short == "goat" && event == "ambient.screamer":
+		return "minecraft:entity.goat.screaming.ambient", true
 	case (short == "llama" || short == "trader_llama") && event == "shoot":
 		return "minecraft:entity.llama.spit", true
 	case event == "bucket.fill.fish" || event == "bucket.empty.fish":

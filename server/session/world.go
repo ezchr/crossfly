@@ -701,6 +701,10 @@ func (s *Session) playSound(pos mgl64.Vec3, t world.Sound, disableRelative bool)
 	if ls, ok := t.(interface {
 		LevelSoundEvent() (event, entityType string, baby bool)
 	}); ok {
+		if cs, ok := t.(interface{ BedrockClientSide() bool }); ok && cs.BedrockClientSide() {
+			// The client plays it by itself (mob ambient sounds); only Java gets it.
+			return
+		}
 		pk.SoundType, pk.EntityType, pk.BabyMob = ls.LevelSoundEvent()
 		s.writePacket(pk)
 		return
