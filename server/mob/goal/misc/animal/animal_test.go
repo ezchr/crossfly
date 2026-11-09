@@ -486,39 +486,46 @@ func TestSilverfishWakeUpFriends(t *testing.T) {
 	}
 }
 
-// TestOcelotHunts: a wild ocelot targets a chicken 12 blocks away
-// (nearest_attackable_target) and ocelotattack stalks it: sneaking from afar,
-// sprinting within 4 blocks, then biting it to death.
+// TestOcelotHunts: a wild ocelot targets a chicken 7 blocks away
+// (nearest_attackable_target) and ocelotattack stalks it, sneaking, until it
+// is bitten to death. The spawn event may make a baby and may add two wild
+// babies (wild_child_ocelot_spawn) that hunt too, so the gait is watched on
+// every ocelot. Whether one sprints depends on leap_at_target, which can
+// pounce from beyond the sprint range straight into bite reach (as in BDS);
+// TestOcelotAttackGait checks the sprint thresholds with a still target.
 func TestOcelotHunts(t *testing.T) {
 	mobtest.RequireDefinitions(t)
 	mobtest.RequireFilters(t)
 	w := mobtest.New(t, mobtest.Options{})
 	w.Do(func(tx *world.Tx) { w.Arena(tx, 16, 3) })
-	o := w.Spawn("minecraft:ocelot", mgl64.Vec3{0.5, 1, 0.5}, mob.SpawnOptions{Event: "minecraft:entity_spawned"})
+	w.Spawn("minecraft:ocelot", mgl64.Vec3{0.5, 1, 0.5}, mob.SpawnOptions{Event: "minecraft:entity_spawned"})
 	c := w.Spawn("minecraft:chicken", mgl64.Vec3{7.5, 1, 0.5})
 	c.With(func(m *mob.Mob) { m.Goals().ClearAll() })
-	var sneaked, sprinted, both bool
+	var sneaked, both bool
 	_, ok := w.TickUntil(600, func(tx *world.Tx) bool {
-		if m, ok := o.Mob(tx); ok {
-			sneaked = sneaked || m.Sneaking()
-			sprinted = sprinted || m.Sprinting()
-			both = both || m.Sneaking() && m.Sprinting()
+		for e := range tx.Entities() {
+			if m, ok := mob.Of(e); ok && m.Identifier() == "minecraft:ocelot" {
+				sneaked = sneaked || m.Sneaking()
+				both = both || m.Sneaking() && m.Sprinting()
+			}
 		}
 		_, alive := c.Entity(tx)
 		return !alive || c.Gone()
 	})
 	if !ok {
-		t.Fatalf("chicken still alive: %v\n%v", w.Dump(o), w.Dump(c))
+		t.Fatalf("chicken still alive: %v", w.Dump(c))
 	}
-	if !sneaked || !sprinted || both {
-		t.Errorf("gait: sneaked %v sprinted %v both at once %v", sneaked, sprinted, both)
+	if !sneaked || both {
+		t.Errorf("gait: sneaked %v, sneaking and sprinting at once %v", sneaked, both)
 	}
 	w.Tick(3)
-	o.With(func(m *mob.Mob) {
-		if m.Sneaking() || m.Sprinting() {
-			t.Error("still sneaking/sprinting after the hunt")
-		}
-	})
+	for _, o := range w.Mobs("minecraft:ocelot") {
+		o.With(func(m *mob.Mob) {
+			if m.Sneaking() || m.Sprinting() {
+				t.Error("an ocelot still sneaks/sprints after the hunt")
+			}
+		})
+	}
 }
 
 // TestOcelotAttackGait: the gait thresholds of OcelotAttackGoal::tick, with
