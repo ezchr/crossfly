@@ -26,6 +26,9 @@ type Config struct {
 	PlayFabID string
 	UUID      uuid.UUID
 	Name      string
+	// NoNameTag spawns the player with an empty name tag instead of Name, so that no name shows
+	// above a player without a session (an NPC) before SetNameTag could take it away.
+	NoNameTag bool
 	Locale    language.Tag
 	GameMode  world.GameMode
 
@@ -92,6 +95,9 @@ func (cfg Config) Apply(data *world.EntityData) {
 		alwaysShowNameTag:   true,
 		fireTicks:           conf.FireTicks,
 		fallDistance:        conf.FallDistance,
+	}
+	if conf.NoNameTag {
+		pdata.nameTag = ""
 	}
 	playerUUID := conf.UUID
 	pdata.portalTravel = &entity.PortalTravelComputer{
