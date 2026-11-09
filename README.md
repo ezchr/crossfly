@@ -1,46 +1,61 @@
 # Crossfly
 
-Crossfly is a Minecraft server where **Java Edition and Bedrock Edition players play together natively**.
-It is built on [Dragonfly](https://github.com/df-mc/dragonfly), the Bedrock server written in Go, and adds a
-Java Edition layer written in Go inside the server: Java players connect straight to it, with no Geyser,
-ViaProxy or ViaBedrock in between, and share the same world with Bedrock players.
+Crossfly is a Minecraft server that Java Edition and Bedrock Edition players can join at the same time,
+natively. No Geyser, no Floodgate, no ViaProxy: Java players connect straight to the server and play in the
+same world as Bedrock players. The Java crossplay experience is seamless.
 
-Like Dragonfly, Crossfly is used as a library: you write your server in Go and import it.
+It is built on [Dragonfly](https://github.com/df-mc/dragonfly), the Bedrock server written in Go, so it is
+light: one small binary, low memory, starts in seconds.
 
-## What you get
+## Versions
 
-- **Both editions on one server.** Bedrock players join as they would on any Dragonfly server; Java players
-  join the Java listener. Everyone sees each other, chats, fights and builds in the same world.
-- **No translation proxy.** The Java protocol is spoken in Go inside the server and renders the server's own
-  world, blocks, items, entities, inventories and forms (as Java dialogs) directly.
-- **Light.** One Go binary, low memory, no JVM.
-- **Behind Velocity or standalone.** Velocity modern forwarding, or the Java listener on its own with online
-  mode (Microsoft accounts) or offline mode.
-- **Skins across editions.** Bedrock players' skins show for Java players and Java skins show for Bedrock players.
+- Java Edition 26.3 and 26.2
+- Bedrock Edition 1.26.60
 
-Supported versions: Java Edition **26.3** and **26.2**, Bedrock Edition **1.26.60**.
+Put [Velocity](https://papermc.io/software/velocity) with [ViaVersion](https://viaversion.com) in front of
+Crossfly and Java players on many more versions can join too.
 
-## Getting started
+## Running it
 
-Crossfly keeps Dragonfly's module path, so existing Dragonfly servers switch with one line in `go.mod`:
+1. Download the build for your system from [Releases](https://github.com/ezchr/crossfly/releases).
+2. Run it once. It creates `config.toml` and a `world` folder, and starts listening:
+   Bedrock players on port 19132 (UDP), Java players on port 25565 (TCP).
+3. Stop it with Ctrl+C, change `config.toml` to your liking, and start it again.
+
+### Java settings
+
+The `[Java]` section of `config.toml`:
+
+| Setting | Default | What it does |
+|---|---|---|
+| `Enabled` | `true` | Lets Java players join. |
+| `Address` | `":25565"` | Address and port for Java players. |
+| `OnlineMode` | `true` | Only Microsoft accounts can join. Turn it off for offline accounts. |
+| `VelocitySecretFile` | `""` | Path to Velocity's `forwarding.secret`. Set it when the server sits behind Velocity with modern forwarding; Velocity then checks the accounts. |
+| `CompressionThreshold` | `256` | Packets this big or bigger are compressed. Use `-1` when only Velocity on the same machine connects. |
+| `ChunkRadius` | `12` | Largest view distance Java players get. |
+
+Everything else in `config.toml` is Dragonfly's own configuration.
+
+## Building from source
+
+You need Go 1.26 or newer.
 
 ```
-replace github.com/df-mc/dragonfly => github.com/ezchr/crossfly main
+git clone https://github.com/ezchr/crossfly
+cd crossfly
+go build -o crossfly .
 ```
 
-then `go mod tidy` (it turns `main`, or a release tag, into a version). Your Dragonfly code keeps working as is.
-Then start the Java listener next to your Bedrock one; see [server/java/README.md](server/java/README.md) for
-the full setup, options and Velocity forwarding.
+The Java side lives in [server/java](server/java); its README explains how it works and how to use it in your
+own Go program.
 
-Requires **Go 1.26** or newer.
+## Credits
 
-## Relationship with Dragonfly
-
-Crossfly is a fork of Dragonfly that follows it closely: upstream changes are merged in regularly, and fixes
-that belong in Dragonfly itself are sent upstream. For Dragonfly's API, documentation and guides, see the
-[Dragonfly repository](https://github.com/df-mc/dragonfly) and its [wiki](https://github.com/df-mc/dragonfly/wiki).
-Crossfly is not an official df-mc project; please report Crossfly issues here, not to Dragonfly.
+Crossfly is a fork of [Dragonfly](https://github.com/df-mc/dragonfly) by Dragonfly Tech and its contributors,
+who wrote the server Crossfly runs on. It is not an official df-mc project, so please report Crossfly problems
+here rather than to Dragonfly. Fixes that belong in Dragonfly itself are sent upstream.
 
 ## License
 
-MIT, like Dragonfly: see [LICENSE](LICENSE). Dragonfly is copyright Dragonfly Tech and its contributors.
+MIT, like Dragonfly. See [LICENSE](LICENSE).

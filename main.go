@@ -1,24 +1,80 @@
 package main
 
 import (
+	"bytes"
 	"fmt"
-	"github.com/df-mc/dragonfly/server"
-	"github.com/df-mc/dragonfly/server/player/chat"
-	"github.com/pelletier/go-toml"
 	"log/slog"
 	"os"
+
+	"github.com/df-mc/dragonfly/server"
+	"github.com/df-mc/dragonfly/server/java/javasession"
+	jserver "github.com/df-mc/dragonfly/server/java/protocol/server"
+	"github.com/df-mc/dragonfly/server/player/chat"
+	"github.com/pelletier/go-toml"
 )
 
+// fileConfig is config.toml: Dragonfly's settings plus the Java Edition listener.
+type fileConfig struct {
+	server.UserConfig
+	Java javaConfig
+}
+
+// javaConfig holds the settings of the Java Edition listener.
+type javaConfig struct {
+	// Enabled starts the Java Edition listener, so Java Edition players can join next to Bedrock players.
+	Enabled bool
+	// Address is the TCP address Java Edition players connect to, including the port.
+	Address string
+	// OnlineMode checks every Java login with Mojang, so only Microsoft accounts get in. Turn it off
+	// behind Velocity (VelocitySecretFile) or to allow offline accounts.
+	OnlineMode bool
+	// VelocitySecretFile is the path to Velocity's forwarding.secret file. When set, the server only
+	// takes players through Velocity's modern forwarding, and OnlineMode is ignored (Velocity checks
+	// the accounts). Leave it empty when players connect directly.
+	VelocitySecretFile string
+	// CompressionThreshold compresses packets of at least this many bytes. -1 turns compression off,
+	// which suits a server that only Velocity on the same machine connects to.
+	CompressionThreshold int
+	// ChunkRadius is the largest view distance in chunks a Java player gets. Their own setting is
+	// used when it is smaller.
+	ChunkRadius int
+}
+
+func defaultConfig() fileConfig {
+	return fileConfig{
+		UserConfig: server.DefaultConfig(),
+		Java: javaConfig{
+			Enabled:              true,
+			Address:              ":25565",
+			OnlineMode:           true,
+			CompressionThreshold: 256,
+			ChunkRadius:          12,
+		},
+	}
+}
+
 func main() {
-	slog.SetLogLoggerLevel(slog.LevelDebug)
+	log := slog.Default()
 	chat.Global.Subscribe(chat.StdoutSubscriber{})
-	conf, err := readConfig(slog.Default())
+	fc, err := readConfig()
 	if err != nil {
-		panic(err)
+		log.Error("config.toml", "err", err)
+		os.Exit(1)
+	}
+	conf, err := fc.UserConfig.Config(log)
+	if err != nil {
+		log.Error("config.toml", "err", err)
+		os.Exit(1)
 	}
 
 	srv := conf.New()
 	srv.CloseOnProgramEnd()
+	if fc.Java.Enabled {
+		if err := startJava(srv, conf, fc.Java, log); err != nil {
+			log.Error("Java Edition listener", "err", err)
+			os.Exit(1)
+		}
+	}
 
 	srv.Listen()
 	for p := range srv.Accept() {
@@ -26,27 +82,59 @@ func main() {
 	}
 }
 
-// readConfig reads the configuration from the config.toml file, or creates the
-// file if it does not yet exist.
-func readConfig(log *slog.Logger) (server.Config, error) {
-	c := server.DefaultConfig()
-	var zero server.Config
-	if _, err := os.Stat("config.toml"); os.IsNotExist(err) {
+// startJava starts the Java Edition listener and lets its players join srv.
+func startJava(srv *server.Server, conf server.Config, jc javaConfig, log *slog.Logger) error {
+	var secret []byte
+	if jc.VelocitySecretFile != "" {
+		b, err := os.ReadFile(jc.VelocitySecretFile)
+		if err != nil {
+			return fmt.Errorf("read Velocity secret: %w", err)
+		}
+		if secret = bytes.TrimSpace(b); len(secret) == 0 {
+			return fmt.Errorf("Velocity secret file %s is empty", jc.VelocitySecretFile)
+		}
+	}
+	l, err := jserver.Listen(jc.Address, jserver.Config{
+		OnlineMode:           jc.OnlineMode && secret == nil,
+		VelocitySecret:       secret,
+		CompressionThreshold: jc.CompressionThreshold,
+		Log:                  log,
+		Status: func() jserver.Status {
+			return jserver.Status{MOTD: conf.Name, MaxPlayers: srv.MaxPlayerCount(), Online: srv.PlayerCount()}
+		},
+	})
+	if err != nil {
+		return err
+	}
+	log.Info("Java Edition listener running.", "addr", l.Addr(), "online-mode", jc.OnlineMode && secret == nil, "velocity", secret != nil)
+	go javasession.Run(javasession.Config{
+		Server:      srv,
+		Listener:    l,
+		ChunkRadius: jc.ChunkRadius,
+		Log:         log,
+		JoinMessage: conf.JoinMessage,
+		QuitMessage: conf.QuitMessage,
+	})
+	return nil
+}
+
+// readConfig reads config.toml, or writes the default one if it does not exist yet. Settings missing from an
+// older file keep their defaults.
+func readConfig() (fileConfig, error) {
+	c := defaultConfig()
+	data, err := os.ReadFile("config.toml")
+	if os.IsNotExist(err) {
 		data, err := toml.Marshal(c)
 		if err != nil {
-			return zero, fmt.Errorf("encode default config: %v", err)
+			return c, fmt.Errorf("encode default config: %w", err)
 		}
-		if err := os.WriteFile("config.toml", data, 0644); err != nil {
-			return zero, fmt.Errorf("create default config: %v", err)
-		}
-		return c.Config(log)
+		return c, os.WriteFile("config.toml", data, 0644)
 	}
-	data, err := os.ReadFile("config.toml")
 	if err != nil {
-		return zero, fmt.Errorf("read config: %v", err)
+		return c, fmt.Errorf("read config: %w", err)
 	}
 	if err := toml.Unmarshal(data, &c); err != nil {
-		return zero, fmt.Errorf("decode config: %v", err)
+		return c, fmt.Errorf("decode config: %w", err)
 	}
-	return c.Config(log)
+	return c, nil
 }
