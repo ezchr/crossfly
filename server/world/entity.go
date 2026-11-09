@@ -551,6 +551,9 @@ type EntityRegistryConfig struct {
 	Lightning          func(opts EntitySpawnOpts) *EntityHandle
 	// Minecart creates a minecart of a kind (item.MinecartKind). Optional: minecart items do nothing without it.
 	Minecart func(opts EntitySpawnOpts, kind int) *EntityHandle
+	// CushionPlacement returns where a cushion used on a face of a block at clickPos (relative to the block) goes,
+	// or false if it may not be placed there. Optional: without it, cushions go on top faces where clicked.
+	CushionPlacement func(pos cube.Pos, face cube.Face, clickPos mgl64.Vec3, tx *Tx) (mgl64.Vec3, bool)
 }
 
 // ArrowSpawnConfig holds the options used to spawn an arrow entity.

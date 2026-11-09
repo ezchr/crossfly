@@ -19,13 +19,21 @@ type Cushion struct {
 const cushionWidth, cushionHeight = 0.999, 0.249
 
 // UseOnBlock places a cushion on the top face of a block, centred at the height clicked and facing the user,
-// unless it would overlap another cushion.
+// unless it would overlap another cushion. The entity registry decides where exactly, and if it is supported there.
 func (c Cushion) UseOnBlock(pos cube.Pos, face cube.Face, clickPos mgl64.Vec3, tx *world.Tx, user User, ctx *UseContext) bool {
-	if face != cube.FaceUp {
+	conf := tx.World().EntityRegistry().Config()
+	spawnPos := mgl64.Vec3{float64(pos[0]) + 0.5, float64(pos[1]) + clickPos[1], float64(pos[2]) + 0.5}
+	if conf.CushionPlacement != nil {
+		p, ok := conf.CushionPlacement(pos, face, clickPos, tx)
+		if !ok {
+			return false
+		}
+		spawnPos = p
+	} else if face != cube.FaceUp {
 		return false
 	}
 	click := pos.Vec3().Add(clickPos)
-	box := cube.Box(0, 0, 0, cushionWidth, cushionHeight, cushionWidth).Translate(mgl64.Vec3{float64(pos[0]), click[1], float64(pos[2])})
+	box := cube.Box(-cushionWidth/2, 0, -cushionWidth/2, cushionWidth/2, cushionHeight, cushionWidth/2).Translate(spawnPos)
 	for e := range tx.EntitiesWithin(box.Grow(1)) {
 		if e.H().Type().EncodeEntity() != "minecraft:cushion" {
 			continue
@@ -40,9 +48,8 @@ func (c Cushion) UseOnBlock(pos cube.Pos, face cube.Face, clickPos mgl64.Vec3, t
 	if held, _ := user.HeldItems(); held.Item() == c {
 		name = held.CustomName()
 	}
-	spawnPos := mgl64.Vec3{float64(pos[0]) + 0.5, click[1], float64(pos[2]) + 0.5}
 	opts := world.EntitySpawnOpts{Position: spawnPos, Rotation: cube.Rotation{cushionYaw(user.Rotation().Yaw()), 0}, NameTag: name}
-	tx.AddEntity(tx.World().EntityRegistry().Config().Cushion(opts, c.Colour))
+	tx.AddEntity(conf.Cushion(opts, c.Colour))
 	tx.PlaySound(spawnPos, sound.CushionPlace{})
 
 	ctx.SubtractFromCount(1)
