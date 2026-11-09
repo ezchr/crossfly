@@ -1779,6 +1779,11 @@ func (w *World) columnTo(col *Column, pos ChunkPos) *chunk.Column {
 		Tick:            w.scheduledUpdates.currentTick,
 	}
 	for _, e := range col.Entities {
+		if isPlayerHandle(e) {
+			// Players are saved by the player provider: a chunk saved while one stands in
+			// it (autosave) would otherwise hold an entity no world can load again.
+			continue
+		}
 		data := e.encodeNBT()
 		maps.Copy(data, e.t.EncodeNBT(&e.data))
 		data["identifier"] = e.t.EncodeEntity()
