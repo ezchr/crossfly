@@ -99,6 +99,8 @@ type World struct {
 	// position (redstoneMemo) are kept until a block near it changes.
 	changes changeLog
 	memo    redstoneMemo
+	// redstoneNames are the encoded names of block states by runtime ID (redstoneBlockName).
+	redstoneNames []string
 
 	viewerMu sync.Mutex
 	viewers  map[*Loader]Viewer

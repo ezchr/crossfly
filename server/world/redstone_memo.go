@@ -206,7 +206,7 @@ func (w *World) conductorFaces(tx *Tx, pos cube.Pos, b Block) uint8 {
 		return uint8(v)
 	}
 	seq := w.changes.seq
-	name, _ := b.EncodeBlock()
+	name := w.redstoneBlockName(b)
 	var faces uint8
 	for _, face := range cube.Faces() {
 		if redstoneNamedStrongPowerConductor(pos, b, name, tx, face) {
@@ -215,6 +215,25 @@ func (w *World) conductorFaces(tx *Tx, pos cube.Pos, b Block) uint8 {
 	}
 	w.memo.set(redstoneMemoConductor, pos, seq, uint64(faces))
 	return faces
+}
+
+// redstoneBlockName returns the encoded name of b, a block read from the world, worked out once for each block
+// state: encoding a block such as dust builds a property map.
+func (w *World) redstoneBlockName(b Block) string {
+	rid := w.conf.Blocks.BlockRuntimeID(b)
+	if int(rid) >= 1<<20 {
+		name, _ := b.EncodeBlock()
+		return name
+	}
+	if int(rid) < len(w.redstoneNames) && w.redstoneNames[rid] != "" {
+		return w.redstoneNames[rid]
+	}
+	name, _ := b.EncodeBlock()
+	if int(rid) >= len(w.redstoneNames) {
+		w.redstoneNames = append(w.redstoneNames, make([]string, int(rid)+1-len(w.redstoneNames))...)
+	}
+	w.redstoneNames[rid] = name
+	return name
 }
 
 // redstoneListMemo keeps lists of positions graph compilation worked out from the blocks around a position, while

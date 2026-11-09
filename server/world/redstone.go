@@ -149,6 +149,10 @@ type redstoneEngine struct {
 	// holding is set.
 	held    map[uint64]redstoneHeldPower
 	holding bool
+	// stepBuffers are walk states for powerFrom.
+	stepBuffers []*redstoneStepBuffer
+	// graphBuffers is the scratch state for graphPower.
+	graphBuffers *redstoneGraphBuffers
 }
 
 // redstoneDirty records why a position needs redstone evaluation.
@@ -1268,20 +1272,37 @@ func (e *redstoneEngine) graphPower(tx *Tx, graph redstoneGraph) []int {
 		clear(e.held)
 	}()
 	index := graph.index
-	sources := make([]RedstonePowerSource, len(graph.nodes))
-	relayers := make([]RedstonePowerRelayer, len(graph.nodes))
-	edges := make([][]redstoneEdge, len(graph.nodes))
+	n := len(graph.nodes)
+	buf := e.graphBuffers
+	e.graphBuffers = nil
+	if buf == nil {
+		buf = &redstoneGraphBuffers{}
+	}
+	defer func() {
+		clear(buf.sources)
+		clear(buf.relayers)
+		e.graphBuffers = buf
+	}()
+	sources, relayers := grow(buf.sources, n), grow(buf.relayers, n)
+	// graph.edges is sorted by the node it leaves: the edges of node i are graph.edges[start[i]:start[i+1]].
+	start := grow(buf.start, n+1)
+	buf.sources, buf.relayers, buf.start = sources, relayers, start
 	for i, node := range graph.nodes {
 		if b, ok := tx.World().blockLoaded(node.pos); ok {
 			sources[i], _ = b.(RedstonePowerSource)
 			relayers[i], _ = b.(RedstonePowerRelayer)
 		}
 	}
+	clear(start)
 	for _, edge := range graph.edges {
-		edges[edge.from] = append(edges[edge.from], edge)
+		start[edge.from+1]++
+	}
+	for i := 1; i <= n; i++ {
+		start[i] += start[i-1]
 	}
 
-	queue := make([]int, 0, len(graph.nodes))
+	queue := buf.queue[:0]
+	defer func() { buf.queue = queue[:0] }()
 	push := func(i, power int) {
 		power = ClampRedstonePower(power)
 		if power <= powers[i] {
@@ -1321,7 +1342,7 @@ func (e *redstoneEngine) graphPower(tx *Tx, graph redstoneGraph) []int {
 		if relayers[i] == nil {
 			continue
 		}
-		for _, edge := range edges[i] {
+		for _, edge := range graph.edges[start[i]:start[i+1]] {
 			push(edge.to, powers[i]-edge.weight)
 		}
 	}
@@ -1348,17 +1369,12 @@ func (e *redstoneEngine) powerFrom(pos cube.Pos, tx *Tx, face cube.Face) int {
 	if e.acceptsWeakConductedPower(pos, tx) {
 		power = e.conductedActivationPowerFrom(pos, tx, face)
 	}
-	type step struct {
-		pos   cube.Pos
-		from  cube.Face
-		loss  int
-		depth int
-	}
-	queue := []step{{pos: pos.Side(face), from: face.Opposite(), loss: 0, depth: 0}}
-	seen := make(map[cube.Pos]int, 16)
-	for len(queue) != 0 {
-		s := queue[0]
-		queue = queue[1:]
+	buf := e.takeStepBuffer()
+	defer e.putStepBuffer(buf)
+	queue := append(buf.queue, redstoneStep{pos: pos.Side(face), from: face.Opposite(), loss: 0, depth: 0})
+	seen := buf.seen
+	for head := 0; head < len(queue); head++ {
+		s := queue[head]
 		if s.pos.OutOfBounds(tx.Range()) || s.loss >= 15 || s.depth >= 15 {
 			continue
 		}
@@ -1397,11 +1413,47 @@ func (e *redstoneEngine) powerFrom(pos cube.Pos, tx *Tx, face cube.Face) int {
 				loss += max(relayer.RedstoneSignalLoss(s.pos, tx), 1)
 			}
 			if loss <= 15 {
-				queue = append(queue, step{pos: next, from: to.Opposite(), loss: loss, depth: s.depth + 1})
+				queue = append(queue, redstoneStep{pos: next, from: to.Opposite(), loss: loss, depth: s.depth + 1})
 			}
 		}
 	}
+	buf.queue = queue
 	return ClampRedstonePower(power)
+}
+
+// redstoneStep is a relayer powerFrom walks through.
+type redstoneStep struct {
+	pos   cube.Pos
+	from  cube.Face
+	loss  int
+	depth int
+}
+
+// redstoneStepBuffer is the walk state of a powerFrom call, reused by later calls.
+type redstoneStepBuffer struct {
+	queue []redstoneStep
+	seen  map[cube.Pos]int
+}
+
+// takeStepBuffer returns an empty walk state. A source powerFrom asks for its power may call powerFrom again, so
+// each call takes its own.
+func (e *redstoneEngine) takeStepBuffer() *redstoneStepBuffer {
+	if n := len(e.stepBuffers); n > 0 {
+		b := e.stepBuffers[n-1]
+		e.stepBuffers = e.stepBuffers[:n-1]
+		return b
+	}
+	return &redstoneStepBuffer{seen: make(map[cube.Pos]int, 16)}
+}
+
+// putStepBuffer empties b for a later powerFrom call.
+func (e *redstoneEngine) putStepBuffer(b *redstoneStepBuffer) {
+	if len(b.seen) > 256 || len(e.stepBuffers) >= 8 {
+		return
+	}
+	b.queue = b.queue[:0]
+	clear(b.seen)
+	e.stepBuffers = append(e.stepBuffers, b)
 }
 
 // torchBurnoutStatus returns whether the torch at pos is burned out and whether it can recover at currentTick.
@@ -1505,9 +1557,30 @@ func (e *redstoneEngine) redstonePower(source RedstonePowerSource, pos cube.Pos,
 
 // redstoneUpdateAllowed dispatches redstone callbacks and reports whether the update was cancelled.
 func (e *redstoneEngine) redstoneUpdateAllowed(tx *Tx, update RedstoneUpdate) bool {
+	h := tx.World().Handler()
+	if _, nop := h.(NopHandler); nop {
+		// Nothing to dispatch to, and nothing can cancel the update.
+		return true
+	}
 	ctx := tx.Event()
-	tx.World().Handler().HandleRedstoneUpdate(ctx, update)
+	h.HandleRedstoneUpdate(ctx, update)
 	return !ctx.Cancelled()
+}
+
+// redstoneGraphBuffers is the scratch state of graphPower, reused by later calls.
+type redstoneGraphBuffers struct {
+	sources  []RedstonePowerSource
+	relayers []RedstonePowerRelayer
+	start    []int
+	queue    []int
+}
+
+// grow returns s with length n, reusing its array if it is big enough.
+func grow[S ~[]E, E any](s S, n int) S {
+	if cap(s) < n {
+		return make(S, n)
+	}
+	return s[:n]
 }
 
 // redstoneLightDiffuser is the local subset needed to exclude transparent conductors.
