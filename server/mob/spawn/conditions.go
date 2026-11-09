@@ -203,6 +203,63 @@ func rawBrightness(tx *world.Tx, pos cube.Pos, darken int) int {
 	return max(sky, int(tx.BlockLight(pos)), 0)
 }
 
+// monsterSpawnTypes are the types whose BDS class takes
+// Monster::checkSpawnRules (Monster::isDarkEnoughToSpawn) or
+// Zombie::checkSpawnRules for natural spawns: the classes Zombie (zombie,
+// husk, drowned, zombie villager), Skeleton (skeleton, stray, wither
+// skeleton), Monster (bogged, zoglin) and the other Monster subclasses
+// (VanillaBuiltInEntities::registerMappings, registerVanillaActorData).
+// Slime, LavaSlime, Guardian, PigZombie, Shulker and Phantom override
+// checkSpawnRules without the darkness check, and animals are Mob.
+// Parched is a skeleton variant added after 1.21.3, taken as Skeleton.
+var monsterSpawnTypes = map[string]bool{
+	"minecraft:zombie": true, "minecraft:husk": true, "minecraft:drowned": true,
+	"minecraft:zombie_villager": true, "minecraft:zombie_villager_v2": true,
+	"minecraft:skeleton": true, "minecraft:stray": true, "minecraft:wither_skeleton": true,
+	"minecraft:bogged": true, "minecraft:parched": true, "minecraft:zoglin": true,
+	"minecraft:creeper": true, "minecraft:spider": true, "minecraft:cave_spider": true,
+	"minecraft:enderman": true, "minecraft:silverfish": true, "minecraft:endermite": true,
+	"minecraft:witch": true, "minecraft:blaze": true, "minecraft:ghast": true,
+	"minecraft:vindicator": true, "minecraft:evocation_illager": true, "minecraft:pillager": true,
+	"minecraft:ravager": true, "minecraft:vex": true, "minecraft:warden": true,
+	"minecraft:breeze": true, "minecraft:piglin": true, "minecraft:piglin_brute": true,
+	"minecraft:wither": true, "minecraft:ender_dragon": true,
+}
+
+// monsterDarkEnough is Monster::isDarkEnoughToSpawn at the block a mob
+// spawns in: in an ultra warm dimension (the Nether) the raw brightness must
+// be at most 7; elsewhere the block light must be 0 and the raw brightness,
+// with a manual sky darkening of 10 while it thunders, at most 7.
+func monsterDarkEnough(e *env, pos cube.Pos) bool {
+	tx := e.tx
+	return darkEnough(rawBrightness(tx, pos, e.skyDarken), blockLight(tx, pos),
+		tx.World().Dimension().WaterEvaporates(), e.thunder, func() int { return rawBrightness(tx, pos, 10) })
+}
+
+// darkEnough is the decision of Monster::isDarkEnoughToSpawn: raw is the raw
+// brightness, block the block light, thunderRaw the raw brightness with a
+// sky darkening of 10.
+func darkEnough(raw, block int, ultraWarm, thunder bool, thunderRaw func() int) bool {
+	if ultraWarm {
+		return raw <= 7
+	}
+	if block > 0 {
+		return false
+	}
+	if thunder {
+		raw = thunderRaw()
+	}
+	return raw <= 7
+}
+
+// blockLight is the block light at pos, 0 outside the world.
+func blockLight(tx *world.Tx, pos cube.Pos) int {
+	if r := tx.Range(); pos[1] < r[0] || pos[1] > r[1] {
+		return 0
+	}
+	return int(tx.BlockLight(pos))
+}
+
 // --- blocks ---
 
 func blockName(b world.Block) string {

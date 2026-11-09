@@ -582,6 +582,9 @@ func (st *worldState) spawnOne(e *env, id string, floor cube.Pos, cond *conditio
 	if !checkSpawnRules(e.tx, t, pos, floor) {
 		return nil
 	}
+	if monsterSpawnTypes[ident] && !monsterDarkEnough(e, floor.Side(cube.FaceUp)) {
+		return nil
+	}
 	surface := cond.surface
 	m, err := mob.Spawn(e.tx, ident, pos, mob.SpawnOptions{
 		Rotation: cube.Rotation{e.rnd.Float64()*360 - 180, 0},
