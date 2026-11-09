@@ -448,9 +448,14 @@ func DoHurtTarget(m *mob.Mob, t world.Entity) bool {
 		return false
 	}
 	dmg := m.Attr(mob.AttrAttackDamage)
-	// BDS Mob::doHurtTarget: + int(weapon damage + Sharpness bonus).
+	// BDS Mob::doHurtTarget: + int(weapon damage + Sharpness, Smite and Bane
+	// of Arthropods bonus). mob.Of so the families of a mob target are seen.
 	main, _ := m.HeldItems()
-	dmg += loot.WeaponDamage(main)
+	target := t
+	if tm, ok := mob.Of(t); ok {
+		target = tm
+	}
+	dmg += loot.WeaponDamageTo(main, target)
 	if sense.IsPlayer(t) {
 		switch sense.DifficultyID(m.Tx()) {
 		case 0:
@@ -473,7 +478,7 @@ func DoHurtTarget(m *mob.Mob, t world.Entity) bool {
 		l.KnockBack(m.Position(), 0.4+loot.KnockbackBonus(main), 0.4)
 	}
 	m.SetLastHurtMob(t)
-	loot.PostHit(main, t)
+	loot.PostHit(main, target)
 	return true
 }
 

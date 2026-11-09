@@ -38,12 +38,11 @@ func (sharpness) Addend(level int) float64 {
 }
 
 // CompatibleWithEnchantment ...
-func (sharpness) CompatibleWithEnchantment(item.EnchantmentType) bool {
-	return true
+func (sharpness) CompatibleWithEnchantment(t item.EnchantmentType) bool {
+	return t != Smite && t != BaneOfArthropods
 }
 
 // CompatibleWithItem ...
 func (sharpness) CompatibleWithItem(i world.Item) bool {
-	t, ok := i.(item.Tool)
-	return ok && (t.ToolType() == item.TypeSword || t.ToolType() == item.TypeAxe || t.ToolType() == item.TypeSpear)
+	return meleeDamageItem(i)
 }

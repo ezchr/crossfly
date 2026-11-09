@@ -13,8 +13,8 @@ func init() {
 	item.RegisterEnchantment(7, DepthStrider)
 	item.RegisterEnchantment(8, AquaAffinity)
 	item.RegisterEnchantment(9, Sharpness)
-	// TODO: (10) Smite. (Requires undead mobs)
-	// TODO: (11) Bane of Arthropods. (Requires arthropod mobs)
+	item.RegisterEnchantment(10, Smite)
+	item.RegisterEnchantment(11, BaneOfArthropods)
 	item.RegisterEnchantment(12, Knockback)
 	item.RegisterEnchantment(13, FireAspect)
 	// TODO: (14) Looting.

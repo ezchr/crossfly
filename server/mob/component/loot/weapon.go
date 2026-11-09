@@ -11,12 +11,13 @@ import (
 	"github.com/df-mc/dragonfly/server/world"
 )
 
-// WeaponDamage is the damage a held weapon adds to a mob's melee hit (BDS
-// Mob::doHurtTarget: int(item attack damage + EnchantUtils::
+// WeaponDamageTo is the damage a held weapon adds to a mob's melee hit on target
+// (BDS Mob::doHurtTarget: int(item attack damage + EnchantUtils::
 // getMeleeDamageBonus)). Dragonfly's AttackDamage counts the bare hand's 1,
-// which BDS's item damage does not. Sharpness adds 1.25 per level (Smite and
-// Bane of Arthropods are not registered in Dragonfly).
-func WeaponDamage(held item.Stack) float64 {
+// which BDS's item damage does not. Sharpness adds 1.25 per level, Smite 2.5
+// per level against undead targets and Bane of Arthropods 2.5 per level
+// against arthropods.
+func WeaponDamageTo(held item.Stack, target world.Entity) float64 {
 	if held.Empty() {
 		return 0
 	}
@@ -24,7 +25,14 @@ func WeaponDamage(held item.Stack) float64 {
 	if e, ok := held.Enchantment(enchantment.Sharpness); ok {
 		d += enchantment.Sharpness.Addend(e.Level())
 	}
+	d += enchantment.TargetDamageBonus(held, target)
 	return math.Floor(d)
+}
+
+// WeaponDamage is WeaponDamageTo against a target that is neither undead nor
+// an arthropod, such as a player.
+func WeaponDamage(held item.Stack) float64 {
+	return WeaponDamageTo(held, nil)
 }
 
 // KnockbackBonus is the extra knock back force of the held weapon's
@@ -38,9 +46,10 @@ func KnockbackBonus(held item.Stack) float64 {
 }
 
 // PostHit applies the held weapon's after-hit enchantments to the target
-// (BDS EnchantUtils::doPostDamageEffects): Fire Aspect sets it on fire for 4
-// seconds per level.
+// (BDS EnchantUtils::doPostDamageEffects): Bane of Arthropods slows an
+// arthropod, Fire Aspect sets the target on fire for 4 seconds per level.
 func PostHit(held item.Stack, target world.Entity) {
+	enchantment.SlowArthropod(held, target)
 	e, ok := held.Enchantment(enchantment.FireAspect)
 	if !ok {
 		return

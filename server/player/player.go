@@ -2269,6 +2269,14 @@ func (p *Player) attackEntity(e world.Entity, criticalAllowed bool) (valid, hit 
 			v.ViewEntityAction(living, entity.EnchantedHitAction{})
 		}
 	}
+	// Smite and Bane of Arthropods only add damage against undead and arthropod mobs (BDS
+	// MeleeWeaponEnchant::getDamageBonus).
+	if bonus := enchantment.TargetDamageBonus(i, living); bonus > 0 {
+		dmg += bonus
+		for _, v := range p.tx.Viewers(living.Position()) {
+			v.ViewEntityAction(living, entity.EnchantedHitAction{})
+		}
+	}
 	if critical {
 		dmg *= 1.5
 	}
@@ -2283,6 +2291,8 @@ func (p *Player) attackEntity(e world.Entity, criticalAllowed bool) (valid, hit 
 	p.tx.PlaySound(entity.EyePosition(e), sound.Attack{Damage: !mgl64.FloatEqual(n, 0)})
 	// Fire Aspect bypasses shields in Bedrock Edition.
 	if result.Accepted() || result.Blocked() {
+		// Bane of Arthropods slows an arthropod (BDS MeleeWeaponEnchant::doPostAttack).
+		enchantment.SlowArthropod(i, living)
 		if f, ok := i.Enchantment(enchantment.FireAspect); ok {
 			if flammable, ok := living.(entity.Flammable); ok {
 				flammable.SetOnFire(enchantment.FireAspect.Duration(f.Level()))

@@ -1,9 +1,11 @@
 package enchantment
 
 import (
+	"math"
+
+	"github.com/df-mc/dragonfly/server/entity/effect"
 	"github.com/df-mc/dragonfly/server/item"
 	"github.com/df-mc/dragonfly/server/world"
-	"math"
 )
 
 // AffectedDamageSource represents a world.DamageSource whose damage may be
@@ -49,4 +51,53 @@ func ProtectionFactor(src world.DamageSource, enchantments []item.Enchantment) f
 		}
 	}
 	return math.Min(f, 0.8)
+}
+
+// TargetDamageBonus returns the extra melee damage the smite or bane of
+// arthropods on held deals to target: 2.5 per level against an undead or an
+// arthropod mob, 0 against anything else (BDS MeleeWeaponEnchant::
+// getDamageBonus). Sharpness is not included: it applies to every target.
+func TargetDamageBonus(held item.Stack, target world.Entity) float64 {
+	d := 0.0
+	if e, ok := held.Enchantment(Smite); ok && Smite.AffectsTarget(target) {
+		d += Smite.Addend(e.Level())
+	}
+	if e, ok := held.Enchantment(BaneOfArthropods); ok && BaneOfArthropods.AffectsTarget(target) {
+		d += BaneOfArthropods.Addend(e.Level())
+	}
+	return d
+}
+
+// SlowArthropod gives target the slowness of the bane of arthropods on held
+// if target is a living arthropod (BDS MeleeWeaponEnchant::doPostAttack).
+func SlowArthropod(held item.Stack, target world.Entity) {
+	e, ok := held.Enchantment(BaneOfArthropods)
+	if !ok || !BaneOfArthropods.AffectsTarget(target) {
+		return
+	}
+	if d, ok := target.(interface{ Dead() bool }); ok && d.Dead() {
+		return
+	}
+	if l, ok := target.(interface{ AddEffect(effect.Effect) }); ok {
+		l.AddEffect(BaneOfArthropods.Slowness(e.Level()))
+	}
+}
+
+// familyHolder is a target with Bedrock type families, such as a mob.
+// Players have none, so they are never undead or arthropods.
+type familyHolder interface {
+	HasFamily(family string) bool
+}
+
+// hasFamily reports whether e has the type family passed.
+func hasFamily(e world.Entity, family string) bool {
+	f, ok := e.(familyHolder)
+	return ok && f.HasFamily(family)
+}
+
+// meleeDamageItem reports whether the damage enchantments (sharpness, smite
+// and bane of arthropods) can be applied to an item.
+func meleeDamageItem(i world.Item) bool {
+	t, ok := i.(item.Tool)
+	return ok && (t.ToolType() == item.TypeSword || t.ToolType() == item.TypeAxe || t.ToolType() == item.TypeSpear)
 }
