@@ -14,3 +14,5 @@ import (
 var lastAttackers sync.Map
 
 func (p *Player) recordAttacker(world.DamageSource) {}
+
+func (p *Player) scaleMobDamage(dmg float64, _ world.DamageSource) float64 { return dmg }

@@ -440,8 +440,8 @@ func effectByName(name string) effect.LastingType {
 }
 
 // DoHurtTarget is the mob's melee hit (BDS Mob::doHurtTarget): the attack
-// damage attribute plus the held weapon, scaled by difficulty against
-// players, then knock back. It reports whether damage was dealt.
+// damage attribute plus the held weapon (a player's Hurt scales it by
+// difficulty), then knock back. It reports whether damage was dealt.
 func DoHurtTarget(m *mob.Mob, t world.Entity) bool {
 	l, ok := t.(entity.Living)
 	if !ok {
@@ -456,16 +456,7 @@ func DoHurtTarget(m *mob.Mob, t world.Entity) bool {
 		target = tm
 	}
 	dmg += loot.WeaponDamageTo(main, target)
-	if sense.IsPlayer(t) {
-		switch sense.DifficultyID(m.Tx()) {
-		case 0:
-			dmg = 0
-		case 1:
-			dmg = math.Min(dmg/2+1, dmg)
-		case 3:
-			dmg *= 1.5
-		}
-	}
+	// Player::_hurt scales the damage by difficulty (player.Player.Hurt).
 	if dmg <= 0 {
 		return false
 	}

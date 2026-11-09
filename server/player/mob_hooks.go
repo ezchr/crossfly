@@ -47,6 +47,54 @@ func (p *Player) recordAttacker(src world.DamageSource) {
 	lastAttackers.Store(p.H(), attackRecord{attacker: attacker.H(), at: time.Now()})
 }
 
+// mobDamager is a mob (package mob, which imports this package): an entity with type families.
+type mobDamager interface {
+	world.Entity
+	Identifier() string
+	Families() []string
+}
+
+// DamagingEntitySource is implemented by damage sources dealt by an entity that are not attacks,
+// projectiles or explosions, such as a guardian's magic beam: Hurt scales their damage by
+// difficulty when the entity is a mob.
+type DamagingEntitySource interface {
+	world.DamageSource
+	DamagingEntity() world.Entity
+}
+
+// scaleMobDamage is the difficulty scaling of Player::_hurt: damage dealt by a mob (an attack, an
+// explosion it caused, anything with the mob as its damaging actor) is 0 on peaceful, d*0.5+1 when
+// above 2 on easy and d*1.5 on hard. Projectiles (cause projectile) and the evoker's fangs (the
+// damaging actor type evocation_illager) are not scaled, nor is damage from players.
+func (p *Player) scaleMobDamage(dmg float64, src world.DamageSource) float64 {
+	var e world.Entity
+	switch s := src.(type) {
+	case entity.AttackDamageSource:
+		e = s.Attacker
+	case entity.ExplosionDamageSource:
+		if es, ok := s.Source.(world.EntityExplosionSource); ok {
+			e = es.Entity
+		}
+	case DamagingEntitySource:
+		e = s.DamagingEntity()
+	}
+	m, ok := e.(mobDamager)
+	if !ok || m.Identifier() == "minecraft:evocation_illager" || p.tx == nil {
+		return dmg
+	}
+	switch p.tx.World().Difficulty() {
+	case world.DifficultyPeaceful:
+		return 0
+	case world.DifficultyEasy:
+		if dmg > 2 {
+			return dmg*0.5 + 1
+		}
+	case world.DifficultyHard:
+		return dmg * 1.5
+	}
+	return dmg
+}
+
 // LastAttacker returns the entity that last hurt the player (an attacker or the owner of a
 // projectile) and when, as BDS keeps an actor's last hurt by mob.
 func (p *Player) LastAttacker() (*world.EntityHandle, time.Time, bool) {
