@@ -152,6 +152,10 @@ func (s *Session) viewOtherEntity(e world.Entity) {
 	if mobBool(e, bedrockOnly.BedrockOnly) {
 		return
 	}
+	if c, ok := e.(*entity.Cushion); ok && s.cushionStandIn() {
+		s.viewCushionStandIn(c) // cushion_standin.go
+		return
+	}
 	typ, data, ok := javaEntity(e)
 	if ok {
 		// The client's own ids: entity types and the falling block's state.

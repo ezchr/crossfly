@@ -115,6 +115,9 @@ type ClientInfo struct {
 	TextFiltering  bool
 	AllowListing   bool
 	ParticleStatus int32
+	// CoreVersion is the version of the minecraft:core pack the client has: its own version, also when a
+	// proxy in front translates the packets of an older client ("" if it named none).
+	CoreVersion string
 }
 
 // Profile is a logged-in player's identity.
@@ -528,6 +531,7 @@ func (l *Listener) configure(c *wire.Conn, ver *version.Version, local bool) (Cl
 		return info, err
 	}
 	sentRegistries := false
+	coreVersion := ""
 	pending := map[[16]byte]*ResourcePack{}
 	stopKeepAlive := func() {}
 	defer func() { stopKeepAlive() }()
@@ -566,8 +570,11 @@ func (l *Listener) configure(c *wire.Conn, ver *version.Version, local bool) (Cl
 				if ns == "minecraft" && pid == "core" && (pv == ver.Name || strings.HasPrefix(pv, ver.Name+".") || local) {
 					core = true
 				}
-				if ns == "minecraft" && pid == "core" && l.cfg.Log != nil {
-					l.cfg.Log.Info("java known core pack", "client", pv, "server", ver.Name)
+				if ns == "minecraft" && pid == "core" {
+					coreVersion = pv
+					if l.cfg.Log != nil {
+						l.cfg.Log.Info("java known core pack", "client", pv, "server", ver.Name)
+					}
 				}
 			}
 			if r.Err != nil {
@@ -640,6 +647,7 @@ func (l *Listener) configure(c *wire.Conn, ver *version.Version, local bool) (Cl
 			if !sentRegistries {
 				return info, errors.New("client finished configuration early")
 			}
+			info.CoreVersion = coreVersion
 			return info, nil
 		case v777.ServerboundConfigurationCustomPayload, v777.ServerboundConfigurationKeepAlive,
 			v777.ServerboundConfigurationPong:
