@@ -190,6 +190,17 @@ func (s *Session) viewOtherEntity(e world.Entity) {
 	w.VarInt(data)
 	s.queue(v777.ClientboundPlayAddEntity, w)
 	s.setTrackHead(id, pos, cube.Rotation{body, rot.Pitch()}, head)
+	if typ == s.ver.BuiltinID("minecraft:entity_type", "minecraft:item_display") {
+		// A display stand-in moves as smoothly as a mob: interpolated over 3 ticks, as the
+		// model parts are (displays otherwise jump to each new place, and so would a rider).
+		w := s.packet()
+		w.VarInt(id)
+		w.Byte(dataDisplayPosRotDur)
+		w.VarInt(dataTypeInt)
+		w.VarInt(3)
+		w.Byte(0xff)
+		s.queue(v777.ClientboundPlaySetEntityData, w)
+	}
 	s.viewEntityMeta(e, id)
 	if textModelFor(e) != nil || isTextEntity(e) {
 		s.viewCustomName(e, id)

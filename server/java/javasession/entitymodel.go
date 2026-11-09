@@ -228,3 +228,47 @@ func (s *Session) hideModel(id int32) {
 	}
 	s.queue(v777.ClientboundPlayRemoveEntities, w)
 }
+
+// SetModelItem shows part i of the model e is drawn as (RegisterEntityModel) as the item model
+// itemModel to every Java player who sees e, until it is set again; "" shows the part's own item
+// again. A model of item displays cannot flash red when hurt, for example: a red-tinted item
+// model for a moment can stand in for it.
+func SetModelItem(e world.Entity, i int, itemModel string) {
+	javaSessions.Range(func(_, v any) bool {
+		v.(*Session).setModelItem(e, i, itemModel)
+		return true
+	})
+}
+
+func (s *Session) setModelItem(e world.Entity, i int, itemModel string) {
+	id, ok := s.entityID(e)
+	if !ok {
+		return
+	}
+	s.entMu.Lock()
+	ids := s.modelParts[id]
+	s.entMu.Unlock()
+	if i < 0 || i >= len(ids) {
+		return
+	}
+	if itemModel == "" {
+		m := entityModelFor(e)
+		if m == nil || i >= len(m.Parts) {
+			return
+		}
+		itemModel = m.Parts[i].ItemModel
+	}
+	base, ok := javamap.ItemID("minecraft:paper", 0)
+	if !ok {
+		return
+	}
+	js := jitem.Stack{Count: 1, ID: base, ItemModel: itemModel}
+	js.Add(jitem.CompItemModel)
+	w := s.packet()
+	w.VarInt(ids[i])
+	w.Byte(dataItemDisplayItem)
+	w.VarInt(dataTypeItemStack)
+	js.EncodeFor(w, s.items().proto)
+	w.Byte(0xff)
+	s.queue(v777.ClientboundPlaySetEntityData, w)
+}
