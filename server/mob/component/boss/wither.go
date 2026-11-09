@@ -609,8 +609,9 @@ func isWitherDamage(d *mob.Damage) bool {
 
 // modifyDamage is WitherBoss::_hurt: nothing hurts it during the charge or
 // the death animation (but the void), nor drowning, falls, withers and
-// their skulls; projectiles bounce off the armour (phase 2). A lethal hit
-// starts the death animation.
+// their skulls; whoever melees it during the charge is knocked back;
+// projectiles bounce off the armour (phase 2). A lethal hit starts the death
+// animation.
 func (w *Wither) modifyDamage(m *mob.Mob, d *mob.Damage) {
 	_, void := d.Source.(entity.VoidDamageSource)
 	switch d.Source.(type) {
@@ -618,7 +619,18 @@ func (w *Wither) modifyDamage(m *mob.Mob, d *mob.Damage) {
 		d.Cancel = true
 		return
 	}
-	if (w.Invulnerable() && !void) || isWitherDamage(d) {
+	if isWitherDamage(d) {
+		d.Cancel = true
+		return
+	}
+	if a, ok := d.Source.(entity.AttackDamageSource); ok && w.SpawnFrames > 0 && a.Attacker != nil && IsLiving(a.Attacker) {
+		// A mob or player hitting the charging wither is knocked away from
+		// it (Mob::knockback with its default power and height, 0.4).
+		if l, ok := a.Attacker.(entity.Living); ok {
+			l.KnockBack(m.Position(), 0.4, 0.4)
+		}
+	}
+	if w.Invulnerable() && !void {
 		d.Cancel = true
 		return
 	}

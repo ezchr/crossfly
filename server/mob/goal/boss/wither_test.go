@@ -318,3 +318,24 @@ func TestWindChargeFromShooter(t *testing.T) {
 		t.Errorf("wind charge dealt %v, want 1", got)
 	}
 }
+
+// TestWitherChargeKnockback: a mob meleeing the wither during its spawn
+// charge is knocked back (WitherBoss::_hurt); the wither takes nothing.
+func TestWitherChargeKnockback(t *testing.T) {
+	w := setup(t, mobtest.Options{}, "minecraft:boss")
+	wr := w.Spawn(bc.WitherID, mgl64.Vec3{0.5, 1, 0.5})
+	zr := w.Spawn("minecraft:zombie", mgl64.Vec3{2.5, 1, 0.5})
+	w.Tick(2)
+	w.Do(func(tx *world.Tx) {
+		wm, z := mobOf(t, tx, wr), mobOf(t, tx, zr)
+		z.SetVelocity(mgl64.Vec3{})
+		h := wm.Health()
+		wm.Hurt(5, entity.AttackDamageSource{Attacker: z})
+		if wm.Health() != h {
+			t.Errorf("charging wither took damage: %v -> %v", h, wm.Health())
+		}
+		if v := z.Velocity(); v[0] <= 0 || v[1] <= 0 {
+			t.Errorf("zombie velocity %v, want pushed away (+x) and up", v)
+		}
+	})
+}
