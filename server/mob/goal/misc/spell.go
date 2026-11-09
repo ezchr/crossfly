@@ -5,10 +5,10 @@ package misc
 import (
 	"encoding/json"
 	"math"
+	"strconv"
 	"strings"
 
 	"github.com/df-mc/dragonfly/server/block/cube"
-	"github.com/df-mc/dragonfly/server/entity"
 	"github.com/df-mc/dragonfly/server/mob"
 	"github.com/df-mc/dragonfly/server/mob/goal/misc/kit"
 	"github.com/df-mc/dragonfly/server/world"
@@ -37,6 +37,10 @@ type spellChoice struct {
 	startSound     string
 	casting        bool
 	next           int64
+	// colour is particle_color (ARGB): the colour of the spell particles
+	// while casting (actor data DataSpellCastingColor).
+	colour    int32
+	hasColour bool
 }
 
 type rawSpellChoice struct {
@@ -48,6 +52,7 @@ type rawSpellChoice struct {
 	Filters         json.RawMessage `json:"filters"`
 	StartSoundEvent string          `json:"start_sound_event"`
 	DoCasting       *bool           `json:"do_casting"`
+	ParticleColor   string          `json:"particle_color"`
 }
 
 func (r rawSpellChoice) parse(defMax float64) (*spellChoice, error) {
@@ -55,11 +60,30 @@ func (r rawSpellChoice) parse(defMax float64) (*spellChoice, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &spellChoice{
+	c := &spellChoice{
 		weight: kit.Or(r.Weight, 1), minR: r.MinRange, maxR: kit.Or(r.MaxRange, defMax),
 		cooldown: kit.Ticks(r.CooldownTime), filter: f, startSound: r.StartSoundEvent,
 		casting: kit.Or(r.DoCasting, true), cast: kit.Ticks(kit.Or(r.CastDuration, 0)),
-	}, nil
+	}
+	c.colour, c.hasColour = parseColour(r.ParticleColor)
+	return c, nil
+}
+
+// parseColour reads a colour written "#AARRGGBB" (or "#RRGGBB", opaque) as
+// an ARGB integer.
+func parseColour(s string) (int32, bool) {
+	s = strings.TrimPrefix(s, "#")
+	if len(s) != 6 && len(s) != 8 {
+		return 0, false
+	}
+	v, err := strconv.ParseUint(s, 16, 32)
+	if err != nil {
+		return 0, false
+	}
+	if len(s) == 6 {
+		v |= 0xff000000
+	}
+	return int32(uint32(v)), true
 }
 
 // pick chooses a ready choice by weight whose subject passes.
@@ -220,23 +244,26 @@ func (g *sendEvent) Stop(m *mob.Mob) { g.stop(m) }
 func (g *sendEvent) AppendDebugInfo(b *strings.Builder) { b.WriteString("SendEvent") }
 
 // summonEntity is minecraft:behavior.summon_entity (evoker fangs and vexes,
-// BDS SummonEntityGoal / SummonSpellStage): the subject is the mob's
-// target, within the choice's activation range (default 0..32) and passing
-// its filters. Each sequence step summons num_entities_spawned (1)
-// entity_type base_delay seconds into the cast, delay_per_summon apart, in
+// BDS SummonActorGoal with SummonSpellData / SummonSpellStage): with a
+// target, a spell is picked (_selectBestSpell) and cast once the goal's one
+// cooldown is over. The spell's stages run one after another, each
+// base_delay ticks after the previous one ended (the first after the
+// start), summoning num_entities_spawned entities delay_per_summon apart in
 // a "circle" of radius size around, or a "line" of length size towards the
-// target from, the mob (target "self") or the target (target "target");
-// summon_cap / summon_cap_radius limit live summons of the type, and each
-// mob summoned gets summon_event (entity_spawned) and the caster as owner.
-//
-// minecraft:evocation_fang is not a mob Dragonfly has, so a fang is its
-// bite: 6 damage to living entities (not the caster or its family) in the
-// fang's box 8 ticks after it would appear (source: java/paper EvokerFangs)
-// with no fang shown.
+// other one from, the caster ("self") or the target ("target"), placed on
+// where the two stood when the cast started. The cast (cast_duration, the
+// casting flag and the spell particle colour on) keeps the caster still and
+// facing the target; the stages may outlast it. When the goal stops, the
+// cooldown of the spell cast starts.
 type summonEntity struct {
 	spellBase
-	seqs    map[*spellChoice][]summonStep
-	pending []pendingSummon
+	full mob.ControlFlags
+	seqs map[*spellChoice][]summonStep
+
+	castLeft                int
+	stage, count, stageTick int
+	cooldownEnd             int64
+	targetStart, selfStart  mgl64.Vec3
 }
 
 type summonStep struct {
@@ -248,14 +275,8 @@ type summonStep struct {
 	cap           int
 	capRadius     float64
 	fromTarget    bool
-}
-
-type pendingSummon struct {
-	at   int
-	pos  mgl64.Vec3
-	yaw  float64
-	step *summonStep
-	bite bool
+	// lifespan is entity_lifespan in ticks, or 0 for summons that live on.
+	lifespan int
 }
 
 func newSummonEntity(spec mob.GoalSpec) (mob.Goal, error) {
@@ -274,13 +295,15 @@ func newSummonEntity(spec mob.GoalSpec) (mob.Goal, error) {
 				SummonCap      int      `json:"summon_cap"`
 				CapRadius      float64  `json:"summon_cap_radius"`
 				Target         string   `json:"target"`
+				Lifespan       float64  `json:"entity_lifespan"`
 			} `json:"sequence"`
 		} `json:"summon_choices"`
 	}
 	if err := kit.Decode(spec, &v); err != nil {
 		return nil, err
 	}
-	g := &summonEntity{spellBase: spellBase{GoalBase: mob.GoalBase{Control: spec.FlagsOr(mob.FlagMove | mob.FlagLook)}}, seqs: map[*spellChoice][]summonStep{}}
+	full := spec.FlagsOr(mob.FlagMove | mob.FlagLook)
+	g := &summonEntity{spellBase: spellBase{GoalBase: mob.GoalBase{Control: full}}, full: full, seqs: map[*spellChoice][]summonStep{}}
 	for _, rc := range v.Choices {
 		c, err := rc.parse(32)
 		if err != nil {
@@ -291,6 +314,7 @@ func newSummonEntity(spec mob.GoalSpec) (mob.Goal, error) {
 				at: kit.Ticks(s.BaseDelay), per: kit.Ticks(s.DelayPerSummon), count: kit.Or(s.Num, 1),
 				entity: s.EntityType, shape: s.Shape, size: kit.Or(s.Size, 1), sound: s.SoundEvent,
 				event: s.SummonEvent, cap: s.SummonCap, capRadius: s.CapRadius, fromTarget: s.Target == "target",
+				lifespan: kit.Ticks(s.Lifespan),
 			})
 		}
 		g.choices = append(g.choices, c)
@@ -298,138 +322,207 @@ func newSummonEntity(spec mob.GoalSpec) (mob.Goal, error) {
 	return g, nil
 }
 
-// CanUse ...
+// CanUse is SummonActorGoal::canUse: a target, a spell to cast and the
+// cooldown over.
 func (g *summonEntity) CanUse(m *mob.Mob) bool {
 	t, ok := m.Target()
-	if !ok || !kit.Alive(t) {
+	if !ok || m.Ticks() < g.cooldownEnd {
 		return false
 	}
-	return g.pick(m, func(c *spellChoice) (world.Entity, bool) {
-		return t, inRange(m, t, c) && c.filter.Test(kit.OtherCtx(m, t))
-	})
+	g.cur = g.selectBestSpell(m, t)
+	return g.cur != nil
 }
 
-// CanContinueToUse ...
-func (g *summonEntity) CanContinueToUse(m *mob.Mob) bool {
-	return g.cur != nil && (g.t <= g.cur.cast || len(g.pending) > 0)
-}
-
-// Start ...
-func (g *summonEntity) Start(m *mob.Mob) {
-	g.start(m)
-	g.pending = nil
-}
-
-// Tick ...
-func (g *summonEntity) Tick(m *mob.Mob) {
-	g.tickFace(m)
-	steps := g.seqs[g.cur]
-	for i := range steps {
-		if steps[i].at == g.t-1 {
-			g.plan(m, &steps[i])
-		}
-	}
-	due := g.pending
-	g.pending = nil
-	for _, p := range due {
-		if p.at > g.t {
-			g.pending = append(g.pending, p)
+// selectBestSpell is SummonActorGoal::_selectBestSpell: a spell is a
+// candidate when the target is within its activation range, none of its
+// stages has summon_cap entities of its type around the caster (in its box
+// grown by summon_cap_radius) and it passes its filters; one is picked by
+// weight.
+func (g *summonEntity) selectBestSpell(m *mob.Mob, t world.Entity) *spellChoice {
+	d := kit.DistSq(m.Position(), t.Position())
+	total := 0
+	var cands []*spellChoice
+	for _, c := range g.choices {
+		if d > c.maxR*c.maxR || d < c.minR*c.minR || g.atCap(m, c) || !c.filter.Test(kit.OtherCtx(m, t)) {
 			continue
 		}
-		g.summon(m, p) // may queue a fang bite into g.pending
+		cands = append(cands, c)
+		total += c.weight
 	}
+	if total <= 0 {
+		return nil
+	}
+	n := m.Rand().IntN(total)
+	for _, c := range cands {
+		if n < c.weight {
+			return c
+		}
+		n -= c.weight
+	}
+	return nil
 }
 
-// plan lays out a step's summons (SummonSpellStage shapes).
-func (g *summonEntity) plan(m *mob.Mob, s *summonStep) {
-	kit.Sound(m, s.sound)
-	origin := m.Position()
-	var target mgl64.Vec3
-	if t, ok := m.Target(); ok {
-		target = t.Position()
-		if s.fromTarget {
-			origin = target
+func (g *summonEntity) atCap(m *mob.Mob, c *spellChoice) bool {
+	for _, s := range g.seqs[c] {
+		if s.cap <= 0 || s.entity == "" {
+			continue
 		}
-	}
-	yaw := math.Atan2(target[2]-m.Position()[2], target[0]-m.Position()[0])
-	for i := 0; i < s.count; i++ {
-		var pos mgl64.Vec3
-		switch s.shape {
-		case "line":
-			d := s.size / float64(max(s.count, 1)) * float64(i+1)
-			pos = origin.Add(mgl64.Vec3{math.Cos(yaw) * d, 0, math.Sin(yaw) * d})
-		default: // circle
-			a := yaw + float64(i)*2*math.Pi/float64(max(s.count, 1))
-			pos = origin.Add(mgl64.Vec3{math.Cos(a) * s.size, 0, math.Sin(a) * s.size})
-		}
-		g.pending = append(g.pending, pendingSummon{at: g.t + i*s.per, pos: pos, yaw: mgl64.RadToDeg(yaw) - 90, step: s})
-	}
-}
-
-func (g *summonEntity) summon(m *mob.Mob, p pendingSummon) {
-	s := p.step
-	tx := m.Tx()
-	if p.bite {
-		fangBite(m, p.pos)
-		return
-	}
-	// Ground under the spot, within 2 blocks either way.
-	if gp, ok := kit.Ground(tx, cube.PosFromVec3(p.pos), 2); ok {
-		p.pos[1] = float64(gp[1])
-	}
-	if s.entity == "minecraft:evocation_fang" {
-		if _, ok := mob.TypeFor(s.entity); !ok {
-			g.pending = append(g.pending, pendingSummon{at: g.t + 8, pos: p.pos, step: s, bite: true})
-			return
-		}
-	}
-	if s.cap > 0 {
 		n := 0
-		for _, e := range kit.Around(m, s.capRadius, s.capRadius) {
-			if om, ok := kit.Mob(e); ok && om.Identifier() == s.entity && !om.Dead() {
+		for e := range m.Tx().EntitiesWithin(m.BBox().Grow(s.capRadius)) {
+			if e.H().Type().EncodeEntity() == s.entity && kit.Alive(e) {
 				n++
 			}
 		}
 		if n >= s.cap {
+			return true
+		}
+	}
+	return false
+}
+
+// CanContinueToUse is SummonActorGoal::canContinueToUse: a target, and the
+// cast or a stage left.
+func (g *summonEntity) CanContinueToUse(m *mob.Mob) bool {
+	_, ok := m.Target()
+	return ok && g.cur != nil && (g.castLeft > 0 || g.stage < len(g.seqs[g.cur]))
+}
+
+// Start is SummonActorGoal::start: where the target and the caster stand
+// is kept for the whole cast; the start sound and the first stage's sound
+// play, the cast begins (casting flag, particle colour) and the caster
+// stops moving. The summon counter is not reset (a cast cut short in the
+// middle of a stage leaves its count to the next one, as in BDS).
+func (g *summonEntity) Start(m *mob.Mob) {
+	t, ok := m.Target()
+	if !ok {
+		return
+	}
+	g.stageTick, g.stage = -1, 0
+	g.targetStart, g.selfStart = t.Position(), m.Position()
+	kit.Sound(m, g.cur.startSound)
+	g.castLeft = g.cur.cast
+	if g.cur.hasColour {
+		m.SetActorData(protocol.EntityDataKeyDataSpellCastingColor, g.cur.colour)
+	}
+	if g.cur.casting {
+		kit.Flag(m, protocol.EntityDataFlagCasting, g.castLeft > 0)
+	}
+	if steps := g.seqs[g.cur]; len(steps) > 0 {
+		kit.Sound(m, steps[0].sound)
+	}
+	g.Control = 0
+	if g.castLeft > 0 {
+		g.Control = g.full
+		kit.Stop(m)
+	}
+}
+
+// Tick is SummonActorGoal::tick.
+func (g *summonEntity) Tick(m *mob.Mob) {
+	t, ok := m.Target()
+	if !ok {
+		return
+	}
+	m.LookControl().SetLookAtEntity(t, 30, 30)
+	if g.castLeft--; g.castLeft == 0 {
+		g.Control = 0
+		kit.Flag(m, protocol.EntityDataFlagCasting, false)
+	}
+	steps := g.seqs[g.cur]
+	if g.stage >= len(steps) {
+		return
+	}
+	s := &steps[g.stage]
+	if g.stageTick++; g.stageTick >= s.at {
+		for g.count < s.count {
+			g.summonOne(m, t, s)
+			g.stageTick -= s.per
+			g.count++
+			if g.stageTick < s.at {
+				break
+			}
+		}
+	}
+	if g.count >= s.count {
+		g.count, g.stageTick = 0, 0
+		g.stage++
+		kit.Sound(m, s.sound)
+	}
+}
+
+// summonOne places the next summon of stage s: in a line, the count+1-th
+// of count steps of size/count towards the other one; in a circle, at an
+// angle of 2*pi*count/n past the direction to the other one. Heights run
+// from the lower of the target and the caster to one above the higher one.
+func (g *summonEntity) summonOne(m *mob.Mob, t world.Entity, s *summonStep) {
+	origin, other := g.selfStart, g.targetStart
+	if s.fromTarget {
+		origin, other = g.targetStart, g.selfStart
+	}
+	minY := math.Min(t.Position()[1], m.Position()[1])
+	maxY := math.Max(t.Position()[1], m.Position()[1]) + 1
+	angle := math.Atan2(other[2]-origin[2], other[0]-origin[0])
+	var x, z float64
+	switch s.shape {
+	case "line":
+		dir := mgl64.Vec3{other[0] - origin[0], 0, other[2] - origin[2]}
+		if dir.Len() >= 1e-4 {
+			dir = dir.Normalize()
+		} else {
+			dir = mgl64.Vec3{}
+		}
+		step := s.size / float64(max(s.count, 1)) * float64(g.count+1)
+		x, z = origin[0]+dir[0]*step, origin[2]+dir[2]*step
+	default: // circle
+		a := 2*float64(g.count)*math.Pi/float64(max(s.count, 1)) + angle
+		x, z = origin[0]+math.Cos(a)*s.size, origin[2]+math.Sin(a)*s.size
+	}
+	createSpellEntity(m, x, z, minY, maxY, s)
+}
+
+// createSpellEntity is SummonActorGoal::_createSpellEntity: from maxY down
+// to one below minY, the first block that does not hold up and stands on
+// one that does; the summon goes on the block's corner (BDS spawns at the
+// block position itself), raised to the top of what collision the block
+// has, facing south. It is owned by the caster and lives entity_lifespan;
+// a mob gets the summon event.
+func createSpellEntity(m *mob.Mob, x, z, minY, maxY float64, s *summonStep) {
+	tx := m.Tx()
+	p := cube.Pos{int(math.Floor(x)), int(math.Floor(maxY)), int(math.Floor(z))}
+	bottom := int(math.Floor(minY)) - 1
+	for kit.Solid(tx, p) || !kit.Solid(tx, p.Side(cube.FaceDown)) {
+		if p[1]--; p[1] < bottom || p[1] <= tx.Range()[0] {
 			return
 		}
+	}
+	yOff := 0.0
+	for _, b := range tx.Block(p).Model().BBox(p, tx) {
+		yOff = math.Max(yOff, b.Max()[1])
+	}
+	pos := mgl64.Vec3{float64(p[0]), float64(p[1]) + yOff, float64(p[2])}
+	if s.entity == FangID {
+		SpawnFang(tx, pos, m, s.lifespan)
+		return
 	}
 	opts := mob.SpawnOptions{Event: s.event, Configure: func(c *mob.Mob) {
 		c.UpdateMeta(func(meta *mob.Meta) { meta.Owner = m.H() })
 	}}
-	opts.Rotation = cube.Rotation{p.yaw, 0}
-	if c, err := mob.Spawn(tx, s.entity, p.pos, opts); err == nil {
+	if c, err := mob.Spawn(tx, s.entity, pos, opts); err == nil {
 		if t, ok := m.Target(); ok {
 			c.SetTarget(t)
 		}
 	}
 }
 
-// fangBite is an evoker fang's bite (source: java/paper EvokerFangs.dealDamageTo):
-// 6 magic damage to living entities in the 0.5 x 0.8 box, sparing the caster
-// and mobs of its family (illagers).
-func fangBite(m *mob.Mob, pos mgl64.Vec3) {
-	box := cube.Box(pos[0]-0.25, pos[1], pos[2]-0.25, pos[0]+0.25, pos[1]+0.8, pos[2]+0.25)
-	for e := range m.Tx().EntitiesWithin(box.Grow(2)) {
-		if e.H() == m.H() || !kit.Alive(e) || !kit.BBox(e).IntersectsWith(box) {
-			continue
-		}
-		if om, ok := kit.Mob(e); ok && om.HasFamily("illager") {
-			continue
-		}
-		if l, ok := e.(entity.Living); ok {
-			l.Hurt(6, entity.AttackDamageSource{Attacker: m})
-		}
-	}
-	m.Tx().PlaySound(pos, mobSound("fang", "minecraft:evocation_fang"))
-}
-
-func mobSound(event, id string) world.Sound { return mob.Sound{Event: event, Identifier: id} }
-
-// Stop ...
+// Stop is SummonActorGoal::stop: the cast ends and the spell's cooldown
+// starts.
 func (g *summonEntity) Stop(m *mob.Mob) {
-	g.stop(m)
-	g.pending = nil
+	g.Control = g.full
+	kit.Flag(m, protocol.EntityDataFlagCasting, false)
+	if g.cur != nil {
+		g.cooldownEnd = m.Ticks() + int64(g.cur.cooldown)
+	}
+	g.cur, g.subject = nil, nil
 }
 
 // AppendDebugInfo ...

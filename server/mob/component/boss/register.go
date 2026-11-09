@@ -39,6 +39,12 @@ func init() {
 	mob.RegisterSystem(mob.System{Name: "boss/warden", Stage: mob.StageEnvironment, Order: 50, Tick: wardenTick})
 	mob.RegisterHurtHook(mob.HurtHook{Name: "boss/vibration", Hurt: vibrationHurtHook})
 
+	// The skulls, fireballs and wind charges join the server's entity
+	// registry through mob.Types.
+	for _, t := range ProjectileTypes() {
+		mob.RegisterEntityType(t)
+	}
+
 	// SkullItem::_useOn -> SkullBlock::checkMobSpawn.
 	block.SetSkullSpawner(TrySpawnWither)
 

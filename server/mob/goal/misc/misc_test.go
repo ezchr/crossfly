@@ -418,8 +418,9 @@ func TestEvokerFangs(t *testing.T) {
 	}
 }
 
-// TestEvokerSummonsVexes: the vex spell summons 3 vexes owned by the evoker,
-// at most summon_cap.
+// TestEvokerSummonsVexes: the vex spell summons 3 vexes owned by the evoker;
+// summon_cap only stops the spell from being cast (SummonActorGoal::
+// _selectBestSpell), so a second cast goes past it and a third never comes.
 func TestEvokerSummonsVexes(t *testing.T) {
 	w := arena(t, 12)
 	p := w.AddPlayer("p", mgl64.Vec3{8.5, 1, 0.5})
@@ -438,8 +439,12 @@ func TestEvokerSummonsVexes(t *testing.T) {
 		}
 	})
 	w.Tick(40)
-	if n := len(w.Mobs("minecraft:vex")); n != 4 {
-		t.Errorf("%d vexes after a second cast, want the cap of 4", n)
+	if n := len(w.Mobs("minecraft:vex")); n != 6 {
+		t.Errorf("%d vexes after a second cast, want 6", n)
+	}
+	w.Tick(40)
+	if n := len(w.Mobs("minecraft:vex")); n != 6 {
+		t.Errorf("%d vexes after the cap was reached, want still 6", n)
 	}
 }
 

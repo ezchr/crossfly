@@ -53,6 +53,11 @@ func CauseOf(src world.DamageSource) string {
 	case player.StarvationDamageSource:
 		return "starve"
 	}
+	// Sources of other mob packages that name their cause (evoker fangs:
+	// magic).
+	if c, ok := src.(interface{ DamageCause() string }); ok {
+		return c.DamageCause()
+	}
 	return "none"
 }
 
