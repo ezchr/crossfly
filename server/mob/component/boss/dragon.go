@@ -69,7 +69,10 @@ type Dragon struct {
 
 	sittingDamage float64
 	crystal       *world.EntityHandle
-	inWall        bool
+	// crystals are the end crystals around the dragon and where they stand:
+	// one of them gone was destroyed (onCrystalDestroyed).
+	crystals map[*world.EntityHandle]mgl64.Vec3
+	inWall   bool
 
 	// Parts are the hit boxes of the body parts, updated every tick.
 	Head, Neck, Body, Wing1, Wing2 cube.BBox
@@ -610,50 +613,80 @@ func (d *Dragon) checkWalls(tx *world.Tx, box cube.BBox) bool {
 
 // checkCrystals is EnderDragon::_checkCrystals: the nearest end crystal
 // within 32 (looked for with a 1/10 chance a tick) heals 1 every 10 ticks.
-// A healing crystal that is gone was destroyed: onCrystalDestroyed.
+// The crystals within 150 are counted once a second; one of them (or the
+// healing one) that is gone was destroyed: onCrystalDestroyed, which BDS
+// runs from EndDragonFight::onCrystalDestroyed for every crystal.
 func (d *Dragon) checkCrystals(m *mob.Mob) {
 	tx := m.Tx()
-	if d.crystal != nil {
-		if _, ok := d.crystal.Entity(tx); !ok {
-			d.crystal = nil
-			d.crystalDestroyed(m)
-		} else if m.Ticks()%10 == 0 && m.Health() < m.MaxHealth() {
-			m.Heal(1, nil)
+	for h, pos := range d.crystals {
+		if _, ok := h.Entity(tx); ok {
+			continue
 		}
+		delete(d.crystals, h)
+		healing := h == d.crystal
+		if healing {
+			d.crystal = nil
+		}
+		d.crystalDestroyed(m, pos, healing)
+	}
+	if d.crystal != nil && m.Ticks()%10 == 0 && m.Health() < m.MaxHealth() {
+		m.Heal(1, nil)
+	}
+	if d.crystals == nil {
+		d.crystals = map[*world.EntityHandle]mgl64.Vec3{}
 	}
 	if m.Ticks()%20 == 0 {
+		clear(d.crystals)
 		n := 0
 		for e := range tx.EntitiesWithin(m.BBox().Grow(150)) {
 			if e.H().Type() == entity.EndCrystalType {
 				n++
+				d.crystals[e.H()] = e.Position()
 			}
 		}
 		d.NumCrystals = n
 	}
 	if m.Rand().IntN(10) == 0 {
-		var best *world.EntityHandle
+		var best world.Entity
 		bestD := 1024.0
 		for e := range tx.EntitiesWithin(m.BBox().Grow(32)) {
 			if e.H().Type() != entity.EndCrystalType {
 				continue
 			}
 			if dd := e.Position().Sub(m.Position()).LenSqr(); dd < bestD {
-				best, bestD = e.H(), dd
+				best, bestD = e, dd
 			}
 		}
-		d.crystal = best
+		d.crystal = nil
+		if best != nil {
+			d.crystal = best.H()
+			d.crystals[best.H()] = best.Position()
+		}
 	}
 }
 
-// crystalDestroyed is EnderDragon::onCrystalDestroyed for the healing
-// crystal: 10 damage to the head; the nearest player within 64 becomes the
-// target and a flying dragon goes after it (on_start_takeoff).
-func (d *Dragon) crystalDestroyed(m *mob.Mob) {
+// crystalDestroyed is EnderDragon::onCrystalDestroyed: the nearest
+// attackable player within 64 of the crystal stands for whoever destroyed it
+// (Dragonfly's crystals do not tell). The healing crystal hurts the head
+// for 10, by that player (or a block explosion when there is none); after
+// any crystal a dragon that is not perching takes that player as its target
+// and goes after it (on_start_takeoff).
+func (d *Dragon) crystalDestroyed(m *mob.Mob, pos mgl64.Vec3, healing bool) {
 	tx := m.Tx()
-	d.headHit = true
-	m.Hurt(10, entity.ExplosionDamageSource{Source: world.EntityExplosionSource{Entity: m, ExplosionSize: 6}})
-	d.headHit = false
-	if p, ok := NearestPlayer(tx, m.Position(), 64); ok && !Sitting(m) {
+	p, ok := NearestPlayer(tx, pos, 64)
+	if healing {
+		var src world.ExplosionSource = world.BlockExplosionSource{Pos: cube.PosFromVec3(pos), ExplosionSize: 6}
+		if ok {
+			src = world.EntityExplosionSource{Entity: p, ExplosionSize: 6}
+		}
+		d.headHit = true
+		m.Hurt(10, entity.ExplosionDamageSource{Source: src})
+		d.headHit = false
+		if ok {
+			m.SetLastHurtBy(p)
+		}
+	}
+	if ok && !Sitting(m) {
 		m.SetTarget(p)
 		FireTrigger(m, OnStartTakeoff)
 	}
