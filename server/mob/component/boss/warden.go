@@ -429,7 +429,10 @@ func (s *SuspectTracking) Clear() { s.pos = nil }
 
 // --- minecraft:vibration_listener (BDS VibrationListener, WardenVibrationConfig) ---
 
-// Vibration game events (BDS GameEvent ids) with their frequencies.
+// Vibration game events (BDS GameEvent ids) with their frequencies
+// (VibrationListenerUtils::getGameEventFrequency by GameEvent id: entity_move
+// 21 and swim 60 and flap 27 are 1, hit_ground 30 and projectile_land 38 are
+// 2, projectile_shoot 39 is 3, entity_damage 16 is 7, explode 26 is 15).
 const (
 	VibrationStep           = "entity_move"
 	VibrationSwim           = "swim"
@@ -438,11 +441,12 @@ const (
 	VibrationProjectileShot = "projectile_shoot"
 	VibrationDamage         = "entity_damage"
 	VibrationExplode        = "explode"
+	VibrationFlap           = "flap"
 )
 
 var vibrationFrequency = map[string]int{
 	VibrationStep: 1, VibrationSwim: 1, VibrationHitGround: 2, VibrationProjectileLand: 2,
-	VibrationProjectileShot: 3, VibrationDamage: 7, VibrationExplode: 15,
+	VibrationProjectileShot: 3, VibrationDamage: 7, VibrationExplode: 15, VibrationFlap: 1,
 }
 
 // Vibration is one signal heard.
@@ -464,8 +468,10 @@ type Vibration struct {
 // blocks it.
 //
 // Dragonfly has no game events: the listener notices entities that move
-// (steps, swimming, landing), projectiles flying or landing near it, mobs
-// being hurt (HurtHook) and explosions near it.
+// (steps, swimming, landing; game_event_movement_tracking may turn steps and
+// swims off), projectiles flying or landing near it, mobs being hurt
+// (HurtHook) and explosions near it; flapping mobs send their flaps to it
+// (MovementTracking).
 //
 // A warden reacts as WardenVibrationConfig::onSignalReceive: actor event
 // 77 (tendrils), anger at the source (default_annoyingness; a projectile's
@@ -503,10 +509,17 @@ func newVibrationListener(string, json.RawMessage) (mob.Component, error) {
 func ListenerOf(m *mob.Mob) (*VibrationListener, bool) { return mob.ComponentOf[*VibrationListener](m) }
 
 // Attach ...
-func (v *VibrationListener) Attach(m *mob.Mob) { v.LastTick = m.Ticks() }
+func (v *VibrationListener) Attach(m *mob.Mob) {
+	v.LastTick = m.Ticks()
+	addListener(m)
+}
 
 // Detach ...
-func (*VibrationListener) Detach(*mob.Mob) {}
+func (*VibrationListener) Detach(m *mob.Mob) {
+	if tx := m.Tx(); tx != nil {
+		forgetListener(tx, m.H())
+	}
+}
 
 // dampens reports whether b is wool or carpet (BlockLegacy::canDamperVibrations).
 func dampens(b world.Block) bool {
@@ -629,12 +642,12 @@ func (v *VibrationListener) scan(m *mob.Mob) {
 		switch {
 		case onGround && !last.onGround && moved[1] < -0.3:
 			v.Hear(m, Vibration{Event: VibrationHitGround, Pos: pos, Source: e.H()})
-		case math.Hypot(moved[0], moved[2]) > 0.05 && onGround:
+		case math.Hypot(moved[0], moved[2]) > 0.05 && onGround && tracksMove(e, false):
 			if dampens(tx.Block(cube.PosFromVec3(pos).Side(cube.FaceDown))) || dampens(tx.Block(cube.PosFromVec3(pos))) {
 				continue
 			}
 			v.Hear(m, Vibration{Event: VibrationStep, Pos: pos, Source: e.H()})
-		case moved.Len() > 0.05 && inWater(tx, pos):
+		case moved.Len() > 0.05 && inWater(tx, pos) && tracksMove(e, true):
 			v.Hear(m, Vibration{Event: VibrationSwim, Pos: pos, Source: e.H()})
 		}
 	}
