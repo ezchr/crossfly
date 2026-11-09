@@ -13,6 +13,7 @@ import (
 	"github.com/df-mc/dragonfly/server/mob/component/combat/sense"
 	"github.com/df-mc/dragonfly/server/world"
 	"github.com/go-gl/mathgl/mgl64"
+	"github.com/sandertv/gophertunnel/minecraft/protocol"
 )
 
 // avoidMobType is minecraft:behavior.avoid_mob_type (BDS AvoidMobTypeGoal):
@@ -27,6 +28,15 @@ type avoidMobType struct {
 	walk, sprint     float64 // +132, +136
 	ignoreVisibility bool    // +64
 	onEscape         sense.Trigger
+
+	// outnumbered[i]: entity_types[i] has check_if_outnumbered (descriptor
+	// +86): a mob with group_size only avoids a match whose group is larger
+	// than its own.
+	outnumbered   []bool
+	removeTarget  bool // +140
+	sound         string
+	soundInterval [2]float64 // +252
+	nextSound     int64      // +312
 
 	avoid    *world.EntityHandle
 	desc     *descriptor
@@ -49,6 +59,14 @@ func newAvoidMobType(spec mob.GoalSpec) (mob.Goal, error) {
 		IgnoreVisibility       bool            `json:"ignore_visibilty"`
 		IgnoreVisibility2      bool            `json:"ignore_visibility"`
 		OnEscape               json.RawMessage `json:"on_escape_event"`
+		RemoveTarget           bool            `json:"remove_target"`
+		AvoidMobSound          string          `json:"avoid_mob_sound"`
+		SoundInterval          *struct {
+			Min      *float64 `json:"min"`
+			Max      *float64 `json:"max"`
+			RangeMin *float64 `json:"range_min"`
+			RangeMax *float64 `json:"range_max"`
+		} `json:"sound_interval"`
 	}
 	if err := spec.Decode(&v); err != nil {
 		return nil, fmt.Errorf("%v: %w", spec.Key, err)
@@ -60,6 +78,20 @@ func newAvoidMobType(spec mob.GoalSpec) (mob.Goal, error) {
 		probPerStrength: or(v.ProbabilityPerStrength, 1),
 		walk:            or(v.WalkSpeedMultiplier, 1), sprint: or(v.SprintSpeedMultiplier, 1),
 		ignoreVisibility: v.IgnoreVisibility || v.IgnoreVisibility2,
+		removeTarget:     v.RemoveTarget,
+		sound:            v.AvoidMobSound,
+		soundInterval:    [2]float64{}, // RandomValueBounds default 0
+	}
+	if si := v.SoundInterval; si != nil {
+		lo, hi := si.Min, si.Max
+		if si.RangeMin != nil {
+			lo = si.RangeMin
+		}
+		if si.RangeMax != nil {
+			hi = si.RangeMax
+		}
+		g.soundInterval[0] = or(lo, g.soundInterval[0])
+		g.soundInterval[1] = or(hi, g.soundInterval[0])
 	}
 	d, err := parseDescriptors(v.EntityTypes, g.maxDist)
 	if err != nil {
@@ -78,6 +110,7 @@ func newAvoidMobType(spec mob.GoalSpec) (mob.Goal, error) {
 		}
 	}
 	g.descriptors = d
+	g.outnumbered = outnumberedFlags(v.EntityTypes, len(d))
 	if g.onEscape, err = sense.ParseTrigger(v.OnEscape); err != nil {
 		return nil, fmt.Errorf("%v: %w", spec.Key, err)
 	}
@@ -96,6 +129,64 @@ func descriptorRaw(raw json.RawMessage, i int) rawDescriptor {
 		return list[i]
 	}
 	return rawDescriptor{}
+}
+
+// outnumberedFlags reads check_if_outnumbered of each entity_types entry.
+func outnumberedFlags(raw json.RawMessage, n int) []bool {
+	type entry struct {
+		Outnumbered bool `json:"check_if_outnumbered"`
+	}
+	var list []entry
+	if json.Unmarshal(raw, &list) != nil {
+		var one entry
+		_ = json.Unmarshal(raw, &one)
+		list = []entry{one}
+	}
+	out := make([]bool, n)
+	any := false
+	for i := range min(n, len(list)) {
+		out[i] = list[i].Outnumbered
+		any = any || out[i]
+	}
+	if !any {
+		return nil
+	}
+	return out
+}
+
+// groupSizer is minecraft:group_size (package goal/misc/hostile).
+type groupSizer interface{ Size() int }
+
+// groupSize returns e's group_size count, and false when e has none.
+func groupSize(e world.Entity) (int, bool) {
+	om, ok := mob.Of(e)
+	if !ok {
+		return 0, false
+	}
+	c, ok := om.Component("minecraft:group_size")
+	if !ok {
+		return 0, false
+	}
+	gs, ok := c.(groupSizer)
+	if !ok {
+		return 0, false
+	}
+	return gs.Size(), true
+}
+
+// outnumberedBy is the check_if_outnumbered test of findNearestEntityToAvoid:
+// a mob without group_size always avoids; one with it avoids e only when
+// its group is smaller than e's (1 when e has no group_size).
+func outnumberedBy(m *mob.Mob, e world.Entity) bool {
+	own, ok := groupSize(m)
+	if !ok {
+		return true
+	}
+	other, ok := groupSize(e)
+	if !ok {
+		other = 1
+	}
+	return own < other
 }
 
 // nearest is AvoidMobTypeGoal::findNearestEntityToAvoid: the nearest living
@@ -144,6 +235,9 @@ func (g *avoidMobType) nearest(m *mob.Mob, flee bool) (world.Entity, *descriptor
 			}
 			ctx.Other = c.e
 			if !d.filter.Test(ctx) {
+				continue
+			}
+			if g.outnumbered != nil && g.outnumbered[i] && !outnumberedBy(m, c.e) {
 				continue
 			}
 			best, bestD = c.e, c.dist
@@ -233,9 +327,14 @@ func (g *avoidMobType) CanContinueToUse(m *mob.Mob) bool {
 	return true
 }
 
-// Start ...
+// Start is AvoidMobTypeGoal::start: drop the target with remove_target,
+// move along the path and set the avoiding_mobs flag.
 func (g *avoidMobType) Start(m *mob.Mob) {
 	g.sprinted = false
+	if g.removeTarget {
+		m.ResetTarget()
+	}
+	m.SetActorFlag(protocol.EntityDataFlagAvoidingMobs, true)
 	if g.path != nil {
 		m.Navigation().MoveAlong(m, g.path, g.speed(m))
 		g.path = nil
@@ -252,20 +351,39 @@ func (g *avoidMobType) speed(m *mob.Mob) float64 {
 	return g.desc.walk
 }
 
-// Tick sprints within 7 blocks of the avoided mob, walks further away.
+// Tick sprints within 7 blocks of the avoided mob, walks further away, and
+// plays avoid_mob_sound every sound_interval.
 func (g *avoidMobType) Tick(m *mob.Mob) {
 	if g.avoid == nil {
 		return
 	}
+	if _, ok := g.avoid.Entity(m.Tx()); !ok {
+		return
+	}
 	m.Navigation().SetSpeed(g.speed(m))
+	if g.nextSound < m.Ticks() {
+		if g.sound != "" {
+			m.PlaySound(g.sound)
+		}
+		lo, hi := g.soundInterval[0], g.soundInterval[1]
+		f := lo
+		if hi > lo {
+			f += m.Rand().Float64() * (hi - lo)
+		}
+		g.nextSound = m.Ticks() + int64(f*20)
+	}
 }
 
-// Stop ...
+// Stop is AvoidMobTypeGoal::stop: on_escape_event fires only when nothing
+// to avoid is left within max_dist.
 func (g *avoidMobType) Stop(m *mob.Mob) {
 	if !g.onEscape.Empty() {
-		g.onEscape.Fire(m, nil)
+		if e, _ := g.nearest(m, false); e == nil {
+			g.onEscape.Fire(m, nil)
+		}
 	}
 	g.avoid, g.desc = nil, nil
+	m.SetActorFlag(protocol.EntityDataFlagAvoidingMobs, false)
 }
 
 // AppendDebugInfo ...
