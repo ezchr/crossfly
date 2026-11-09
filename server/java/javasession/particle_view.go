@@ -84,6 +84,12 @@ func (s *Session) ViewParticle(pos mgl64.Vec3, p world.Particle) {
 		s.simpleParticle(ptItemSnowball, pos, 8)
 	case particle.Heart:
 		s.simpleParticle(ptHeart, pos, 0)
+	case particle.Legacy:
+		if id, ok := s.namedParticleID(pa.Java); ok {
+			w := s.packet()
+			w.VarInt(id)
+			s.particleAt(w, false, pos, 0, 0, 0, 0, 0)
+		}
 	case particle.Named:
 		if id, ok := s.namedParticleID(pa.Java); ok {
 			w := s.packet()

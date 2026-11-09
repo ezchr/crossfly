@@ -29,6 +29,18 @@ type Named struct {
 	Java string
 }
 
+// Legacy is a Bedrock legacy particle picked by its ParticleType id (packet.ParticleType*), shown with a
+// LevelEvent, for particles that have no type of their own.
+type Legacy struct {
+	particle
+
+	// Bedrock is the ParticleType Bedrock clients are shown, Data the event data sent with it.
+	Bedrock, Data int32
+	// Java is the particle type Java clients are shown, as in Named. Java clients are shown nothing if it is
+	// empty.
+	Java string
+}
+
 // Splash is a particle that shows up when a splash potion is splashed.
 type Splash struct {
 	particle

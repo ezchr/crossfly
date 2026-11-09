@@ -562,6 +562,12 @@ func (s *Session) ViewParticle(pos mgl64.Vec3, p world.Particle) {
 			Position:  vec64To32(pos),
 			EventData: int32(s.br.BlockRuntimeID(pa.Block)) | (int32(pa.Face) << 24),
 		})
+	case particle.Legacy:
+		s.writePacket(&packet.LevelEvent{
+			EventType: packet.LevelEventParticleLegacyEvent | pa.Bedrock,
+			Position:  vec64To32(pos),
+			EventData: pa.Data,
+		})
 	case particle.Heart:
 		s.writePacket(&packet.SpawnParticleEffect{
 			EntityUniqueID: -1,

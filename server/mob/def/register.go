@@ -248,12 +248,60 @@ func (e *MobEntity) HandleAction(a event.Action, ctx *filter.Context) bool {
 		m.SetHome(cube.PosFromVec3(m.Pos()))
 	case event.DropItem:
 		e.dropItem(a.Slot)
+	case event.PlaySound:
+		e.playSound(a, ctx)
+	case event.EmitParticle:
+		if t := subjectEntity(e, a.Target, ctx); t != nil && m.Tx() != nil {
+			if p, ok := eventParticle(a.Particle); ok {
+				m.Tx().AddParticle(t.Position(), p)
+			}
+		}
+	case event.EmitVibration:
+		// EmitVibrationResponse: the game event at self.
+		if a.Vibration != "" {
+			m.EmitVibration(a.Vibration)
+		}
 	default:
-		// play_sound, emit_vibration, emit_particle, queue_command,
-		// execute_event_on_home_block: State.HandleAction (log / no-op).
+		// queue_command, execute_event_on_home_block: State.HandleAction
+		// (log / no-op).
 		return false
 	}
 	return true
+}
+
+// playSound is PlaySoundResponse::executeAction: the level sound event at
+// the target. BDS sends it without an entity type; a mob target sends its
+// own (Mob.PlaySound), so that Java sessions can map it to the mob's sound
+// and Bedrock clients pick the mob's variant of it.
+func (e *MobEntity) playSound(a event.PlaySound, ctx *filter.Context) {
+	if a.Sound == "" {
+		return
+	}
+	t := subjectEntity(e, a.Target, ctx)
+	if t == nil {
+		return
+	}
+	if tm, ok := mob.Of(t); ok {
+		tm.PlaySound(a.Sound)
+		return
+	}
+	if tx := e.M.Tx(); tx != nil {
+		tx.PlaySound(t.Position(), mob.Sound{Event: a.Sound})
+	}
+}
+
+// subjectEntity is the entity of an event response's target subject.
+func subjectEntity(e *MobEntity, s filter.Subject, ctx *filter.Context) world.Entity {
+	if s == filter.SubjectSelf || ctx == nil {
+		return e.M
+	}
+	switch a := ctx.Subject(s).(type) {
+	case *MobEntity:
+		return a.M
+	case filter.EntityActor:
+		return a.E
+	}
+	return nil
 }
 
 func (e *MobEntity) dropItem(slot string) {
