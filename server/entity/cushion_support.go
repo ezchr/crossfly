@@ -48,6 +48,10 @@ func cushionSupportShape(b world.Block, pos cube.Pos, tx *world.Tx) []cube.BBox 
 	switch b := b.(type) {
 	case block.LilyPad:
 		return cushionShape(0, 0.09375)
+	case block.SnowLayer:
+		// The visible top of the layers: a single layer has no collision box (as in Java), but a
+		// cushion placed on it rests on the snow, as players see it.
+		return cushionShape(0, float64(b.Height+1)/8)
 	case block.Flower:
 		return cushionShape(0, 0.6)
 	case block.Torch:
