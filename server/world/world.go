@@ -1769,6 +1769,17 @@ type Column struct {
 	loaders []*Loader
 }
 
+// emptyBlockEntity reports whether saved block entity data holds nothing but its position: what a block this
+// server did not implement was saved with when it had no block entity data.
+func emptyBlockEntity(data map[string]any) bool {
+	for k := range data {
+		if k != "x" && k != "y" && k != "z" {
+			return false
+		}
+	}
+	return true
+}
+
 // columnTo converts a Column to a chunk.Column so that it can be written to
 // a provider.
 func (w *World) columnTo(col *Column, pos ChunkPos) *chunk.Column {
@@ -1792,7 +1803,13 @@ func (w *World) columnTo(col *Column, pos ChunkPos) *chunk.Column {
 		c.Entities = append(c.Entities, chunk.Entity{ID: int64(binary.LittleEndian.Uint64(e.id[8:])), Data: data})
 	}
 	for pos, be := range col.BlockEntities {
-		c.BlockEntities = append(c.BlockEntities, chunk.BlockEntity{Pos: pos, Data: be.(NBTer).EncodeNBT()})
+		data := be.(NBTer).EncodeNBT()
+		if _, unknown := be.(unknownBlock); unknown && len(data) == 0 {
+			// A block this server does not implement (a Crossfly Full block on Crossfly Core, or with Java
+			// redstone off) that came without block entity data: it has none to keep.
+			continue
+		}
+		c.BlockEntities = append(c.BlockEntities, chunk.BlockEntity{Pos: pos, Data: data})
 	}
 	for _, t := range scheduled {
 		c.ScheduledBlocks = append(c.ScheduledBlocks, chunk.ScheduledBlockUpdate{Pos: t.pos, Block: w.conf.Blocks.BlockRuntimeID(t.b), Tick: t.t, Priority: int8(t.priority), SubTickOrder: t.order})
@@ -1830,7 +1847,9 @@ func (w *World) columnFrom(c *chunk.Column, _ ChunkPos) *Column {
 		}
 		nb, ok := b.(NBTer)
 		if !ok {
-			w.conf.Log.Error("read column: block with nbt does not implement NBTer", "block", fmt.Sprintf("%#v", b))
+			if !emptyBlockEntity(be.Data) {
+				w.conf.Log.Error("read column: block with nbt does not implement NBTer", "block", fmt.Sprintf("%#v", b))
+			}
 			continue
 		}
 		col.BlockEntities[be.Pos] = nb.DecodeNBT(be.Data).(Block)
