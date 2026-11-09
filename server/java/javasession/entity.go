@@ -564,6 +564,8 @@ func (s *Session) ViewEntityAction(e world.Entity, a world.EntityAction) {
 		w.Int32(id)
 		w.Byte(70) // EntityEvent: a TNT minecart is primed
 		s.queue(v777.ClientboundPlayEntityEvent, w)
+	case entity.FireworkExplosionAction:
+		s.viewFireworkExplosion(e, id) // firework.go
 	case entity.CriticalHitAction:
 		s.animate(id, 1) // CRITICAL_HIT
 	case entity.EnchantedHitAction:

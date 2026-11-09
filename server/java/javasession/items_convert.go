@@ -166,6 +166,8 @@ func javaStack(ds item.Stack, js *jitem.Stack) {
 		dyedColour(v.Tier, js)
 	case item.Boots:
 		dyedColour(v.Tier, js)
+	case item.Firework:
+		fireworksComponent(v, js) // firework.go
 	}
 
 	headProfile(ds, js) // a player head's skin (heads_java.go)
