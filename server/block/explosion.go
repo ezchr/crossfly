@@ -150,12 +150,32 @@ func (c ExplosionConfig) Explode(tx *world.Tx, src world.ExplosionSource) {
 		estimatedBlocks = 32
 	}
 	affectedBlocks := make([]cube.Pos, 0, estimatedBlocks)
-	blockCache := make(map[cube.Pos]explosionBlockInfo, estimatedBlocks)
+	// What the rays found is kept in a grid over the box, or in a map for an explosion too big for one.
+	grid := newExplosionGrid(cube.PosFromVec3(box.Min()).Sub(cube.Pos{2, 2, 2}), cube.PosFromVec3(box.Max()).Add(cube.Pos{2, 2, 2}))
+	defer grid.release()
+	var blockCache map[cube.Pos]explosionBlockInfo
+	if grid == nil {
+		blockCache = make(map[cube.Pos]explosionBlockInfo, estimatedBlocks)
+	}
 	for _, ray := range rays {
 		pos := explosionPos
 		for blastForce := size * (0.7 + r.Float64()*0.6); blastForce > 0.0; blastForce -= 0.225 {
 			current := cube.PosFromVec3(pos)
-			info, ok := blockCache[current]
+			var (
+				info explosionBlockInfo
+				ok   bool
+				cell *explosionCell
+			)
+			if grid != nil {
+				cell = grid.cell(current)
+			}
+			if cell != nil {
+				if cell.rayGen == grid.rayGen {
+					info, ok = cell.info, true
+				}
+			} else {
+				info, ok = blockCache[current]
+			}
 			if !ok {
 				currentBlock := tx.Block(current)
 				if l, ok := tx.Liquid(current); ok {
@@ -167,7 +187,15 @@ func (c ExplosionConfig) Explode(tx *world.Tx, src world.ExplosionSource) {
 				} else if _, ok = currentBlock.(Air); !ok {
 					info.flags = explosionBlockStopsRay
 				}
-				blockCache[current] = info
+				if cell != nil {
+					cell.info, cell.rayGen = info, grid.rayGen
+				} else {
+					// Outside the grid (no ray of an explosion that has one gets this far): kept in a map.
+					if blockCache == nil {
+						blockCache = make(map[cube.Pos]explosionBlockInfo)
+					}
+					blockCache[current] = info
+				}
 			}
 			if info.flags&explosionBlockStopsRay != 0 {
 				// Completely stop the ray if the current block is not air and unbreakable.
@@ -181,7 +209,11 @@ func (c ExplosionConfig) Explode(tx *world.Tx, src world.ExplosionSource) {
 			}
 			if blastForce > 0 && info.flags&explosionBlockAffected == 0 {
 				info.flags |= explosionBlockAffected
-				blockCache[current] = info
+				if cell != nil {
+					cell.info = info
+				} else {
+					blockCache[current] = info
+				}
 				affectedBlocks = append(affectedBlocks, current)
 			}
 		}
@@ -199,7 +231,7 @@ func (c ExplosionConfig) Explode(tx *world.Tx, src world.ExplosionSource) {
 		if !ok {
 			continue
 		}
-		impact := (1 - e.Position().Sub(explosionPos).Len()/d) * c.exposure(tx, explosionPos, e)
+		impact := (1 - e.Position().Sub(explosionPos).Len()/d) * c.exposure(tx, explosionPos, e, grid)
 		if c.SuppressUnderwaterImpact && impact <= 0 {
 			// The blast never reached the entity. Skip the call entirely, as entities with a constant damage term,
 			// such as players, would otherwise still be hurt through the liquid that blocked it.
@@ -208,10 +240,8 @@ func (c ExplosionConfig) Explode(tx *world.Tx, src world.ExplosionSource) {
 		explodable.Explode(src, impact)
 	}
 
-	blast := make(map[cube.Pos]struct{}, len(affectedBlocks))
-	for _, pos := range affectedBlocks {
-		blast[pos] = struct{}{}
-	}
+	// The blast as a set, made once a broken block needs it (removeDependents): most of a blast in the air is air.
+	var blast map[cube.Pos]struct{}
 	for _, pos := range affectedBlocks {
 		bl := tx.Block(pos)
 		if explodable, ok := bl.(Explodable); ok {
@@ -226,6 +256,12 @@ func (c ExplosionConfig) Explode(tx *world.Tx, src world.ExplosionSource) {
 			if itemDropChance > r.Float64() {
 				for _, drop := range breakable.BreakInfo().Drops(item.ToolNone{}, nil) {
 					dropItem(tx, drop, pos.Vec3Centre())
+				}
+			}
+			if blast == nil {
+				blast = make(map[cube.Pos]struct{}, len(affectedBlocks))
+				for _, pos := range affectedBlocks {
+					blast[pos] = struct{}{}
 				}
 			}
 			removeDependents(pos, tx, blast)
@@ -247,7 +283,11 @@ func (c ExplosionConfig) Explode(tx *world.Tx, src world.ExplosionSource) {
 }
 
 // exposure returns the exposure of an explosion to an entity, used to calculate the impact of an explosion.
-func (c ExplosionConfig) exposure(tx *world.Tx, origin mgl64.Vec3, e world.Entity) float64 {
+func (c ExplosionConfig) exposure(tx *world.Tx, origin mgl64.Vec3, e world.Entity, grid *explosionGrid) float64 {
+	if grid != nil {
+		// Nothing changes the world while the exposure is worked out: each block its rays pass is looked up once.
+		grid.nextExposure()
+	}
 	pos := e.Position()
 	box := e.H().Type().BBox(e).Translate(pos)
 
@@ -279,7 +319,7 @@ func (c ExplosionConfig) exposure(tx *world.Tx, origin mgl64.Vec3, e world.Entit
 							return false
 						}
 					}
-					_, collided = trace.BlockIntercept(pos, tx, tx.Block(pos), origin, point)
+					_, collided = trace.BlockIntercept(pos, tx, grid.block(tx, pos), origin, point)
 					return !collided
 				})
 
