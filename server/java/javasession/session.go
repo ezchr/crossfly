@@ -96,6 +96,10 @@ type Session struct {
 	timeStopped bool
 	raining     bool
 	thunder     bool
+	// rainLevel and thunderLevel are the levels the client was last sent; tickWeather moves them
+	// towards raining and thunder (time.go). weatherSent: the client has had its level info.
+	rainLevel, thunderLevel float32
+	weatherSent             bool
 	lastCentre  world.ChunkPos
 	centreSent  bool
 	closeOnce   sync.Once
@@ -428,6 +432,7 @@ func (s *Session) tickLoop() {
 				s.continueEating(c)
 				s.syncEnchantAttributes(tx, c)
 			})
+			s.tickWeather()
 			if err != nil {
 				if !stopped(err) {
 					s.log.Debug("tick", "err", err)
