@@ -425,6 +425,10 @@ func (s *Session) ViewEntityItems(e world.Entity) {
 	})
 }
 
+// HideHelmet, if set, reports helmets other Bedrock players are not shown: a head drawn some other
+// way (on the wearer's skin) would be covered by the item.
+var HideHelmet func(item.Stack) bool
+
 // ViewEntityArmour ...
 func (s *Session) ViewEntityArmour(e world.Entity) {
 	runtimeID := s.entityRuntimeID(e)
@@ -450,6 +454,9 @@ func (s *Session) ViewEntityArmour(e world.Entity) {
 	}
 	if !hasArmour && !hasBody {
 		return
+	}
+	if f := HideHelmet; f != nil && f(helmet) {
+		helmet = item.Stack{}
 	}
 
 	// Show the entity's armour

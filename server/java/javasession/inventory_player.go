@@ -182,6 +182,9 @@ func newItemState(s *Session) *itemState {
 		}
 	}
 	st.fnArmour = func(slot int, before, after item.Stack) {
+		if _, c := st.current(); c != nil {
+			session.ArmourChangedFor(c, before, after)
+		}
 		if !st.applying.Load() {
 			s.sendSlot(slotArmour+slot, after)
 		}

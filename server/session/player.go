@@ -757,8 +757,25 @@ func (s *Session) broadcastOffHandFunc(tx *world.Tx, c Controllable) inventory.S
 	}
 }
 
+// ArmourChanged, if set, is called after any change to a player's armour, however it was made
+// (inventory, commands, death), for Bedrock and Java players alike. It runs in a later
+// transaction, with the player's entity.
+var ArmourChanged func(e world.Entity)
+
+// armourChanged calls ArmourChanged for c if its armour changed.
+func armourChanged(c Controllable, before, after item.Stack) {
+	if f := ArmourChanged; f != nil && !before.Equal(after) {
+		c.H().Do(func(_ *world.Tx, e world.Entity) { f(e) })
+	}
+}
+
+// ArmourChangedFor calls ArmourChanged for c if its armour changed: for the sessions of Java
+// players, which keep the armour slots themselves.
+func ArmourChangedFor(c Controllable, before, after item.Stack) { armourChanged(c, before, after) }
+
 func (s *Session) broadcastArmourFunc(tx *world.Tx, c Controllable) inventory.SlotFunc {
 	return func(slot int, before, after item.Stack) {
+		armourChanged(c, before, after)
 		inTransaction := s.inTransaction.Load()
 		if !inTransaction {
 			s.sendItem(after, slot, protocol.WindowIDArmour)
