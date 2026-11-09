@@ -54,6 +54,18 @@ func javaMobSoundName(event, typ string) (string, bool) {
 		jt = j
 	}
 	short := strings.TrimPrefix(jt, "minecraft:")
+	// Bedrock events whose Java sound is named differently.
+	switch {
+	case short == "shulker" && (event == "shulker.open" || event == "shulker.close"):
+		return "minecraft:entity.shulker." + strings.TrimPrefix(event, "shulker."), true
+	case short == "shulker_bullet" && event == "bullet.hit":
+		return "minecraft:entity.shulker_bullet.hit", true
+	case short == "shulker_bullet" && event == "hurt":
+		// A projectile: the client plays no hurt sound of its own.
+		return "minecraft:entity.shulker_bullet.hurt", true
+	case (short == "llama" || short == "trader_llama") && event == "shoot":
+		return "minecraft:entity.llama.spit", true
+	}
 	switch event {
 	case "hurt", "hurt.baby", "death", "death.baby", "attack.strong", "attack.nodamage", "step", "jump", "fall":
 		// The Java client plays these itself (damage event, death entity

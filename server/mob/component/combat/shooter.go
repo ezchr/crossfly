@@ -91,8 +91,15 @@ func (s *Shooter) Shoot(m *mob.Mob, target world.Entity) {
 	if !ShootProjectile(m, target, p.id, p.auxVal, s.power) {
 		return
 	}
-	if s.sound == "bow" || (s.sound == "" && strings.HasSuffix(p.id, "arrow")) {
+	switch {
+	case s.sound == "bow" || (s.sound == "" && strings.HasSuffix(p.id, "arrow")):
 		m.Tx().PlaySound(m.Position(), sound.BowShoot{})
+	case s.sound != "":
+		m.PlaySound(s.sound)
+	case definedProjectile(p.id):
+		// The blaze, ghast, llama and shulker shoot sounds (the Bedrock
+		// entity sound "shoot" of the shooter).
+		m.PlaySound("shoot")
 	}
 	if p.loseTarget {
 		m.ResetTarget()
@@ -124,6 +131,19 @@ var extraProjectiles = map[string]ProjectileSpawner{}
 // charges). Call it from init only.
 func RegisterProjectile(id string, f ProjectileSpawner) { extraProjectiles[id] = f }
 
+// definedProjectile reports whether id is fired from its entity
+// definition (projectile.go): it has a minecraft:projectile and neither
+// projectileStats nor a registered spawner handles it.
+func definedProjectile(id string) bool {
+	if _, ok := projectileStats[id]; ok {
+		return false
+	}
+	if _, ok := extraProjectiles[id]; ok {
+		return false
+	}
+	return projectileSpecOf(id) != nil
+}
+
 // ShootProjectile fires projectile id from m's eyes at target (BDS
 // Level::shootProjectileFromDefinition + ProjectileComponent::shoot):
 // aimed at a third of the target's height, raised by 0.2 per block of
@@ -136,6 +156,9 @@ func ShootProjectile(m *mob.Mob, target world.Entity, id string, auxVal int, pow
 		return f(m, target, auxVal, power)
 	}
 	stats, ok := projectileStats[id]
+	if !ok && definedProjectile(id) {
+		return shootDefined(m, target, projectileSpecOf(id), power)
+	}
 	if !ok {
 		if _, seen := unsupportedProjectiles.LoadOrStore(id, true); !seen {
 			slog.Default().Warn("mob: shooter projectile not supported", "projectile", id, "entity", m.Identifier())
