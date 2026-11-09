@@ -99,7 +99,8 @@ func TestDolphinBribeAndDrying(t *testing.T) {
 	mobtest.RequireFilters(t)
 	mobtest.Require(t, "minecraft:environment_sensor", "minecraft:damage_over_time")
 	w := mobtest.New(t, mobtest.Options{})
-	w.Do(func(tx *world.Tx) { w.Floor(tx, 0, 10, block.Stone{}) })
+	// Walled in: a dolphin on land flops about (WaterAnimal::preAiStep).
+	w.Do(func(tx *world.Tx) { w.Arena(tx, 10, 2) })
 	d := w.Spawn("minecraft:dolphin", mgl64.Vec3{0.5, 1, 0.5}, mob.SpawnOptions{Event: "minecraft:entity_spawned", Configure: func(m *mob.Mob) {}})
 	w.Tick(2)
 	var adult bool

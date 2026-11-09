@@ -49,7 +49,8 @@ func (f flatConfig) apply(conf *server.Config) error {
 	if !ok {
 		return fmt.Errorf("flat world: unknown biome %q", f.Biome)
 	}
-	overworld := generator.NewFlat(bi, layers)
+	// The generator is made when the server asks for it: generator.NewFlat looks up block runtime
+	// IDs, which only exist once the block registry is finalised, after the config is read.
 	conf.Generator = func(dim world.Dimension) world.Generator {
 		switch dim {
 		case world.Nether:
@@ -57,7 +58,7 @@ func (f flatConfig) apply(conf *server.Config) error {
 		case world.End:
 			return generator.NewFlat(biome.End{}, []world.Block{block.EndStone{}, block.EndStone{}, block.EndStone{}, block.Bedrock{}})
 		}
-		return overworld
+		return generator.NewFlat(bi, layers)
 	}
 	return nil
 }
