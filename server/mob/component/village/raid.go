@@ -524,9 +524,9 @@ type omenState struct {
 }
 
 // tickPlayers turns bad omen into raid omen in villages (player.json's
-// environment_sensor), triggers the raid when raid omen runs out
-// (RaidOmenMobEffect::onEffectExpired -> RaidTriggerSystem) and counts
-// insomnia.
+// environment_sensor) and triggers the raid when raid omen runs out
+// (RaidOmenMobEffect::onEffectExpired -> RaidTriggerSystem). Insomnia is
+// the player's own (InsomniaTicks).
 func (m *Manager) tickPlayers(tx *world.Tx) {
 	seen := map[*world.EntityHandle]bool{}
 	for e := range tx.Players() {
@@ -536,12 +536,6 @@ func (m *Manager) tickPlayers(tx *world.Tx) {
 		}
 		h := p.H()
 		seen[h] = true
-		if _, ok := m.rest[h]; !ok || p.Dead() {
-			m.rest[h] = m.now
-		}
-		if _, sleeping := p.Sleeping(); sleeping {
-			m.rest[h] = m.now
-		}
 		if st, ok := m.omens[h]; ok {
 			if _, has := hasEffect(p, RaidOmen); !has || m.now >= st.expiry {
 				delete(m.omens, h)
@@ -565,11 +559,6 @@ func (m *Manager) tickPlayers(tx *world.Tx) {
 			p.RemoveEffect(BadOmen)
 			p.AddEffect(effect.New(RaidOmen, bad.Level(), raidOmenDuration))
 			m.omens[h] = &omenState{pos: p.Position(), expiry: m.now + int64(raidOmenDuration/(time.Second/20)), level: bad.Level()}
-		}
-	}
-	for h := range m.rest {
-		if !seen[h] {
-			delete(m.rest, h)
 		}
 	}
 	for h := range m.omens {
