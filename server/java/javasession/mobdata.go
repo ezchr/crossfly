@@ -263,9 +263,7 @@ func init() {
 	set("strider", mobKind{ageable: true, extra: func(_ *Session, d *mobData, e world.Entity, _ string) {
 		d.boolean(19, mobBool(e, mobShaking.Shaking)) // cold, out of lava
 	}})
-	set("enderman", mobKind{extra: func(_ *Session, d *mobData, e world.Entity, _ string) {
-		d.boolean(17, mobBool(e, mobAngry.Angry)) // screaming, jaw open
-	}})
+	set("enderman", mobKind{extra: endermanData})
 	set("bee", mobKind{ageable: true, extra: func(_ *Session, d *mobData, e world.Entity, _ string) {
 		d.long(19, angerEndTime(e))
 	}})

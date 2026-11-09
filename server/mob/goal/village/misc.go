@@ -408,29 +408,6 @@ type takeBlock struct {
 	onTake   ccore.Trigger
 }
 
-type carriedKey struct{}
-
-// Carried returns the block an enderman carries.
-func Carried(m *mob.Mob) (world.Block, bool) {
-	v, ok := m.Data(carriedKey{})
-	if !ok {
-		return nil, false
-	}
-	return v.(world.Block), true
-}
-
-func setCarried(m *mob.Mob, b world.Block) {
-	if b == nil {
-		m.SetData(carriedKey{}, nil)
-		m.SetHeldItems(item.Stack{}, item.Stack{})
-		return
-	}
-	m.SetData(carriedKey{}, b)
-	if it, ok := b.(world.Item); ok {
-		m.SetHeldItems(item.NewStack(it, 1), item.Stack{})
-	}
-}
-
 type intPair [2]int
 
 func (p *intPair) UnmarshalJSON(b []byte) error {
@@ -486,6 +463,7 @@ func offset(m *mob.Mob, r [2]int) int {
 }
 
 func (g *takeBlock) CanUse(m *mob.Mob) bool {
+	migrateCarried(m)
 	if _, ok := Carried(m); ok || (g.griefing && !mobGriefing(m)) {
 		return false
 	}
@@ -503,7 +481,7 @@ func (g *takeBlock) Start(m *mob.Mob) {
 	name, _ := b.EncodeBlock()
 	for _, n := range g.blocks {
 		if n == name {
-			setCarried(m, b)
+			SetCarried(m, b)
 			m.Tx().SetBlock(p, nil, nil)
 			g.onTake.Fire(m, nil)
 			return
@@ -572,6 +550,7 @@ func (g *placeBlock) CanUse(m *mob.Mob) bool {
 	if g.griefing && !mobGriefing(m) {
 		return false
 	}
+	migrateCarried(m)
 	if _, ok := Carried(m); !ok && len(g.random) == 0 {
 		return false
 	}
@@ -600,7 +579,7 @@ func (g *placeBlock) Start(m *mob.Mob) {
 	}
 	tx.SetBlock(p, b, nil)
 	if carried {
-		setCarried(m, nil)
+		SetCarried(m, nil)
 	}
 	g.onPlace.Fire(m, nil)
 }

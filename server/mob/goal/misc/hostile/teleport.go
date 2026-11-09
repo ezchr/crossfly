@@ -5,12 +5,15 @@ package hostile
 import (
 	"encoding/json"
 	"fmt"
+	"math"
 
 	"github.com/df-mc/dragonfly/server/block/cube"
 	"github.com/df-mc/dragonfly/server/entity"
+	"github.com/df-mc/dragonfly/server/internal/nbtconv"
 	"github.com/df-mc/dragonfly/server/mob"
 	"github.com/df-mc/dragonfly/server/mob/component/combat/sense"
 	"github.com/df-mc/dragonfly/server/mob/goal/misc/kit"
+	"github.com/df-mc/dragonfly/server/mob/goal/village"
 	"github.com/df-mc/dragonfly/server/world"
 	"github.com/df-mc/dragonfly/server/world/particle"
 	"github.com/go-gl/mathgl/mgl64"
@@ -31,11 +34,17 @@ import (
 //     teleports within random_teleport_cube (32 x 32 x 32).
 //
 // TeleportComponent::teleport drops the destination to the first block with
-// a solid top and refuses spots in liquid or inside blocks. With
-// teleports_on_projectile_hit (1.26) a projectile hit is dodged by a
-// teleport (up to 64 tries, damage cancelled; BDS EnderMan::_hurt); other
-// damage without a living attacker (water, fire) teleports it 9 times in
-// 10 afterwards (EnderMan::hurtEffects; the 9/10 is java/paper).
+// a solid top and refuses spots in liquid or inside blocks.
+//
+// Hits (BDS EnderMan::_hurt and EnderMan::hurtEffects, enderman only unless
+// teleports_on_projectile_hit is set): a projectile that is not a thrown
+// potion is dodged, up to 64 random teleports, and its damage is cancelled
+// even when every teleport fails; any other damage (melee from anyone,
+// fire, water) first teleports it once 9 times in 10 when the hit does not
+// kill it, and once more after the damage.
+//
+// It also saves the block the mob carries (EnderMan::addAdditionalSaveData
+// carriedBlock; goal/village.Carried), the enderman part this server has.
 
 type Teleport struct {
 	random           bool
@@ -47,6 +56,9 @@ type Teleport struct {
 	darkChance       float64
 	onProjectile     bool
 	timer            int
+
+	enderman bool
+	carried  *village.CarriedBlock
 }
 
 func newTeleport(key string, raw json.RawMessage) (mob.Component, error) {
@@ -80,6 +92,23 @@ func newTeleport(key string, raw json.RawMessage) (mob.Component, error) {
 // Attach ...
 func (t *Teleport) Attach(m *mob.Mob) {
 	t.resetTimer(m)
+	t.enderman = m.Identifier() == "minecraft:enderman"
+	t.carried = village.CarriedHolder(m)
+}
+
+// EncodeNBT saves the carried block.
+func (t *Teleport) EncodeNBT() map[string]any {
+	if t.carried == nil || t.carried.Block == nil {
+		return nil
+	}
+	return map[string]any{"carriedBlock": nbtconv.WriteBlock(t.carried.Block)}
+}
+
+// DecodeNBT loads the carried block.
+func (t *Teleport) DecodeNBT(m *mob.Mob, d map[string]any) {
+	if b := nbtconv.Block(d, "carriedBlock"); b != nil {
+		village.SetCarried(m, b)
+	}
 }
 
 // Detach ...
@@ -185,38 +214,46 @@ func TeleportTo(m *mob.Mob, dest mgl64.Vec3) bool {
 	return true
 }
 
-// ModifyDamage dodges projectiles (teleports_on_projectile_hit).
+// ModifyDamage is the teleport part of EnderMan::_hurt, before the damage
+// applies.
 func (t *Teleport) ModifyDamage(m *mob.Mob, d *mob.Damage) {
-	if !t.onProjectile {
-		return
-	}
-	if _, ok := d.Source.(entity.ProjectileDamageSource); !ok {
-		return
-	}
-	for i := 0; i < 64; i++ {
-		if t.RandomTeleport(m) {
-			d.Cancel = true
+	if dodgedProjectile(d.Source) {
+		if !t.enderman && !t.onProjectile {
 			return
 		}
+		for i := 0; i < 64 && !t.RandomTeleport(m); i++ {
+		}
+		d.Cancel = true
+		return
+	}
+	if !t.enderman {
+		return
+	}
+	if m.Rand().IntN(10) != 0 && math.Trunc(m.Health())-d.Amount > 0 {
+		t.RandomTeleport(m)
 	}
 }
 
-// OnHurt teleports after damage with no living attacker (EnderMan::hurtEffects).
-func (t *Teleport) OnHurt(m *mob.Mob, _ float64, src world.DamageSource) {
-	switch s := src.(type) {
-	case entity.AttackDamageSource:
-		if _, living := s.Attacker.(entity.Living); living {
-			return
+// OnHurt is EnderMan::hurtEffects: damage that did not kill teleports it once
+// more.
+func (t *Teleport) OnHurt(m *mob.Mob, dmg float64, _ world.DamageSource) {
+	if t.enderman && dmg > 0 && !m.Dead() {
+		t.RandomTeleport(m)
+	}
+}
+
+// dodgedProjectile reports whether src is projectile damage an enderman
+// dodges: every projectile but splash and lingering potions.
+func dodgedProjectile(src world.DamageSource) bool {
+	s, ok := src.(entity.ProjectileDamageSource)
+	if !ok {
+		return false
+	}
+	if s.Projectile != nil {
+		switch s.Projectile.H().Type().EncodeEntity() {
+		case "minecraft:splash_potion", "minecraft:lingering_potion":
+			return false
 		}
-	case entity.ProjectileDamageSource:
-		return
 	}
-	if m.Dead() || m.Rand().IntN(10) == 0 {
-		return
-	}
-	for i := 0; i < 64; i++ {
-		if t.RandomTeleport(m) {
-			return
-		}
-	}
+	return true
 }
