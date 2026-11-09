@@ -4,6 +4,7 @@ package locomotion
 
 import (
 	"fmt"
+	"math"
 	"strings"
 
 	"github.com/df-mc/dragonfly/server/entity"
@@ -20,8 +21,10 @@ import (
 // GuardianAttackGoal): stand still, look at the target and charge the beam
 // (the target actor data the clients draw); 10 ticks in the attack sound
 // plays, after the attack duration (80 ticks, elder 60) the target takes the
-// mob's attack damage plus magic_damage (+ hard_mode_extra_magic_damage on
-// hard, + elder_extra_magic_damage for elders) and the mob lets go of it.
+// mob's attack damage, then magic_damage (+ hard_mode_extra_magic_damage on
+// hard, + elder_extra_magic_damage for elders) on top, both scaled by
+// difficulty against players (5+1 on normal, 7.5+4.5 on hard; elders 5+3
+// and 7.5+7.5), and the mob lets go of it.
 // Losing sight of the target drops it; a non-elder closer than min_distance
 // stops.
 //
@@ -121,8 +124,12 @@ func (g *guardianAttack) Tick(m *mob.Mob) {
 	}
 	l, living := t.(entity.Living)
 	if living {
+		var dealt float64
+		// Player.Hurt scales the attack hit by difficulty itself.
 		if dmg := core.AttackOf(m).Damage; dmg > 0 {
-			l.Hurt(dmg, entity.AttackDamageSource{Attacker: m})
+			if n, res := l.Hurt(dmg, entity.AttackDamageSource{Attacker: m}); res.Accepted() {
+				dealt = n
+			}
 		}
 		magic := g.magic
 		if sense.DifficultyID(m.Tx()) == 3 {
@@ -131,11 +138,14 @@ func (g *guardianAttack) Tick(m *mob.Mob) {
 		if elder(m) {
 			magic += g.elderExtra
 		}
-		// BDS marks the target "chained" so the magic hit is not swallowed
-		// by the hurt cooldown of the first one; Dragonfly has no such flag,
-		// so a living target with a hurt cooldown only takes what exceeds the
-		// first hit.
-		l.Hurt(magic, core.CauseSource{Cause: "magic"})
+		if magic = scaleMobDamage(m, t, magic); magic > 0 {
+			// BDS marks the target "chained" (setChainedDamageEffects) so
+			// the magic hit is not swallowed by the hurt cooldown the first
+			// hit started. Dragonfly's players and mobs only count what
+			// exceeds the last hit within the cooldown, so the magic hit is
+			// raised by what the first one dealt.
+			l.Hurt(dealt+magic, core.CauseSource{Cause: "magic"})
+		}
 	}
 	m.ResetTarget()
 	g.attackTime = 0
@@ -144,6 +154,26 @@ func (g *guardianAttack) Tick(m *mob.Mob) {
 func (g *guardianAttack) Stop(m *mob.Mob) {
 	m.ResetTarget()
 	g.attackTime = 0
+}
+
+// scaleMobDamage is the difficulty scaling Player::_hurt applies to damage a
+// mob deals to a player: none on peaceful, min(d/2+1, d) on easy, d x 1.5 on
+// hard. Damage to anything else is not scaled. Player.Hurt scales attacks
+// itself; the magic hit is a plain cause source it does not scale, as its
+// amount also carries the first hit (already scaled).
+func scaleMobDamage(m *mob.Mob, t world.Entity, dmg float64) float64 {
+	if !sense.IsPlayer(t) {
+		return dmg
+	}
+	switch sense.DifficultyID(m.Tx()) {
+	case 0:
+		return 0
+	case 1:
+		return math.Min(dmg/2+1, dmg)
+	case 3:
+		return dmg * 1.5
+	}
+	return dmg
 }
 
 func (g *guardianAttack) AppendDebugInfo(b *strings.Builder) {
