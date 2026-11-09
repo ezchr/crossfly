@@ -16,6 +16,10 @@ type instantDamage struct{}
 func (i instantDamage) Apply(e world.Entity, eff Effect) {
 	base := 3 << eff.Level()
 	if l, ok := e.(living); ok {
+		if invertedHealAndHarm(e) {
+			l.Heal(float64(base)*eff.potency, InstantHealingSource{})
+			return
+		}
 		l.Hurt(float64(base)*eff.potency, InstantDamageSource{})
 	}
 }

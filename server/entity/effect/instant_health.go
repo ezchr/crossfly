@@ -17,6 +17,10 @@ type instantHealth struct{}
 func (i instantHealth) Apply(e world.Entity, eff Effect) {
 	base := 2 << eff.Level()
 	if l, ok := e.(living); ok {
+		if invertedHealAndHarm(e) {
+			l.Hurt(float64(base)*eff.potency, InstantDamageSource{})
+			return
+		}
 		l.Heal(float64(base)*eff.potency, InstantHealingSource{})
 	}
 }
@@ -24,6 +28,15 @@ func (i instantHealth) Apply(e world.Entity, eff Effect) {
 // RGBA ...
 func (instantHealth) RGBA() color.RGBA {
 	return color.RGBA{R: 0xf8, G: 0x24, B: 0x23, A: 0xff}
+}
+
+// invertedHealAndHarm reports whether instant health hurts e and instant
+// damage heals it, by the same amounts (BDS Actor::isInvertedHealAndHarm,
+// MobEffect::applyInstantaneousEffect swapping the buff type): undead mobs
+// implement InvertedHealAndHarm() true.
+func invertedHealAndHarm(e world.Entity) bool {
+	i, ok := e.(interface{ InvertedHealAndHarm() bool })
+	return ok && i.InvertedHealAndHarm()
 }
 
 // InstantHealingSource is a healing source used when an entity regains

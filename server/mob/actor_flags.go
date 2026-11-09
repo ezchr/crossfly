@@ -51,8 +51,12 @@ type EffectImmunity interface {
 	ImmuneToEffect(m *Mob, t effect.Type) bool
 }
 
-// immuneToEffect reports whether a component makes m immune to t.
+// immuneToEffect reports whether m cannot get t: the hard-coded rules of
+// canBeAffected, or a component.
 func (m *Mob) immuneToEffect(t effect.Type) bool {
+	if !m.canBeAffected(t) {
+		return true
+	}
 	for _, c := range m.s.comps {
 		if im, ok := c.comp.(EffectImmunity); ok && im.ImmuneToEffect(m, t) {
 			return true
@@ -60,3 +64,29 @@ func (m *Mob) immuneToEffect(t effect.Type) bool {
 	}
 	return false
 }
+
+// canBeAffected is Actor::canBeAffected with its overrides: undead mobs
+// (family undead) never get regeneration or poison, spiders and cave
+// spiders (Spider::canBeAffected) never poison, wither skeletons
+// (Skeleton::canBeAffected, variant 1) never wither, and the wither
+// (WitherBoss::canBeAffected) only instant health and instant damage.
+func (m *Mob) canBeAffected(t effect.Type) bool {
+	switch m.Identifier() {
+	case "minecraft:wither":
+		return t == effect.InstantHealth || t == effect.InstantDamage
+	case "minecraft:spider", "minecraft:cave_spider":
+		if t == effect.Poison {
+			return false
+		}
+	case "minecraft:wither_skeleton":
+		if t == effect.Wither {
+			return false
+		}
+	}
+	return !m.InvertedHealAndHarm() || (t != effect.Regeneration && t != effect.Poison)
+}
+
+// InvertedHealAndHarm is Actor::isInvertedHealAndHarm: undead mobs (the
+// UndeadMob actor type class, which is the vanilla family undead) are hurt by
+// instant health and healed by instant damage.
+func (m *Mob) InvertedHealAndHarm() bool { return m.HasFamily("undead") }
