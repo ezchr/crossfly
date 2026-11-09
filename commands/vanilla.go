@@ -282,8 +282,8 @@ func (k kill) Run(src cmd.Source, o *cmd.Output, tx *world.Tx) {
 	for _, t := range targets {
 		switch e := t.(type) {
 		case *player.Player:
-			if e.GameMode().AllowsTakingDamage() {
-				e.Hurt(math.MaxFloat64, entity.VoidDamageSource{})
+			if !e.Dead() && e.GameMode() != world.GameModeSpectator {
+				e.Kill(entity.VoidDamageSource{})
 				n++
 			}
 		case entity.Living:
@@ -377,7 +377,7 @@ func (e effectGive) Run(_ cmd.Source, o *cmd.Output, _ *world.Tx) {
 		}
 		p.AddEffect(eff)
 	}
-	o.Printf("Gave %v * %v to %v", e.Effect, level-1, names(players))
+	o.Printf("Applied effect %v to %v", e.Effect, names(players))
 }
 
 func (e effectClear) Run(_ cmd.Source, o *cmd.Output, _ *world.Tx) {
@@ -611,7 +611,11 @@ func (list) Run(_ cmd.Source, o *cmd.Output, tx *world.Tx) {
 		n = append(n, p.Name())
 	}
 	slices.Sort(n)
-	o.Printf("There are %v/%v players online:", srv.PlayerCount(), srv.MaxPlayerCount())
+	if limit, ok := srv.PlayerLimit(); ok {
+		o.Printf("There are %v/%v players online:", srv.PlayerCount(), limit)
+	} else {
+		o.Printf("There are %v players online:", srv.PlayerCount())
+	}
 	o.Print(strings.Join(n, ", "))
 }
 

@@ -951,6 +951,16 @@ func (p *Player) DeathPosition() (mgl64.Vec3, world.Dimension, bool) {
 	return *p.deathPos, p.deathDimension, true
 }
 
+// Kill kills the player whatever its game mode, as the /kill command does in vanilla. Players in
+// spectator mode and players already dead are left alone.
+func (p *Player) Kill(src world.DamageSource) {
+	if p.Dead() || p.GameMode() == world.GameModeSpectator {
+		return
+	}
+	p.addHealth(-p.Health())
+	p.kill(src)
+}
+
 // kill kills the player, clearing its inventories and resetting it to its base state.
 func (p *Player) kill(src world.DamageSource) {
 	// Death always ends the riding relationship.

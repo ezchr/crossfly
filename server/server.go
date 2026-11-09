@@ -186,6 +186,12 @@ func (srv *Server) End() *world.World {
 	return srv.end
 }
 
+// PlayerLimit returns the maximum amount of players set in the config, and false if there is no
+// limit.
+func (srv *Server) PlayerLimit() (int, bool) {
+	return srv.conf.MaxPlayers, srv.conf.MaxPlayers != 0
+}
+
 // MaxPlayerCount returns the maximum amount of players that are allowed to
 // play on the server at the same time. Players trying to join when the server
 // is full will be refused to enter. If the config has a maximum player count
