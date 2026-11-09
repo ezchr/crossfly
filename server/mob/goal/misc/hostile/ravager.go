@@ -96,11 +96,11 @@ func destroy(tx *world.Tx, p cube.Pos, b world.Block) {
 }
 
 // RavagerBlocked is minecraft:ravager_blocked (BDS
-// IllagerBeastBlockedDescription): when the ravager's melee hit is blocked
-// by its target's shield, the target is pushed away with
-// knockback_strength (3; source: java/paper Ravager.strongKnockback, 4 over
-// the distance) and one of reaction_choices (weight, value trigger, may be
-// empty) fires on the ravager. Dragonfly reports a shield block only to the
+// IllagerBeastBlockedDescription, IllagerBeastBlockedComponent::onBlocked):
+// when the ravager's melee hit is blocked by its target's shield, one of
+// reaction_choices (weight, value trigger, may be empty) fires on the
+// ravager and the target is knocked back with knockback_strength (3), half
+// of it when the chosen reaction had an event. Dragonfly reports a shield block only to the
 // victim: the ravager sees it through player.ShieldBlockState right after
 // its goals ran, while its target is within 4 blocks and it attacks
 // (aggressive or delayed_attack).
@@ -168,26 +168,42 @@ func (c *RavagerBlocked) tick(m *mob.Mob) {
 	c.Blocked(m, p)
 }
 
-// Blocked runs the reaction to a blocked hit on t.
+// Blocked runs the reaction to a blocked hit on t
+// (IllagerBeastBlockedComponent::onBlocked).
 func (c *RavagerBlocked) Blocked(m *mob.Mob, t world.Entity) {
-	if l, ok := t.(entity.Living); ok {
-		d := t.Position().Sub(m.Position())
-		d[1] = 0
-		dist := math.Max(d.Len(), 0.001)
-		l.KnockBack(m.Position(), c.strength/math.Max(dist, 1), 0.2)
-	}
+	strength := c.strength
 	total := 0
 	for _, ch := range c.choices {
 		total += max(ch.weight, 0)
 	}
-	if total == 0 {
-		return
-	}
-	n := m.Rand().IntN(total)
-	for _, ch := range c.choices {
-		if n -= max(ch.weight, 0); n < 0 {
-			ch.trigger.Fire(m, kit.OtherCtx(m, t))
-			return
+	if total > 0 {
+		n := m.Rand().IntN(total)
+		for _, ch := range c.choices {
+			if n -= max(ch.weight, 0); n < 0 {
+				if !ch.trigger.Empty() {
+					ch.trigger.Fire(m, kit.OtherCtx(m, t))
+					strength *= 0.5
+				}
+				break
+			}
 		}
 	}
+	if l, ok := t.(entity.Living); ok && kit.Alive(t) {
+		f, h := beastKnockback(strength, strength*0.4, beastHeightCap)
+		l.KnockBack(m.Position(), f, h)
+	}
+}
+
+// beastHeightCap is the height cap onBlocked's 6-argument Mob::knockback
+// call leaves at its default (the same 0.4 knockback_height_cap defaults
+// to).
+const beastHeightCap = 0.4
+
+// beastKnockback turns the power/height/height cap arguments of BDS
+// Mob::knockback into the force and height of Living.KnockBack: the
+// horizontal push is 0.4 x power (KnockbackRules::getScaledKnockbackForce
+// x 0.4; knockback resistance is scaled by KnockBack itself) and the
+// upward push is height capped at the height cap.
+func beastKnockback(power, height, heightCap float64) (force, up float64) {
+	return power * 0.4, math.Min(height, heightCap)
 }
