@@ -1393,9 +1393,11 @@ func (w *World) save(f func(*Tx, ChunkPos, *Column)) execFunc {
 	}
 }
 
-// saveChunk saves a chunk and its entities to disk after compacting the chunk.
+// saveChunk saves a chunk and its entities to disk after compacting the chunk. A chunk with entities other than
+// players is saved even if none of its blocks changed: the state of its entities (where they are, their health, a
+// tamed wolf) changes without marking the chunk.
 func (w *World) saveChunk(_ *Tx, pos ChunkPos, c *Column) {
-	if !w.conf.ReadOnly && c.modified {
+	if !w.conf.ReadOnly && (c.modified || slices.ContainsFunc(c.Entities, func(e *EntityHandle) bool { return !isPlayerHandle(e) })) {
 		c.Compact()
 		if err := w.conf.Provider.StoreColumn(pos, w.conf.Dim, w.columnTo(c, pos)); err != nil {
 			w.conf.Log.Error("save chunk: "+err.Error(), "X", pos[0], "Z", pos[1])

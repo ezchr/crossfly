@@ -5,6 +5,7 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"math"
 	"math/rand/v2"
 	"os"
 	"path/filepath"
@@ -444,9 +445,10 @@ func (db *DB) storeEntities(batch *leveldb.Batch, k dbKey, entities []chunk.Enti
 		newIDs = append(newIDs, e.ID)
 	}
 
-	// Remove entities that are no longer referenced.
+	// Remove entities that are no longer referenced, unless the entity moved to another chunk that was saved
+	// first: its record then lies in that chunk and is that chunk's now.
 	for _, uniqueID := range previousIDs {
-		if !slices.Contains(newIDs, uniqueID) {
+		if !slices.Contains(newIDs, uniqueID) && !db.entityStoredElsewhere(uniqueID, k) {
 			batch.Delete(entityIndex(uniqueID))
 		}
 	}
@@ -463,6 +465,40 @@ func (db *DB) storeEntities(batch *leveldb.Batch, k dbKey, entities []chunk.Enti
 
 	// Remove old entity data for this chunk.
 	batch.Delete(k.Sum(keyEntitiesOld))
+}
+
+// entityStoredElsewhere reports whether the stored record of the entity with the id passed has its position in a
+// chunk other than the one of k.
+func (db *DB) entityStoredElsewhere(id int64, k dbKey) bool {
+	data, err := db.ldb.Get(entityIndex(id), nil)
+	if err != nil {
+		return false
+	}
+	var m map[string]any
+	if err := nbt.UnmarshalEncoding(data, &m, nbt.LittleEndian); err != nil {
+		return false
+	}
+	var x, z float64
+	switch pos := m["Pos"].(type) {
+	case []float32:
+		if len(pos) != 3 {
+			return false
+		}
+		x, z = float64(pos[0]), float64(pos[2])
+	case []any:
+		if len(pos) != 3 {
+			return false
+		}
+		px, ok1 := pos[0].(float32)
+		pz, ok2 := pos[2].(float32)
+		if !ok1 || !ok2 {
+			return false
+		}
+		x, z = float64(px), float64(pz)
+	default:
+		return false
+	}
+	return world.ChunkPos{int32(math.Floor(x)) >> 4, int32(math.Floor(z)) >> 4} != k.pos
 }
 
 func entityIndex(id int64) []byte {
