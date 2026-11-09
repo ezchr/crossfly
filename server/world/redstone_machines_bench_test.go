@@ -165,12 +165,14 @@ func BenchmarkJavaRedstoneMachines(b *testing.B) {
 			defer w.Close()
 			b.ReportAllocs()
 			b.ResetTimer()
+			cpu := processCPU()
 			for i := 0; i < b.N; i++ {
 				if m.step != nil {
 					perfDo(w, func(tx *world.Tx) { m.step(tx, i) })
 				}
 				w.AdvanceTick()
 			}
+			b.ReportMetric(float64(processCPU()-cpu)/float64(b.N), "cpu-ns/op")
 		})
 	}
 }
