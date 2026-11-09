@@ -14,6 +14,7 @@ import (
 	"github.com/df-mc/dragonfly/server/mob/component/loot"
 	"github.com/df-mc/dragonfly/server/world"
 	"github.com/df-mc/dragonfly/server/world/sound"
+	"github.com/sandertv/gophertunnel/minecraft/protocol"
 )
 
 func init() {
@@ -23,7 +24,9 @@ func init() {
 // chargeHeldItem is minecraft:behavior.charge_held_item (BDS
 // ChargeHeldItemGoal): a mob with a target and an empty crossbow in its main
 // hand charges it for the crossbow's use duration (1.25 s, less with Quick
-// Charge), using item meanwhile, then loads it with one of "items". The
+// Charge), using item meanwhile with the draw shown through the
+// charge_amount actor data (0-127), then loads it with one of "items" and
+// sets the charged actor flag (the loaded crossbow pose). The
 // ranged attack waits for the charge (RangedAttackGoal::canUse, see
 // loot.NeedsCharge) and empties the crossbow when it fires (loot.Discharge).
 type chargeHeldItem struct {
@@ -72,6 +75,8 @@ func (g *chargeHeldItem) Start(m *mob.Mob) {
 	g.total = max(int(d/(time.Second/20)), 1)
 	g.left = g.total
 	m.UpdateMeta(func(meta *mob.Meta) { meta.UsingItem = true })
+	m.SetActorFlag(protocol.EntityDataFlagCharged, false)
+	m.SetActorData(protocol.EntityDataKeyChargeAmount, byte(0))
 	m.Tx().PlaySound(m.Position(), sound.CrossbowLoad{Stage: sound.CrossbowLoadingStart, QuickCharge: qc > 0})
 }
 
@@ -79,9 +84,11 @@ func (g *chargeHeldItem) Start(m *mob.Mob) {
 func (g *chargeHeldItem) Stop(m *mob.Mob) {
 	g.left = 0
 	m.UpdateMeta(func(meta *mob.Meta) { meta.UsingItem = false })
+	m.SetActorData(protocol.EntityDataKeyChargeAmount, byte(0))
 }
 
-// Tick is ChargeHeldItemGoal::tick: count down, then load a random item.
+// Tick is ChargeHeldItemGoal::tick: count down, showing the draw
+// (charge_amount 127 x elapsed / duration), then load a random item.
 func (g *chargeHeldItem) Tick(m *mob.Mob) {
 	main, off := m.HeldItems()
 	c, ok := main.Item().(item.Crossbow)
@@ -91,6 +98,7 @@ func (g *chargeHeldItem) Tick(m *mob.Mob) {
 	}
 	_, qc := chargeDuration(main)
 	g.left--
+	m.SetActorData(protocol.EntityDataKeyChargeAmount, byte(127*(g.total-max(g.left, 0))/g.total))
 	if g.left == g.total/2 {
 		m.Tx().PlaySound(m.Position(), sound.CrossbowLoad{Stage: sound.CrossbowLoadingMiddle, QuickCharge: qc > 0})
 	}
@@ -99,6 +107,7 @@ func (g *chargeHeldItem) Tick(m *mob.Mob) {
 	}
 	c.Item = item.NewStack(g.items[m.Rand().IntN(len(g.items))], 1)
 	m.SetHeldItems(loot.WithItem(main, c), off)
+	m.SetActorFlag(protocol.EntityDataFlagCharged, true)
 	m.Tx().PlaySound(m.Position(), sound.CrossbowLoad{Stage: sound.CrossbowLoadingEnd, QuickCharge: qc > 0})
 }
 

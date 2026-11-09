@@ -92,7 +92,7 @@ func init() {
 	plain := []string{
 		"allay", "bat", "breeze", "cod", "copper_golem", "creaking", "elder_guardian",
 		"endermite", "ender_dragon", "evoker", "giant", "guardian", "illusioner", "iron_golem",
-		"parched", "phantom", "piglin_brute", "pillager", "pufferfish", "ravager", "silverfish",
+		"parched", "phantom", "piglin_brute", "pufferfish", "ravager", "silverfish",
 		"stray", "tadpole", "vex", "vindicator", "warden", "wither", "wither_skeleton",
 	}
 	for _, n := range plain {
@@ -264,6 +264,7 @@ func init() {
 		d.boolean(19, mobBool(e, mobShaking.Shaking)) // cold, out of lava
 	}})
 	set("enderman", mobKind{extra: endermanData})
+	set("pillager", mobKind{extra: pillagerData})
 	set("bee", mobKind{ageable: true, extra: func(_ *Session, d *mobData, e world.Entity, _ string) {
 		d.long(19, angerEndTime(e))
 	}})

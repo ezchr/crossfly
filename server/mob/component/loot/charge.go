@@ -6,6 +6,7 @@ import (
 	"github.com/df-mc/dragonfly/server/item"
 	"github.com/df-mc/dragonfly/server/mob"
 	"github.com/df-mc/dragonfly/server/world"
+	"github.com/sandertv/gophertunnel/minecraft/protocol"
 )
 
 // NeedsCharge reports whether m holds a crossbow that is not loaded
@@ -21,7 +22,8 @@ func NeedsCharge(m *mob.Mob) bool {
 }
 
 // Discharge empties the crossbow m holds after a shot (RangedAttackGoal::
-// handleAttackBehavior: clearChargedItem).
+// handleAttackBehavior: clearChargedItem) and clears the charged flag, so
+// the loaded crossbow pose ends.
 func Discharge(m *mob.Mob) {
 	main, off := m.HeldItems()
 	c, ok := main.Item().(item.Crossbow)
@@ -30,6 +32,7 @@ func Discharge(m *mob.Mob) {
 	}
 	c.Item = item.Stack{}
 	m.SetHeldItems(WithItem(main, c), off)
+	m.SetActorFlag(protocol.EntityDataFlagCharged, false)
 }
 
 // WithItem returns s with its item replaced by it, keeping count,
