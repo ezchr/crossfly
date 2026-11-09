@@ -34,7 +34,9 @@ func CauseOf(src world.DamageSource) string {
 	case entity.LightningDamageSource:
 		return "lightning"
 	case entity.ExplosionDamageSource:
-		if _, ok := s.Source.(world.Entity); ok {
+		switch s.Source.(type) {
+		case world.Entity, world.EntityExplosionSource:
+			// A creeper or another entity exploded.
 			return "entity_explosion"
 		}
 		return "block_explosion"
