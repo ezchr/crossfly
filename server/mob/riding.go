@@ -115,14 +115,7 @@ func (s *state) rideIfAny() *rideState {
 }
 
 // vehicleComp returns the attached Vehicle component, if any.
-func (s *state) vehicleComp() Vehicle {
-	for _, c := range s.comps {
-		if v, ok := c.comp.(Vehicle); ok {
-			return v
-		}
-	}
-	return nil
-}
+func (s *state) vehicleComp() Vehicle { return s.vehicle }
 
 // mobOf opens the mob for the adapters (same as Of).
 func (s *state) mobOf(e *entity.Ent) *Mob {
@@ -138,6 +131,17 @@ func (s *state) Rideable(e *entity.Ent) (entity.Rideable, bool) {
 		return nil, false
 	}
 	return rideableEnt{Ent: e, s: s}, true
+}
+
+// ClientDrivenBy implements entity.ClientDrivenBehaviour: whether the mob is
+// a Rideable the client of rider placed within the last tick
+// (rideableEnt.ClientDriven), without making the Rideable.
+func (s *state) ClientDrivenBy(e *entity.Ent, rider *world.EntityHandle) bool {
+	r := s.rideIfAny()
+	if r == nil || r.clientMoved < 0 || s.ticks-r.clientMoved > 1 || s.vehicle == nil {
+		return false
+	}
+	return rideableEnt{Ent: e, s: s}.ClientDriven(rider)
 }
 
 // Rider implements entity.RiderBehaviour: every mob may ride.

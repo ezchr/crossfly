@@ -64,10 +64,27 @@ type ClientDrivenVehicle interface {
 	ClientDriven(rider *world.EntityHandle) bool
 }
 
+// ClientDrivenBehaviour may be implemented by the Behaviour of an Ent that can be a
+// ClientDrivenVehicle: DrivenBy asks it directly instead of making the Rideable first. Sessions ask
+// DrivenBy of every movement they are shown.
+type ClientDrivenBehaviour interface {
+	ClientDrivenBy(e *Ent, rider *world.EntityHandle) bool
+}
+
 // DrivenBy reports whether e is a vehicle the client of rider is moving itself.
 func DrivenBy(e world.Entity, rider *world.EntityHandle) bool {
+	if rider == nil {
+		return false
+	}
+	if _, ok := e.(Rideable); !ok {
+		if ent, ok := e.(interface{ ent() *Ent }); ok {
+			if d, ok := ent.ent().Behaviour().(ClientDrivenBehaviour); ok {
+				return d.ClientDrivenBy(ent.ent(), rider)
+			}
+		}
+	}
 	r, ok := RideableOf(e)
-	if !ok || rider == nil {
+	if !ok {
 		return false
 	}
 	d, ok := r.(ClientDrivenVehicle)

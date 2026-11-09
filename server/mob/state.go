@@ -87,6 +87,9 @@ type state struct {
 	// this tick's StageSend whatever the interval (SyncMovement).
 	javaInterval int
 	needsSync    bool
+	// vehicle is the first attached component that is a Vehicle (nil:
+	// none), found when the components change (rebuildTickers).
+	vehicle Vehicle
 
 	scratch map[any]any
 
@@ -280,7 +283,11 @@ func (s *state) rebuildTickers() {
 		s.tickers[i] = nil
 	}
 	s.frozen = nil
+	s.vehicle = nil
 	for _, c := range s.comps {
+		if v, ok := c.comp.(Vehicle); ok && s.vehicle == nil {
+			s.vehicle = v
+		}
 		if f, ok := c.comp.(FrozenTicker); ok {
 			s.frozen = append(s.frozen, f)
 		}
