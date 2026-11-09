@@ -1764,6 +1764,10 @@ type Column struct {
 	// blockEntityOrder is when each block entity was created (World.blockEntitySeq): block entities tick in
 	// that order, as Java ticks its block entity tickers in the order they were added.
 	blockEntityOrder map[cube.Pos]uint64
+	// unknownEntities are the saved entities of the chunk whose type the World does not have (mobs with the mobs
+	// of Crossfly Full off, or on Crossfly Core). They are saved again with the chunk, so they are back when a
+	// server that has them loads the chunk.
+	unknownEntities []chunk.Entity
 
 	viewers []Viewer
 	loaders []*Loader
@@ -1786,7 +1790,7 @@ func (w *World) columnTo(col *Column, pos ChunkPos) *chunk.Column {
 	scheduled := w.scheduledUpdates.fromChunk(pos)
 	c := &chunk.Column{
 		Chunk:           col.Chunk,
-		Entities:        make([]chunk.Entity, 0, len(col.Entities)),
+		Entities:        make([]chunk.Entity, 0, len(col.Entities)+len(col.unknownEntities)),
 		BlockEntities:   make([]chunk.BlockEntity, 0, len(col.BlockEntities)),
 		ScheduledBlocks: make([]chunk.ScheduledBlockUpdate, 0, len(scheduled)),
 		Tick:            w.scheduledUpdates.currentTick,
@@ -1802,6 +1806,7 @@ func (w *World) columnTo(col *Column, pos ChunkPos) *chunk.Column {
 		data["identifier"] = e.t.EncodeEntity()
 		c.Entities = append(c.Entities, chunk.Entity{ID: int64(binary.LittleEndian.Uint64(e.id[8:])), Data: data})
 	}
+	c.Entities = append(c.Entities, col.unknownEntities...)
 	for pos, be := range col.BlockEntities {
 		data := be.(NBTer).EncodeNBT()
 		if _, unknown := be.(unknownBlock); unknown && len(data) == 0 {
@@ -1833,7 +1838,8 @@ func (w *World) columnFrom(c *chunk.Column, _ ChunkPos) *Column {
 		}
 		t, ok := w.conf.Entities.Lookup(eid)
 		if !ok {
-			w.conf.Log.Error("read column: unknown entity type", "ID", e.ID, "type", eid)
+			w.conf.Log.Debug("read column: unknown entity type, kept as saved", "ID", e.ID, "type", eid)
+			col.unknownEntities = append(col.unknownEntities, e)
 			continue
 		}
 		col.Entities = append(col.Entities, entityFromData(t, e.ID, e.Data))
