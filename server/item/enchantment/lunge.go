@@ -5,8 +5,9 @@ import (
 	"github.com/df-mc/dragonfly/server/world"
 )
 
-// Lunge is a spear enchantment that propels the wielder forward when landing a jab attack, at the cost of
-// hunger and exhaustion scaling with its level. It does not trigger on a charge attack.
+// Lunge is a spear enchantment that propels the wielder forward on every jab attack, hit or miss, at the
+// cost of exhaustion scaling with its level and one point of durability. It does not trigger on a charge
+// attack, while riding, gliding or in water, or for a player in survival with too little food.
 var Lunge lunge
 
 type lunge struct{}
@@ -32,27 +33,27 @@ func (lunge) Rarity() item.EnchantmentRarity {
 	return item.EnchantmentRarityUncommon
 }
 
-// Speed returns the forward speed, in blocks/tick, that a jab attack with this level of Lunge propels the
-// wielder at.
+// Speed returns the horizontal speed, in blocks/tick, that a jab attack with this level of Lunge adds
+// along the direction the wielder looks in. Looking up or down shortens it: only the horizontal part of
+// the look direction counts.
 func (lunge) Speed(level int) float64 {
 	return 0.458 * float64(level)
 }
 
-// FoodCost returns the hunger points consumed by triggering Lunge at this level.
-func (lunge) FoodCost(level int) int {
-	return level
-}
-
-// ExhaustionCost returns the exhaustion applied by triggering Lunge at this level.
+// ExhaustionCost returns the exhaustion applied by triggering Lunge at this level: 4 per level, which is
+// one food point per level. No food is taken directly.
 func (lunge) ExhaustionCost(level int) float64 {
 	return 4 * float64(level)
 }
 
-// MinimumFood returns the hunger points the wielder must have for Lunge to trigger. Vanilla disables Lunge
-// at 5 or fewer hunger points, so it only ever fires with 6 or more - one whole shank of headroom above the
-// hunger it will actually spend, even at its highest level.
+// DurabilityCost returns the durability a spear loses each time its Lunge triggers.
+func (lunge) DurabilityCost() int {
+	return 1
+}
+
+// MinimumFood returns the food level a player outside creative needs for Lunge to trigger: more than 6.
 func (lunge) MinimumFood() int {
-	return 6
+	return 7
 }
 
 // CompatibleWithEnchantment ...

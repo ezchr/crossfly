@@ -99,3 +99,11 @@ type FireCharge struct{ sound }
 
 // Totem is a sound played when a player uses a totem.
 type Totem struct{ sound }
+
+// Lunge is a sound played when the Lunge enchantment of a spear propels its wielder forward.
+type Lunge struct {
+	// Level is the level of the Lunge enchantment, from 1 to 3.
+	Level int
+
+	sound
+}

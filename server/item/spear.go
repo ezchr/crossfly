@@ -6,8 +6,12 @@ import (
 	"github.com/df-mc/dragonfly/server/world"
 )
 
+// The spear values below are those of Bedrock's vanilla item data (the minecraft:piercing_weapon and
+// minecraft:kinetic_weapon components).
 const (
-	spearHitboxMargin               = 0.125
+	// spearHitboxMargin is the hitbox_margin of the spear components. Bedrock grows target hitboxes by half
+	// of it on each side, so a hitbox ends up hitbox_margin wider and taller in total.
+	spearHitboxMargin               = 0.25
 	spearMinAttackRange             = 2
 	spearMaxAttackRange             = 4.5
 	spearCreativeMaxAttackRange     = 7.5
@@ -49,7 +53,7 @@ func (s Spear) BaseMiningEfficiency(world.Block) float64 {
 // DurabilityInfo ...
 func (s Spear) DurabilityInfo() DurabilityInfo {
 	return DurabilityInfo{
-		MaxDurability:    s.Tier.Durability + 1,
+		MaxDurability:    s.maxDurability(),
 		BrokenItem:       simpleItem(Stack{}),
 		AttackDurability: 1,
 	}
@@ -118,9 +122,10 @@ func (s Spear) AttackRange(creative bool) (minRange, maxRange float64) {
 	return spearMinAttackRange, spearMaxAttackRange
 }
 
-// HitboxMargin returns the amount target hitboxes are inflated for spear attacks.
+// HitboxMargin returns how far target hitboxes are grown on each side for spear attacks: half of the
+// spear's hitbox_margin.
 func (s Spear) HitboxMargin() float64 {
-	return spearHitboxMargin
+	return spearHitboxMargin / 2
 }
 
 // ChargeMultiplier returns the charge attack damage multiplier of the spear.
@@ -148,6 +153,33 @@ func (s Spear) ChargeDamageSpeedRequirement() float64 {
 // ChargeKnockbackSpeedRequirement returns the attacker blocks-per-second speed needed for charge knockback.
 func (s Spear) ChargeKnockbackSpeedRequirement() float64 {
 	return spearChargeKnockbackRequirement
+}
+
+// ChargeDismountSpeedRequirement returns the attacker blocks-per-second speed a charge attack needs to
+// dismount its target.
+func (s Spear) ChargeDismountSpeedRequirement() float64 {
+	switch s.Tier {
+	case ToolTierWood:
+		return 14
+	case ToolTierStone, ToolTierGold:
+		return 13
+	case ToolTierCopper:
+		return 12
+	case ToolTierIron:
+		return 11
+	case ToolTierDiamond:
+		return 10
+	case ToolTierNetherite:
+		return 9
+	}
+	return 0
+}
+
+// ChargeDismount reports whether a charge attack may still dismount its target for the charge duration:
+// only in the first stage of the charge.
+func (s Spear) ChargeDismount(duration time.Duration) bool {
+	delay, stage1, _, _ := s.chargeTimings()
+	return duration >= delay && duration-delay < stage1
 }
 
 // ChargeAttack returns whether a charge attack may deal damage and knockback for the charge duration.
@@ -195,6 +227,31 @@ func (s Spear) EncodeItem() (name string, meta int16) {
 	return "minecraft:" + s.Tier.Name + "_spear", 0
 }
 
+// maxDurability returns the max_durability of the spear tier, which for spears is not the tier's tool
+// durability.
+func (s Spear) maxDurability() int {
+	switch s.Tier {
+	case ToolTierWood:
+		return 60
+	case ToolTierGold:
+		return 30
+	case ToolTierStone:
+		return 130
+	case ToolTierCopper:
+		return 190
+	case ToolTierIron:
+		return 250
+	case ToolTierDiamond:
+		return 1560
+	case ToolTierNetherite:
+		return 2030
+	}
+	return s.Tier.Durability
+}
+
+// chargeTimings returns the delay before a charge attack starts and the length of its three stages: the
+// first ends at dismount_conditions' max_duration, the second at knockback_conditions' and the third at
+// damage_conditions'.
 func (s Spear) chargeTimings() (delay, stage1, stage2, stage3 time.Duration) {
 	switch s.Tier {
 	case ToolTierWood:

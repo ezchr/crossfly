@@ -272,6 +272,9 @@ func (s *Session) playSound(pos mgl64.Vec3, t world.Sound, broadcast bool) {
 		s.sound(pos, sndItemBreak, srcPlayers, 0.8, 0.8+rnd()*0.4)
 	case sound.ShieldBlock:
 		s.sound(pos, sndShieldBlock, srcPlayers, 1, 0.8+rnd()*0.4)
+	case sound.Lunge:
+		names := [...]string{"minecraft:item.spear.lunge_1", "minecraft:item.spear.lunge_2", "minecraft:item.spear.lunge_3"}
+		s.customSound(pos, names[min(max(so.Level, 1), 3)-1], 1, 1)
 	case sound.ItemThrow:
 		s.sound(pos, sndSnowballThrow, srcNeutral, 0.5, 0.4/(rnd()*0.4+0.8))
 	case sound.ItemUseOn:

@@ -953,6 +953,15 @@ func (s *Session) playSound(pos mgl64.Vec3, t world.Sound, disableRelative bool)
 		pk.SoundType = packet.SoundEventBreak
 	case sound.ShieldBlock:
 		pk.SoundType = packet.SoundEventShieldBlock
+	case sound.Lunge:
+		switch so.Level {
+		case 1:
+			pk.SoundType = packet.SoundEventItemEnchantLunge1
+		case 2:
+			pk.SoundType = packet.SoundEventItemEnchantLunge2
+		default:
+			pk.SoundType = packet.SoundEventItemEnchantLunge3
+		}
 	case sound.ItemUseOn:
 		pk.SoundType, pk.ExtraData = packet.SoundEventItemUseOn, int32(s.br.BlockRuntimeID(so.Block))
 	case sound.Fizz:

@@ -2131,7 +2131,6 @@ func (p *Player) attackWithSpear(named world.Entity) bool {
 	p.SwingArm()
 	p.SetCooldown(held.Item(), spear.Cooldown())
 
-	hits := 0
 	targets := p.spearJabTargets(spear)
 	// The server's trace uses where targets are now, the client what it saw a
 	// moment ago: also hit the entity the client names if it is within reach
@@ -2140,44 +2139,75 @@ func (p *Player) attackWithSpear(named world.Entity) bool {
 		!slices.ContainsFunc(targets, func(t spearTarget) bool { return t.e.H() == named.H() }) {
 		targets = append(targets, spearTarget{e: named})
 	}
+	// Every entity hit costs durability inside attackEntity, as for any other weapon hit.
 	for _, target := range targets {
-		if valid, hit := p.attackEntity(target.e, false); valid && hit {
-			hits++
-		}
-	}
-	if hits > 0 {
-		p.damageHeldItem()
+		p.attackEntity(target.e, false)
 	}
 	p.triggerSpearLunge()
 	return true
 }
 
-// triggerSpearLunge propels the player forward if their held spear has Lunge, applying its hunger and
-// exhaustion cost. Lunge only fires on a jab attack (attackWithSpear's caller), never on a charge attack,
-// and is silently skipped - rather than refused outright - whenever a real client would not send the jab
-// in the first place (mounted, gliding, in water) or does not have enough hunger for it to trigger.
+// triggerSpearLunge propels the player forward if their held spear has Lunge. As in Bedrock, it runs after
+// every jab, whether it hit or not, but never for a charge attack. It does nothing while riding, gliding
+// or touching water, or for a player outside creative with a food level of 6 or less. Otherwise it adds
+// horizontal speed along the look direction and costs the spear one durability and the player
+// 4 exhaustion per level.
 func (p *Player) triggerSpearLunge() {
 	l, ok := p.spearLunge()
-	if !ok {
-		return
-	}
-	if p.Gliding() || p.insideOfWater() {
-		return
-	}
-	if _, riding := p.RidingEntity(p.tx); riding {
+	if !ok || !p.canLunge() {
 		return
 	}
 	level := l.Level()
-	if p.Food() < enchantment.Lunge.MinimumFood() {
-		return
-	}
-
-	p.Exhaust(enchantment.Lunge.ExhaustionCost(level))
-	p.AddFood(-enchantment.Lunge.FoodCost(level))
 
 	dir := p.Rotation().Vec3()
 	speed := enchantment.Lunge.Speed(level)
 	p.SetVelocity(p.Velocity().Add(mgl64.Vec3{dir[0] * speed, 0, dir[2] * speed}))
+
+	held, left := p.HeldItems()
+	p.SetHeldItems(p.damageItem(held, enchantment.Lunge.DurabilityCost()), left)
+	p.Exhaust(enchantment.Lunge.ExhaustionCost(level))
+	p.tx.PlaySound(p.Position(), sound.Lunge{Level: level})
+}
+
+// canLunge reports whether the player is in a state in which Lunge may propel it.
+func (p *Player) canLunge() bool {
+	if p.Gliding() || p.touchingWater() {
+		return false
+	}
+	if _, riding := p.RidingEntity(p.tx); riding {
+		return false
+	}
+	return p.GameMode().CreativeInventory() || p.Food() >= enchantment.Lunge.MinimumFood()
+}
+
+// touchingWater reports whether any part of the player's hitbox is in water.
+func (p *Player) touchingWater() bool {
+	box := p.H().Type().BBox(p).Translate(p.Position()).Grow(-0.001)
+	minPos, maxPos := cube.PosFromVec3(box.Min()), cube.PosFromVec3(box.Max())
+	for x := minPos[0]; x <= maxPos[0]; x++ {
+		for y := minPos[1]; y <= maxPos[1]; y++ {
+			for z := minPos[2]; z <= maxPos[2]; z++ {
+				pos := cube.Pos{x, y, z}
+				l, ok := p.tx.Liquid(pos)
+				if !ok {
+					continue
+				}
+				if _, water := l.(block.Water); !water {
+					continue
+				}
+				// A falling liquid or one with the same liquid above fills its whole block, anything else
+				// fills it up to (8-decay)/9.
+				height := 1.0
+				if above, ok := p.tx.Liquid(pos.Side(cube.FaceUp)); !l.LiquidFalling() && (!ok || above.LiquidType() != l.LiquidType()) {
+					height = float64(8-l.SpreadDecay()) / 9
+				}
+				if box.Min().Y() < float64(y)+height {
+					return true
+				}
+			}
+		}
+	}
+	return false
 }
 
 func (p *Player) spearLunge() (item.Enchantment, bool) {
@@ -2289,15 +2319,20 @@ type spearTarget struct {
 	distance float64
 }
 
+// spearJabTargets returns the entities a jab hits, closest first. As in Bedrock, the jab is a segment from
+// the eyes plus the minimum reach to the eyes plus the maximum reach along the look direction. It hits
+// every entity whose hitbox, grown by the spear's hitbox margin, the segment passes through, including one
+// whose grown hitbox holds the start of the segment, so a target straddling the minimum reach is hit.
+// Entities behind the first block on the line from the eyes are not hit.
 func (p *Player) spearJabTargets(spear item.Spear) []spearTarget {
-	start := entity.EyePosition(p)
-	_, maxRange := spear.AttackRange(p.GameMode().CreativeInventory())
-	end := start.Add(p.Rotation().Vec3().Mul(maxRange))
-	// EntitiesWithin filters entity positions, so use a broad candidate box and let BBoxIntercept below perform
-	// the exact spear hitbox check.
+	eye := entity.EyePosition(p)
+	dir := p.Rotation().Vec3()
+	minRange, maxRange := spear.AttackRange(p.GameMode().CreativeInventory())
+	start, end := eye.Add(dir.Mul(minRange)), eye.Add(dir.Mul(maxRange))
+	// EntitiesWithin filters entity positions, so use a broad candidate box and let spearJabHit perform the
+	// exact spear hitbox check.
 	search := cube.Box(start[0], start[1], start[2], end[0], end[1], end[2]).Grow(8)
-	minRange, _ := spear.AttackRange(p.GameMode().CreativeInventory())
-	blockDistance, blocked := p.spearJabBlockDistance(start, end)
+	blockDistance, blocked := p.spearJabBlockDistance(eye, end)
 
 	var targets []spearTarget
 	for e := range p.tx.EntitiesWithin(search) {
@@ -2305,12 +2340,12 @@ func (p *Player) spearJabTargets(spear item.Spear) []spearTarget {
 			continue
 		}
 		bb := e.H().Type().BBox(e).Translate(e.Position()).Grow(spear.HitboxMargin())
-		result, ok := trace.BBoxIntercept(bb, start, end)
+		hit, ok := spearJabHit(bb, start, end)
 		if !ok {
 			continue
 		}
-		distance := result.Position().Sub(start).Len()
-		if distance < minRange || distance > maxRange || (blocked && distance > blockDistance) {
+		distance := hit.Sub(eye).Len()
+		if blocked && distance > blockDistance {
 			continue
 		}
 		targets = append(targets, spearTarget{e: e, distance: distance})
@@ -2326,6 +2361,20 @@ func (p *Player) spearJabTargets(spear item.Spear) []spearTarget {
 		}
 	})
 	return targets
+}
+
+// spearJabHit returns where the jab segment from start to end first meets the (grown) hitbox bb: start
+// itself if bb holds it, or else where the segment enters bb.
+func spearJabHit(bb cube.BBox, start, end mgl64.Vec3) (mgl64.Vec3, bool) {
+	minV, maxV := bb.Min(), bb.Max()
+	if start[0] >= minV[0] && start[0] <= maxV[0] && start[1] >= minV[1] && start[1] <= maxV[1] && start[2] >= minV[2] && start[2] <= maxV[2] {
+		return start, true
+	}
+	result, ok := trace.BBoxIntercept(bb, start, end)
+	if !ok {
+		return mgl64.Vec3{}, false
+	}
+	return result.Position(), true
 }
 
 // spearOnCooldown reports whether the spear's jab cooldown still has more
@@ -2379,6 +2428,8 @@ func (p *Player) tickSpearCharge(spear item.Spear) {
 	vel := p.Velocity()
 	box := p.H().Type().BBox(p).Translate(p.Position()).Grow(spear.HitboxMargin()).Extend(vel.Mul(-1))
 	attackerSpeed := vel.Len() * 20
+	// Only the first stage of a charge dismounts, and only at the spear's dismount speed.
+	dismount := spear.ChargeDismount(p.useDuration()) && attackerSpeed >= spear.ChargeDismountSpeedRequirement()
 	now := time.Now()
 	for id, until := range p.spearChargeHits {
 		if now.After(until) {
@@ -2402,13 +2453,13 @@ func (p *Player) tickSpearCharge(spear item.Spear) {
 		relativeSpeed := vel.Sub(entityVelocity(e)).Len() * 20
 		damage := damageStage && relativeSpeed >= spear.ChargeDamageSpeedRequirement()
 		knockback := knockbackStage && attackerSpeed >= spear.ChargeKnockbackSpeedRequirement()
-		if !damage && !knockback {
+		if !damage && !knockback && !dismount {
 			continue
 		}
 		if until, ok := p.spearChargeHits[e.H().UUID()]; ok && now.Before(until) {
 			continue
 		}
-		if p.spearChargeEntity(living, spear, damage, knockback, relativeSpeed) {
+		if p.spearChargeEntity(living, spear, damage, knockback, dismount, relativeSpeed) {
 			p.spearChargeHits[e.H().UUID()] = now.Add(time.Second / 2)
 		}
 	}
@@ -2420,7 +2471,8 @@ func (p *Player) tickSpearCharge(spear item.Spear) {
 // Fire Aspect intentionally still applies here even on a blocked hit, matching charge attacks having no
 // blocking interaction of their own in the source PR - only the jab path (attackEntity above) has the
 // "Fire Aspect bypasses shields" carve-out, because only jabs can actually be shield-blocked.
-func (p *Player) spearChargeEntity(living entity.Living, spear item.Spear, damage, knockback bool, relativeSpeed float64) bool {
+// A charge in its first stage also takes a riding target off its mount (dismount).
+func (p *Player) spearChargeEntity(living entity.Living, spear item.Spear, damage, knockback, dismount bool, relativeSpeed float64) bool {
 	var (
 		force, height = 0.45, 0.3608
 		critical      = false
@@ -2460,6 +2512,11 @@ func (p *Player) spearChargeEntity(living entity.Living, spear item.Spear, damag
 			}
 		}
 		living.KnockBack(p.Position(), force, height)
+	}
+	if rider, ok := living.(entity.Rider); ok && dismount {
+		if _, riding := rider.RidingEntity(p.tx); riding {
+			rider.DismountEntity(p.tx)
+		}
 	}
 	p.Exhaust(0.1)
 	return true
