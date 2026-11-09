@@ -16,6 +16,10 @@ import (
 )
 
 func init() {
+	// minecraft:trail is a component (the snow golem's snow), here because it
+	// needs component/combat's mobGriefing hook, which component/misc cannot
+	// import.
+	mob.RegisterComponent("minecraft:trail", newTrail)
 	for key, flag := range timerFlags {
 		mob.RegisterGoal(key, newTimerFlag(flag))
 	}

@@ -52,6 +52,12 @@ func (SnowLayer) canSurvive(pos cube.Pos, tx *world.Tx) bool {
 	}
 }
 
+// CanSurvive reports whether a snow layer may stand at pos (BDS TopSnowBlock::mayPlace): mobs that leave snow
+// behind (the snow golem's minecraft:trail) check it before they place a layer.
+func (s SnowLayer) CanSurvive(pos cube.Pos, tx *world.Tx) bool {
+	return s.canSurvive(pos, tx)
+}
+
 // UseOnBlock adds a layer to the snow layer clicked on its top face, or to one next to the face clicked, up to
 // eight layers. Otherwise it places a new layer, if the block below can hold it.
 func (s SnowLayer) UseOnBlock(pos cube.Pos, face cube.Face, _ mgl64.Vec3, tx *world.Tx, user item.User, ctx *item.UseContext) bool {

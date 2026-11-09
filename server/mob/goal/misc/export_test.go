@@ -79,3 +79,6 @@ func Params(g mob.Goal) map[string]any {
 	}
 	return nil
 }
+
+// TrailPositions is trailPositions, for the tests.
+var TrailPositions = trailPositions

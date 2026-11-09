@@ -12,7 +12,7 @@ JSON, `source: java/paper` where the dump has nothing.
 | Package | Keys |
 |---|---|
 | `component/misc` | fire_immune, freezing_immune, freezing_vulnerable, mob_effect_immunity, cannot_be_attacked, mob_effect, spell_effects, area_attack, damage_over_time, attack_cooldown, apply_knockback_rules, combat_regeneration, on_hurt, on_hurt_by_player, on_death, on_friendly_anger, on_equipment_changed, entity_sensor, block_sensor, genetics, strength, is_stunned, is_ignited, is_pregnant, dimension_bound |
-| `goal/misc` | timer_flag_1/2/3, ram_attack, charge_attack, knockback_roar, move_to_block, stomp_turtle_egg, avoid_block, move_to_random_block, move_towards_target, target_when_pushed, hold_ground, follow_mob, look_at_target, send_event, summon_entity |
+| `goal/misc` | trail (a component: it needs component/combat), timer_flag_1/2/3, ram_attack, charge_attack, knockback_roar, move_to_block, stomp_turtle_egg, avoid_block, move_to_random_block, move_towards_target, target_when_pushed, hold_ground, follow_mob, look_at_target, send_event, summon_entity |
 | `goal/misc/animal` | fox: stalk_and_pounce_on_target, nap, find_cover, eat_carried_item, random_look_around_and_sit, raid_garden, defend_trusted_target; panda: roll, sneeze, snacking, lay_down, scared, random_sitting; frog: croak, eat_mob, jump_to_block, lay_egg; sniffer: random_search_and_dig; cat, ocelot: ocelotattack; silverfish_merge_with_stone, silverfish_wake_up_friends |
 | `goal/misc/social` | go_and_give_items_to_owner/noteblock, stay_near_noteblock, drop_item_for, make_love, receive_love, play, behavior.hide, sniff, jump_around_target, move_around_target, fire_at_target |
 | `goal/misc/hostile` | teleport, looked_at, break_blocks, ravager_blocked, custom_hit_test, group_size, reflect_projectiles |
