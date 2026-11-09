@@ -126,8 +126,8 @@ func mobFlagPose(e world.Entity) (int32, bool) {
 	switch {
 	case mobFlag(e, protocol.EntityDataFlagEmerging):
 		return poseEmerging, true
-	case mobFlag(e, protocol.EntityDataFlagDigging):
-		return poseDigging, true
+	case mobFlag(e, protocol.EntityDataFlagDigging) && bedrockName(e) == "minecraft:warden":
+		return poseDigging, true // the sniffer digs too, but Java shows that by its state
 	case mobFlag(e, protocol.EntityDataFlagRoaring) && bedrockName(e) == "minecraft:warden":
 		return poseRoaring, true
 	case mobFlag(e, protocol.EntityDataFlagSniffing) && bedrockName(e) == "minecraft:warden":

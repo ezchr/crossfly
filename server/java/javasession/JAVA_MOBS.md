@@ -113,10 +113,12 @@ VillagerHappy 14, WitchHatMagic 15, ZombieConverting 16, GuardianAttackSound 21.
 - add_entity carries body and head yaw; move packets the body, rotate_head the head.
 - The state (flags, mob data, saddle) is sent right after add_entity.
 - A test resolves every entity of the 1.26.63 vanilla pack to a 26.3 type.
+- mobdata_states.go: sniffer state from its goal flags, armadillo state (with the roll-up and peek)
+  and creaking flags from their enum properties, happy ghast STAYS_STILL from the collidable flag.
 
 ## Not done
 
 Bedrock-only state that has no interface yet: shulker attach face/peek, enderman carried block,
-guardian/wither targets, goat horns, armadillo/sniffer/creaking/copper golem states, camel sitting,
+guardian/wither targets, goat horns, copper golem states, camel sitting,
 puffer state, phantom size, villager/fox sleeping, scale attribute. Arrow/projectile owner data and
 tamed owner UUIDs are not sent.
