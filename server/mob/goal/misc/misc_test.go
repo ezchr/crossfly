@@ -195,6 +195,9 @@ func TestVexCharges(t *testing.T) {
 	p.SetMaxHealth(200)
 	v := w.Spawn("minecraft:vex", mgl64.Vec3{0.5, 2, 0.5})
 	swap(w, v, "charge", goal(t, "minecraft:behavior.charge_attack", `{"success_rate": 1}`), true)
+	// Forget where vex_random_move may have sent it before swap: the charge
+	// waits for the move control to be free.
+	v.With(func(m *mob.Mob) { m.MoveControl().Stop() })
 	setTarget(w, v, p)
 	if _, ok := flagSeen(w, v, 40, protocol.EntityDataFlagCharging); !ok {
 		t.Fatalf("vex never charged: %v", w.Dump(v))

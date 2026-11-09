@@ -507,11 +507,9 @@ func createSpellEntity(m *mob.Mob, x, z, minY, maxY float64, s *summonStep) {
 	opts := mob.SpawnOptions{Event: s.event, Configure: func(c *mob.Mob) {
 		c.UpdateMeta(func(meta *mob.Meta) { meta.Owner = m.H() })
 	}}
-	if c, err := mob.Spawn(tx, s.entity, pos, opts); err == nil {
-		if t, ok := m.Target(); ok {
-			c.SetTarget(t)
-		}
-	}
+	// The summon is not given the caster's target: a vex copies it itself
+	// (vex_copy_owner_target).
+	_, _ = mob.Spawn(tx, s.entity, pos, opts)
 }
 
 // Stop is SummonActorGoal::stop: the cast ends and the spell's cooldown
