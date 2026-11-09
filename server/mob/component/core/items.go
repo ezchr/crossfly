@@ -156,6 +156,14 @@ func (d ItemDescriptor) candidates() []itemName {
 	if to, ok := legacyItems[short]; ok {
 		out = append(out, itemName{name: "minecraft:" + to})
 	}
+	if colourSplit[short] {
+		// A colour-split name without data ("carpet") is every colour,
+		// white first.
+		for i := range item.Colours() {
+			to, _ := legacyData(short, int16(i))
+			out = append(out, itemName{name: "minecraft:" + to})
+		}
+	}
 	return out
 }
 
@@ -201,6 +209,9 @@ var legacySkulls = [...]string{"skeleton_skull", "wither_skeleton_skull", "zombi
 var legacyBuckets = map[int16]string{0: "bucket", 1: "milk_bucket", 2: "cod_bucket", 3: "salmon_bucket",
 	4: "tropical_fish_bucket", 5: "pufferfish_bucket", 8: "water_bucket", 10: "lava_bucket", 11: "powder_snow_bucket",
 	12: "axolotl_bucket", 13: "tadpole_bucket"}
+
+// colourSplit are the legacy names legacyData splits by colour.
+var colourSplit = map[string]bool{"wool": true, "carpet": true, "concrete": true, "stained_glass": true, "stained_hardened_clay": true, "concrete_powder": true}
 
 // legacyData resolves name:data items that became separate items.
 func legacyData(short string, data int16) (string, bool) {

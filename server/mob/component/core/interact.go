@@ -43,6 +43,14 @@ type interaction struct {
 	// barter components (interact_pickup.go).
 	Admire bool `json:"admire"`
 	Barter bool `json:"barter"`
+	// AddItems, GiveItem/TakeItem, ParticleOnStart, Vibration and
+	// InteractText are interact_items.go.
+	AddItems        *spawnItems      `json:"add_items"`
+	GiveItem        bool             `json:"give_item"`
+	TakeItem        bool             `json:"take_item"`
+	ParticleOnStart *particleOnStart `json:"particle_on_start"`
+	Vibration       string           `json:"vibration"`
+	InteractText    string           `json:"interact_text"`
 
 	sounds []string
 }
@@ -79,6 +87,9 @@ func newInteract(key string, raw json.RawMessage) (mob.Component, error) {
 		if in.SpawnItems != nil && in.SpawnItems.Table != "" {
 			warnMissingTable(in.SpawnItems.Table)
 		}
+		if in.AddItems != nil && in.AddItems.Table != "" {
+			warnMissingTable(in.AddItems.Table)
+		}
 	}
 	return c, nil
 }
@@ -93,7 +104,7 @@ func (c *interact) Interact(m *mob.Mob, user item.User, held item.Stack, _ mgl64
 	}
 	ctx := InteractContext(m, user, held)
 	for _, in := range c.list {
-		if !in.OnInteract.Passes(ctx) {
+		if !in.OnInteract.Passes(ctx) || !in.mayRun(m, held) {
 			continue
 		}
 		if in.CooldownHurt > 0 {
@@ -130,6 +141,8 @@ func (in *interaction) run(m *mob.Mob, user item.User, held item.Stack, ctx *mob
 			GiveItem(m, user, s)
 		}
 	}
+	held = in.runGiveTake(m, user, held, before, creative)
+	held = in.runAddItems(m, user, held)
 	if in.SpawnItems != nil && in.SpawnItems.Table != "" {
 		if t, err := LoadLootTable(in.SpawnItems.Table); err == nil {
 			DropItems(m, t.Roll(&LootContext{Mob: m, Killer: user}), in.SpawnItems.YOffset+m.BBox().Height()*0.5)
@@ -147,6 +160,7 @@ func (in *interaction) run(m *mob.Mob, user item.User, held item.Stack, ctx *mob
 		}
 	}
 	in.runPickup(m, user, before)
+	in.runEffects(m, user)
 	in.OnInteract.Fire(m, ctx)
 	return held
 }

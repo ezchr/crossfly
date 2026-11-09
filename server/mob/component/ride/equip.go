@@ -106,14 +106,28 @@ func (e *Equippable) def(slot int) (equipSlot, bool) {
 	return e.slots[i], true
 }
 
-// EquipSlot implements mob.SlotEquipper.
-func (e *Equippable) EquipSlot(m *mob.Mob, slot string, s item.Stack) bool {
+// slotOf resolves an interaction's equip_item_slot/drop_item_slot. BDS
+// Interaction::_tryConvertStringToItemSlotInfo reads a number as a slot of
+// the mob's container, whose first slots are the equippable slots in list
+// order (EquippableComponent::onItemChanged indexes the slot list by the
+// container slot): the llama's "0" is its carpet slot 1. slot.armor.body
+// is slot 1.
+func (e *Equippable) slotOf(slot string) (int, bool) {
 	n, err := strconv.Atoi(slot)
 	if err != nil {
-		if slot != "slot.armor.body" {
-			return false
-		}
-		n = 1
+		return 1, slot == "slot.armor.body"
+	}
+	if n >= 0 && n < len(e.slots) {
+		return e.slots[n].slot, true
+	}
+	return n, true
+}
+
+// EquipSlot implements mob.SlotEquipper.
+func (e *Equippable) EquipSlot(m *mob.Mob, slot string, s item.Stack) bool {
+	n, ok := e.slotOf(slot)
+	if !ok {
+		return false
 	}
 	d, ok := e.accepts(n, s)
 	if !ok || !e.items[d.slot].Empty() {
@@ -125,12 +139,9 @@ func (e *Equippable) EquipSlot(m *mob.Mob, slot string, s item.Stack) bool {
 
 // DropSlot implements mob.SlotEquipper.
 func (e *Equippable) DropSlot(m *mob.Mob, slot string) (item.Stack, bool) {
-	n, err := strconv.Atoi(slot)
-	if err != nil {
-		if slot != "slot.armor.body" {
-			return item.Stack{}, false
-		}
-		n = 1
+	n, ok := e.slotOf(slot)
+	if !ok {
+		return item.Stack{}, false
 	}
 	s := e.items[n]
 	if s.Empty() {
