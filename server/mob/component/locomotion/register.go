@@ -6,7 +6,7 @@
 // modifiers, bounciness, block_climber, drying_out_timer, bribeable, the
 // dolphin move control, float navigation travel (ghast, bat), the fly,
 // hover and glide controls of fliers, slime splitting and guardian spikes,
-// flopping and curse.
+// flopping and curse, blaze hovering.
 // The goals are in server/mob/goal/locomotion; its README.md lists sources.
 package locomotion
 
@@ -44,6 +44,7 @@ func init() {
 	mob.RegisterSystem(mob.System{Name: "locomotion/float_navigation", Stage: mob.StageSensors, Order: 50, Tick: floatNavigationBefore})
 	mob.RegisterSystem(mob.System{Name: "locomotion/flight_control", Stage: mob.StageSensors, Order: 51, Tick: flightSwap})
 	mob.RegisterSystem(mob.System{Name: "locomotion/guardian", Stage: mob.StageSensors, Order: 52, Tick: guardianTick})
+	mob.RegisterSystem(mob.System{Name: "locomotion/blaze", Stage: mob.StageControls, Order: 990, Tick: blazePreTravel})
 	mob.RegisterSystem(mob.System{Name: "locomotion/before_travel", Stage: mob.StageControls, Order: 1000, Tick: beforeTravel})
 	mob.RegisterSystem(mob.System{Name: "locomotion/after_travel", Stage: mob.StageTravel, Order: 20, Tick: afterTravel})
 	mob.RegisterSystem(mob.System{Name: "locomotion/float_facing", Stage: mob.StageTravel, Order: 21, Tick: floatNavigationAfter})
