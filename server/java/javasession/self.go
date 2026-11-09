@@ -161,6 +161,18 @@ type stateful interface {
 	Gliding() bool
 }
 
+// ViewEntityHealth sends a mob's health when it changed (server/mob calls it on the viewers that have
+// it): a mob gets its health from its definition only when it first ticks, after it was shown, and it
+// heals without being hurt, so the health sent with its other data would otherwise stay behind.
+func (s *Session) ViewEntityHealth(e world.Entity) {
+	if e.H() == s.ent {
+		return
+	}
+	if id, ok := s.entityID(e); ok {
+		s.viewMobData(e, id)
+	}
+}
+
 // ViewEntityState sends another entity's flags (crouching, sprinting...) and pose.
 func (s *Session) ViewEntityState(e world.Entity) {
 	if e.H() == s.ent {
