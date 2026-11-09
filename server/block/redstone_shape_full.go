@@ -44,3 +44,9 @@ func (m MovingPiston) RedstoneShape() uint64 {
 func (p Piston) RedstoneShape() uint64 {
 	return uint64(p.Facing) | uint64(boolByte(p.Sticky))<<3 | uint64(boolByte(p.Extended))<<4 | uint64(boolByte(p.State == 3))<<5
 }
+
+// RedstoneShape of a hopper: its facing. Its cooldowns, items and lock change all the time.
+func (h Hopper) RedstoneShape() uint64 { return uint64(h.Facing) }
+
+// RedstoneShape of a dispenser or dropper: its facing and kind. Whether it is triggered changes with its power.
+func (d Dispenser) RedstoneShape() uint64 { return uint64(d.Facing) | uint64(boolByte(d.Dropper))<<3 }
