@@ -445,6 +445,16 @@ func (tx *Tx) setBlock(pos cube.Pos, b Block, opts *SetOpts) {
 		before = oldRID
 	}
 
+	// With Java redstone the block before is known: a change of its power alone is not logged (redstoneShapeKept).
+	shapeKept := false
+	if javaRedstone {
+		before := previousEntity
+		if before == nil || !w.conf.Blocks.NBTBlock(oldRID) {
+			before = w.conf.Blocks.BlockByRuntimeIDOrAir(oldRID)
+		}
+		shapeKept = redstoneShapeKept(before, b)
+	}
+
 	c.modified = true
 	c.SetBlock(x, y, z, 0, rid)
 	if javaRedstone {
@@ -467,7 +477,9 @@ func (tx *Tx) setBlock(pos cube.Pos, b Block, opts *SetOpts) {
 			delete(c.blockEntityOrder, pos)
 		}
 	}
-	w.blockChangedAt(pos)
+	if !shapeKept {
+		w.blockChangedAt(pos)
+	}
 
 	viewers := slices.Clone(c.viewers)
 

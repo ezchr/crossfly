@@ -145,6 +145,10 @@ type redstoneEngine struct {
 	compileState *redstoneCompile
 	// lists are what compilations found around positions, kept until a block near them changes.
 	lists redstoneListMemo
+	// held is the power conductors hold, worked out during a graph power evaluation (heldConductorPower), while
+	// holding is set.
+	held    map[uint64]redstoneHeldPower
+	holding bool
 }
 
 // redstoneDirty records why a position needs redstone evaluation.
@@ -1066,15 +1070,60 @@ func (e *redstoneEngine) conductedStrongPowerFrom(pos cube.Pos, tx *Tx, face cub
 	if conductorPos.OutOfBounds(tx.Range()) {
 		return 0
 	}
-	conductor, ok := tx.World().blockLoaded(conductorPos)
-	if !ok || tx.World().conductorFaces(tx, conductorPos, conductor)&(1<<face.Opposite()) == 0 {
+	if !e.conducts(tx, conductorPos, face.Opposite()) {
 		return 0
+	}
+	held, key, hold := e.heldConductorPower(conductorPos)
+	if hold && held.strong >= 0 {
+		return int(held.strong)
 	}
 	power := 0
 	for _, sourceFace := range cube.Faces() {
 		power = max(power, e.strongPowerFrom(conductorPos, tx, sourceFace))
 	}
+	if hold {
+		held = e.heldEntry(key)
+		held.strong = int8(power)
+		e.held[key] = held
+	}
 	return power
+}
+
+// redstoneHeldPower is the strong and weak power held by a conductor, -1 if not worked out yet.
+type redstoneHeldPower struct {
+	strong, weak int8
+}
+
+// heldConductorPower returns the power held by the conductor at pos as worked out earlier in the current graph power
+// evaluation, if it is being run and is not evaluating a source (whose output may read the power around it with
+// itself left out). The world does not change while the graph power is evaluated.
+func (e *redstoneEngine) heldConductorPower(pos cube.Pos) (redstoneHeldPower, uint64, bool) {
+	if !e.holding || len(e.evaluating) != 0 {
+		return redstoneHeldPower{}, 0, false
+	}
+	key, ok := packMemoPos(pos)
+	if !ok {
+		return redstoneHeldPower{}, 0, false
+	}
+	return e.heldEntry(key), key, true
+}
+
+// heldEntry returns the held power stored for key.
+func (e *redstoneEngine) heldEntry(key uint64) redstoneHeldPower {
+	if held, ok := e.held[key]; ok {
+		return held
+	}
+	return redstoneHeldPower{strong: -1, weak: -1}
+}
+
+// conducts reports whether the loaded block at pos conducts strong power through face.
+func (e *redstoneEngine) conducts(tx *Tx, pos cube.Pos, face cube.Face) bool {
+	w := tx.World()
+	if v, ok := w.memo.get(&w.changes, redstoneMemoConductor, pos); ok {
+		return v&(1<<face) != 0
+	}
+	b, ok := w.blockLoaded(pos)
+	return ok && w.conductorFaces(tx, pos, b)&(1<<face) != 0
 }
 
 // weakBlockPower returns weak power directly applied to a conductive block by sources that weak-power blocks.
@@ -1118,11 +1167,20 @@ func (e *redstoneEngine) conductedWeakPowerFrom(pos cube.Pos, tx *Tx, face cube.
 	if conductorPos.OutOfBounds(tx.Range()) {
 		return 0
 	}
-	conductor, ok := tx.World().blockLoaded(conductorPos)
-	if !ok || tx.World().conductorFaces(tx, conductorPos, conductor)&(1<<face.Opposite()) == 0 {
+	if !e.conducts(tx, conductorPos, face.Opposite()) {
 		return 0
 	}
-	return e.weakBlockPower(conductorPos, tx)
+	held, key, hold := e.heldConductorPower(conductorPos)
+	if hold && held.weak >= 0 {
+		return int(held.weak)
+	}
+	power := e.weakBlockPower(conductorPos, tx)
+	if hold {
+		held = e.heldEntry(key)
+		held.weak = int8(power)
+		e.held[key] = held
+	}
+	return power
 }
 
 // conductedActivationPower returns power that can activate a non-relayer mechanism behind adjacent conductive blocks.
@@ -1196,6 +1254,19 @@ func (e *redstoneEngine) graphPower(tx *Tx, graph redstoneGraph) []int {
 		return powers
 	}
 
+	// The power conductors hold is worked out once for this evaluation.
+	if e.held == nil {
+		e.held = make(map[uint64]redstoneHeldPower)
+	}
+	e.holding = true
+	defer func() {
+		e.holding = false
+		if len(e.held) > redstoneCompileReuseLimit {
+			e.held = nil
+			return
+		}
+		clear(e.held)
+	}()
 	index := graph.index
 	sources := make([]RedstonePowerSource, len(graph.nodes))
 	relayers := make([]RedstonePowerRelayer, len(graph.nodes))

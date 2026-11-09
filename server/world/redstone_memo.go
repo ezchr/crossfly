@@ -1,6 +1,28 @@
 package world
 
-import "github.com/df-mc/dragonfly/server/block/cube"
+import (
+	"reflect"
+
+	"github.com/df-mc/dragonfly/server/block/cube"
+)
+
+// RedstoneShaper may be implemented by redstone components whose states differ in their power and in what
+// RedstoneShape returns. Two states of the same type with the same RedstoneShape must have the same model, the same
+// encoded name or one that conducts the same, and connect to redstone the same: they differ in their power only.
+type RedstoneShaper interface {
+	RedstoneShape() uint64
+}
+
+// redstoneShapeKept reports whether before and after differ in their redstone power only (RedstoneShaper). Nothing
+// kept in redstoneMemo or redstoneListMemo depends on the power of a block, so such a change is not logged.
+func redstoneShapeKept(before, after Block) bool {
+	a, ok := before.(RedstoneShaper)
+	if !ok {
+		return false
+	}
+	b, ok := after.(RedstoneShaper)
+	return ok && reflect.TypeOf(before) == reflect.TypeOf(after) && a.RedstoneShape() == b.RedstoneShape()
+}
 
 // changeLog logs the positions of the latest block changes of a world. A value worked out from the blocks around
 // a position holds until a block near the position changes (unchangedSince).
