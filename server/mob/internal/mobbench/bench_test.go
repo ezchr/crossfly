@@ -32,6 +32,8 @@ import (
 	"github.com/df-mc/dragonfly/server/mob/spawn"
 	_ "github.com/df-mc/dragonfly/server/mob/vanilla" // links every mob package
 	"github.com/df-mc/dragonfly/server/world"
+	"github.com/df-mc/dragonfly/server/world/biome"
+	"github.com/df-mc/dragonfly/server/world/generator"
 	"github.com/go-gl/mathgl/mgl64"
 )
 
@@ -74,7 +76,7 @@ type scene struct {
 // build makes the benchmark world: a grass floor with glass walls, a pond in
 // the north-west, a village (beds and job sites) in the south-east, flowers,
 // and one player in the middle that the hostiles chase.
-func build(b *testing.B) *mobtest.World {
+func build(b testing.TB) *mobtest.World {
 	w := mobtest.New(b, mobtest.Options{Time: mobtest.Midnight, Log: slog.New(slog.NewTextHandler(io.Discard, nil))})
 	w.Do(func(tx *world.Tx) {
 		w.Fill(tx, cube.Pos{-arena - 1, -5, -arena - 1}, cube.Pos{arena + 1, -2, arena + 1}, block.Stone{})
@@ -308,20 +310,26 @@ func BenchmarkMobViewers(b *testing.B) {
 	}
 }
 
-// BenchmarkNaturalSpawn: natural spawning around 1 and 4 players on a big
-// grass floor at night, until the caps fill. Reports the cost of the
-// spawner's own tick (spawn.Tick) apart from the world tick.
+// BenchmarkNaturalSpawn: natural spawning at night around 1 and 4 players on
+// a flat plains world, after 1200 ticks (the monster caps are about full by
+// then). Reports the world tick (with the mobs spawned so far), the cost of
+// the spawner's own tick (spawn.Tick) and how many mobs there are.
 func BenchmarkNaturalSpawn(b *testing.B) {
 	for _, np := range []int{1, 4} {
 		b.Run(fmt.Sprintf("players=%d", np), func(b *testing.B) {
-			w := mobtest.New(b, mobtest.Options{Time: mobtest.Midnight})
-			const r = 96
+			world.DefaultBlockRegistry.Finalize() // the flat generator needs runtime IDs
+			w := mobtest.New(b, mobtest.Options{Time: mobtest.Midnight,
+				Generator: generator.NewFlat(biome.Plains{}, []world.Block{block.Grass{}, block.Dirt{}, block.Dirt{}, block.Bedrock{}})})
+			const floorY = -61
 			w.Do(func(tx *world.Tx) {
-				w.Fill(tx, cube.Pos{-r, -3, -r}, cube.Pos{r, -2, r}, block.Stone{})
-				w.Grass(tx, 0, r)
+				for cx := -9; cx <= 9; cx++ {
+					for cz := -9; cz <= 9; cz++ {
+						tx.Block(cube.Pos{cx * 16, 0, cz * 16})
+					}
+				}
 			})
 			for i := range np {
-				p := w.AddPlayer(fmt.Sprintf("p%d", i), mgl64.Vec3{float64(i%2)*80 - 40, 1, float64(i/2)*80 - 40})
+				p := w.AddPlayer(fmt.Sprintf("p%d", i), mgl64.Vec3{float64(i%2)*80 - 40, floorY + 1, float64(i/2)*80 - 40})
 				p.SetMaxHealth(1e12)
 			}
 			spawn.Enable(w.W, spawn.Config{ManualTick: true, Seed: 3})
@@ -334,7 +342,7 @@ func BenchmarkNaturalSpawn(b *testing.B) {
 					spawnTime += time.Since(t)
 				})
 			}
-			for range 400 {
+			for range 1200 {
 				tick()
 			}
 			spawnTime = 0

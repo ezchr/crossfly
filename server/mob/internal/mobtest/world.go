@@ -46,6 +46,10 @@ type Options struct {
 	Seed uint64
 	// Log receives world logs; nil discards them.
 	Log *slog.Logger
+	// Generator generates the chunks not built by the test (nil: empty,
+	// as world.Config). A generated world has its light worked out, which
+	// natural spawning needs.
+	Generator world.Generator
 }
 
 // World is a synchronous test world. All methods must be called from the
@@ -148,6 +152,7 @@ func (w *World) open() {
 		Synchronous:  true,
 		RandSource:   rand.NewPCG(w.opts.Seed, 0x6d6f6274657374),
 		SaveInterval: -1,
+		Generator:    w.opts.Generator,
 	}
 	if w.dir != "" {
 		db, err := mcdb.Config{Log: w.opts.Log}.Open(w.dir)
