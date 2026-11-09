@@ -380,8 +380,8 @@ func (f faller) FallDistance() float64 { return *f.d }
 func (f faller) ResetFallDistance()    { *f.d = 0 }
 
 // land runs the EntityLand of the first lander block under m and hurts it
-// for the fall (Actor::checkFallDamage -> Mob::causeFallDamageToActor:
-// ceil(distance - 3 - jump boost level), fall damage multiplier 1).
+// for the fall (Actor::checkFallDamage -> causeFallDamageToActor of its
+// class: fallDamage).
 func land(m *mob.Mob, dist float64) {
 	tx := m.Tx()
 	box := m.BBox()
@@ -399,11 +399,7 @@ search:
 			}
 		}
 	}
-	jb := 0.0
-	if e, ok := m.Effect(effect.JumpBoost); ok {
-		jb = float64(e.Level())
-	}
-	if dmg := math.Ceil(dist - 3 - jb); dmg > 0 {
+	if dmg := fallDamage(m, dist); dmg > 0 {
 		m.Hurt(dmg, entity.FallDamageSource{})
 	}
 }

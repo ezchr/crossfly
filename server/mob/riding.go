@@ -784,7 +784,7 @@ func (r rideableEnt) ClientVehicleMove(rider world.Entity, pos mgl64.Vec3, yaw, 
 	m.SetYaw(yaw)
 	m.SetBodyYaw(yaw)
 	m.SetHeadYaw(yaw)
-	m.s.physics.FallDistance = 0
+	m.clientFall(m.data.Vel[1])
 	r.s.ride().clientMoved = r.s.ticks
 	return true
 }
