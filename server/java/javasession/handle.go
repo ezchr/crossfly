@@ -44,6 +44,10 @@ func (s *Session) handle(id int32, body []byte) error {
 		if r.Err == nil {
 			return s.move(nil, &[2]float32{yaw, pitch}, flags)
 		}
+	case v777.ServerboundPlayMovePlayerStatusOnly:
+		if flags := r.Byte(); r.Err == nil {
+			s.moveStatus(flags)
+		}
 	case v777.ServerboundPlayChunkBatchReceived:
 		rate := float64(r.Float32())
 		if rate != rate || rate < 0.01 { // NaN or nonsense: vanilla clamps the same way
@@ -125,6 +129,7 @@ func (s *Session) move(pos *mgl64.Vec3, rot *[2]float32, flags byte) error {
 			dyaw, dpitch = float64(rot[0])-r.Yaw(), float64(rot[1])-r.Pitch()
 		}
 		c.Move(delta, dyaw, dpitch)
+		s.landed(c, flags&moveFlagOnGround != 0)
 	})
 	if err != nil && !stopped(err) {
 		s.log.Debug("move", "err", err)

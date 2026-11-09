@@ -116,6 +116,9 @@ type Session struct {
 	col           jchunk.Column
 	hm            [1][]uint64
 
+	// clientOnGround is the on_ground flag of the client's last move packet (glide.go).
+	clientOnGround atomic.Bool
+
 	// Teleports: moves from the client are ignored until it accepts the last one.
 	teleportID      atomic.Int32
 	pendingTeleport atomic.Int32

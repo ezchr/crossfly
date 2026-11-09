@@ -312,7 +312,7 @@ func (s *Session) handleInput(id int32, body []byte) (bool, error) {
 			case commandStopSprinting:
 				c.StopSprinting()
 			case commandStartFallFlying: // elytra
-				c.StartGliding()
+				s.startGliding(c)
 			}
 		})
 	case v777.ServerboundPlayMoveVehicle:
