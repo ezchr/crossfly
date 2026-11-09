@@ -60,6 +60,8 @@ type Boss struct {
 	shown    map[BossBarViewer]float64
 	lastName string
 	deadFor  int
+	// frozen counts the ticks spent beyond the simulation distance.
+	frozen int64
 
 	dragon *Dragon
 	wither *Wither
@@ -141,6 +143,22 @@ func (b *Boss) Tick(m *mob.Mob) {
 			return
 		}
 	}
+	b.tick(m, b.shown == nil || (m.Ticks()+int64(m.H().UUID()[0]))%20 == 0)
+}
+
+// TickFrozen keeps showing the bar to viewers in range and hides it from
+// the rest while the boss is beyond the simulation distance (mob.FrozenTicker).
+func (b *Boss) TickFrozen(m *mob.Mob) {
+	if m.Dead() {
+		return
+	}
+	b.frozen++
+	b.tick(m, b.shown == nil || b.frozen%20 == 0)
+}
+
+// tick shows, updates and hides the bar; refresh looks for viewers that came
+// into or left the hud range.
+func (b *Boss) tick(m *mob.Mob, refresh bool) {
 	pct := b.pct(m)
 	name := m.NameTag()
 	if name == "" {
@@ -151,7 +169,7 @@ func (b *Boss) Tick(m *mob.Mob) {
 		b.lastName = name
 	}
 	tx := m.Tx()
-	if b.shown == nil || (m.Ticks()+int64(m.H().UUID()[0]))%20 == 0 {
+	if refresh {
 		// BossComponent::handleRegisterPlayers, about once a second.
 		near := map[BossBarViewer]bool{}
 		for _, v := range tx.Viewers(m.Position()) {

@@ -59,10 +59,25 @@ const deathTicks = 20
 // (and one that died earlier in this tick) only runs travel, despawn and send:
 // it still falls and is still shown until it is removed.
 func (s *state) Tick(e *entity.Ent, tx *world.Tx) *entity.Movement {
+	simulated := tx.Simulated(e.Position())
+	if !simulated && (!s.initialised || len(s.frozen) == 0) {
+		// Beyond the simulation distance of every player: frozen, as in
+		// Bedrock Edition (no AI, physics, despawning or sending).
+		return nil
+	}
 	m := s.cur
 	if m == nil || m.Ent != e {
 		m = &Mob{Ent: e, data: s.data, s: s}
 		s.cur = m
+	}
+	if !simulated {
+		for _, f := range s.frozen {
+			f.TickFrozen(m)
+			if m.closed() {
+				return nil
+			}
+		}
+		return nil
 	}
 	m.ensureInit()
 	s.ticks++

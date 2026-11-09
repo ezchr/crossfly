@@ -63,6 +63,7 @@ type state struct {
 	goals   *GoalSelector
 	comps   []attachedComponent
 	tickers [stageCount][]Ticker
+	frozen  []FrozenTicker
 	// compOf caches ComponentOf by type (nil: none) until comps change.
 	compOf []compOfEntry
 
@@ -277,7 +278,11 @@ func (s *state) rebuildTickers() {
 	for i := range s.tickers {
 		s.tickers[i] = nil
 	}
+	s.frozen = nil
 	for _, c := range s.comps {
+		if f, ok := c.comp.(FrozenTicker); ok {
+			s.frozen = append(s.frozen, f)
+		}
 		t, ok := c.comp.(Ticker)
 		if !ok {
 			continue
