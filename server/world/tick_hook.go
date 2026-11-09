@@ -17,3 +17,7 @@ func RegisterTickHook(h TickHook) {
 	}
 	tickHooks = append(tickHooks, h)
 }
+
+// TickHooks returns how many tick hooks are registered. Crossfly Full checks
+// with it that features turned off registered none.
+func TickHooks() int { return len(tickHooks) }
