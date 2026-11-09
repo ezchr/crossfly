@@ -27,6 +27,10 @@ const (
 	dataItemFrameRotation = 10
 )
 
+// InvisibleFrame, if set, reports whether a frame is drawn without its frame on Java (only its
+// item shows), as an item frame made invisible is.
+var InvisibleFrame func(f block.ItemFrame) bool
+
 // frameState is a session's item frame entities and the maps it was sent.
 type frameState struct {
 	mu       sync.Mutex
@@ -118,6 +122,11 @@ func (s *Session) showFrame(pos cube.Pos, f block.ItemFrame) {
 	}
 	w = s.packet()
 	w.VarInt(id)
+	if InvisibleFrame != nil && InvisibleFrame(f) {
+		w.Byte(dataSharedFlags)
+		w.VarInt(dataTypeByte)
+		w.Byte(flagInvisible)
+	}
 	w.Byte(dataItemFrameItem)
 	w.VarInt(dataTypeItemStack)
 	s.writeFrameItem(w, f.Item)

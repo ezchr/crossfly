@@ -151,8 +151,14 @@ func (ItemFrame) SideClosed(cube.Pos, cube.Pos, *world.Tx) bool {
 	return false
 }
 
+// FloatingFrame, if set, reports whether a frame stays without a block behind it.
+var FloatingFrame func(i ItemFrame) bool
+
 // NeighbourUpdateTick ...
 func (i ItemFrame) NeighbourUpdateTick(pos, _ cube.Pos, tx *world.Tx) {
+	if FloatingFrame != nil && FloatingFrame(i) {
+		return
+	}
 	if _, ok := tx.Block(pos.Side(i.Facing)).Model().(model.Empty); ok {
 		// TODO: Allow exceptions for pressure plates.
 		breakBlock(i, pos, tx)
