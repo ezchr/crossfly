@@ -115,7 +115,8 @@ func attackerOf(src world.DamageSource) world.Entity {
 }
 
 // Hurt damages the mob:
-//  1. DamageModifier components may change or cancel the damage;
+//  1. DamageModifier components, then damage hooks, may change or cancel
+//     the damage;
 //  2. fire resistance ignores fire damage; armour (ArmourValue), the
 //     protection enchantments and resistance lower the rest;
 //  3. within hurtImmunity ticks of the last hit only damage above it counts;
@@ -136,6 +137,11 @@ func (m *Mob) Hurt(dmg float64, src world.DamageSource) (float64, world.HurtResu
 			if d.Cancel {
 				return 0, world.HurtIgnored
 			}
+		}
+	}
+	for _, h := range damageHooks {
+		if h.Modify(m, d); d.Cancel {
+			return 0, world.HurtIgnored
 		}
 	}
 	if _, ok := s.effects.Effect(effect.FireResistance); ok && src.Fire() {
