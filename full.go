@@ -98,6 +98,7 @@ func (e Edition) register(log *slog.Logger) error {
 		if _, err := vanilla.Register(vanilla.Options{Skip: func(id string) bool { return existing[id] }}); err != nil {
 			return fmt.Errorf("register mobs: %w", err)
 		}
+		item.RegisterSpawnEggs(mob.Identifiers(), mob.EggSpawner{})
 	}
 	javasession.SetCapes(e.Capes.JavaCapes)
 	log.Info("Crossfly Full.", "mobs", e.Mobs.Behaviour, "redstone", e.Redstone.Behaviour, "java-capes", e.Capes.JavaCapes, "extra-commands", e.ExtraCommands.Enabled)
