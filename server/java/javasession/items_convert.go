@@ -169,6 +169,8 @@ func javaStack(ds item.Stack, js *jitem.Stack) {
 	}
 
 	headProfile(ds, js) // a player head's skin (heads_java.go)
+	// A mob bucket's fish or axolotl (mob_bucket_java.go).
+	mobBucketComponents(it, name, js)
 
 	mc := int32(64)
 	if c, ok := it.(item.MaxCounter); ok {

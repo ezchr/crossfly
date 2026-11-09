@@ -65,6 +65,16 @@ func javaMobSoundName(event, typ string) (string, bool) {
 		return "minecraft:entity.shulker_bullet.hurt", true
 	case (short == "llama" || short == "trader_llama") && event == "shoot":
 		return "minecraft:entity.llama.spit", true
+	case event == "bucket.fill.fish" || event == "bucket.empty.fish":
+		// item.MobBucketSound: Bedrock has one sound for every mob bucket.
+		kind, action := "fish", "fill"
+		if short == "axolotl" || short == "tadpole" {
+			kind = short
+		}
+		if event == "bucket.empty.fish" {
+			action = "empty"
+		}
+		return "minecraft:item.bucket." + action + "_" + kind, true
 	}
 	switch event {
 	case "hurt", "hurt.baby", "death", "death.baby", "attack.strong", "attack.nodamage", "step", "jump", "fall":

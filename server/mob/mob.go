@@ -512,6 +512,12 @@ func (m *Mob) Interact(user item.User, held item.Stack, clickPos mgl64.Vec3) (it
 		return held, false
 	}
 	for _, late := range [2]bool{false, true} {
+		if late {
+			// Interactions BDS hard-codes per actor type (bucket.go).
+			if left, done := m.runInteractHooks(user, held, clickPos); done {
+				return left, true
+			}
+		}
 		for _, c := range m.s.comps {
 			if i, ok := c.comp.(Interactor); ok {
 				if _, isLate := c.comp.(LateInteractor); isLate != late {
