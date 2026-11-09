@@ -131,6 +131,9 @@ func (m *Mob) Hurt(dmg float64, src world.DamageSource) (float64, world.HurtResu
 		return 0, world.HurtIgnored
 	}
 	d := &Damage{Amount: dmg, Source: src, Attacker: attackerOf(src)}
+	if m.riderInvulnerable(d.Attacker) {
+		return 0, world.HurtIgnored
+	}
 	for _, c := range s.comps {
 		if dm, ok := c.comp.(DamageModifier); ok {
 			dm.ModifyDamage(m, d)
