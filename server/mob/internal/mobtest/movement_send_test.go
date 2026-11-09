@@ -63,9 +63,17 @@ func TestMovementSentFarFromOrigin(t *testing.T) {
 }
 
 // javaMoveCounter is a moveCounter that is a Java Edition viewer.
-type javaMoveCounter struct{ moveCounter }
+type javaMoveCounter struct {
+	moveCounter
+	ticks []int // the ticks each move was made over
+}
 
 func (*javaMoveCounter) EntityUpdateInterval(world.Entity) int { return 3 }
+
+func (v *javaMoveCounter) ViewEntityMovementOver(_ world.Entity, _ mgl64.Vec3, _ cube.Rotation, _ bool, ticks int) {
+	v.moves.Add(1)
+	v.ticks = append(v.ticks, ticks)
+}
 
 // TestMovementSentPerEdition: a mob that moves every tick is shown to a
 // Bedrock viewer every tick (BDS) and to a Java viewer every third tick, its
@@ -114,7 +122,14 @@ func TestMovementSentPerEdition(t *testing.T) {
 	if n := bedrock.motions.Load(); n > 1 {
 		t.Errorf("Bedrock viewer: shown %d motions for a velocity changing 0.001 a tick, want at most 1", n)
 	}
+	for _, n := range java.ticks {
+		if n != 3 {
+			t.Errorf("Java viewer: moves every 3rd tick made over %v ticks, want 3 each", java.ticks)
+			break
+		}
+	}
 	java.moves.Store(0)
+	java.ticks = nil
 	for i := range 6 {
 		r.With(func(m *mob.Mob) {
 			m.SetPosition(mgl64.Vec3{3.5 + float64(i+1)*0.1, 1, 0.5})
@@ -124,5 +139,11 @@ func TestMovementSentPerEdition(t *testing.T) {
 	}
 	if n := java.moves.Load(); n < 6 {
 		t.Errorf("Java viewer: a mob pushed every tick was shown %d moves in 6 ticks, want 6", n)
+	}
+	for _, n := range java.ticks[1:] {
+		if n != 1 {
+			t.Errorf("Java viewer: moves sent every tick made over %v ticks, want 1 each", java.ticks)
+			break
+		}
 	}
 }

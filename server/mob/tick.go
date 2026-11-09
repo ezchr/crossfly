@@ -242,6 +242,10 @@ type javaViewer interface {
 	// movement is sent every that many ticks, and the client spreads each
 	// move over as many ticks.
 	EntityUpdateInterval(e world.Entity) int
+	// ViewEntityMovementOver is ViewEntityMovement for a move made over
+	// ticks ticks since the last time the mob's movement was due (the
+	// one-step PositionPath ServerEntity sends with each move).
+	ViewEntityMovementOver(e world.Entity, pos mgl64.Vec3, rot cube.Rotation, onGround bool, ticks int)
 }
 
 // SendMovement is the default StageSend step: it shows the mob's movement to
@@ -262,16 +266,25 @@ func (m *Mob) SendMovement() {
 	now := m.movementNow()
 
 	moved, velChanged := bedrockMoved(now, s.sent), bedrockVelocityChanged(now.vel, s.sent.vel)
-	var javaMoved, javaVelChanged bool
+	var javaDue, javaMoved, javaVelChanged bool
+	var javaTicks int
+	lastDue := s.javaDueTick
 	javaDecide := func(interval int) {
 		javaMoved, javaVelChanged = false, false
-		if needsSync || s.ticks%int64(interval) == 0 {
+		if javaDue = needsSync || s.ticks%int64(interval) == 0; javaDue {
 			javaMoved, javaVelChanged = javaMovedFrom(now, s.sentJava), javaVelocityChanged(now.vel, s.sentJava.vel)
+			// The move covers the ticks since the movement was last due
+			// (SteppedInterpolationTracker: one step per due tick, sent or
+			// not).
+			javaTicks = int(min(max(s.ticks-lastDue, 1), int64(interval)))
 		}
 	}
 	// The Java update interval is asked of the first Java viewer met while
 	// sending; until then it is taken to be the usual 3.
 	javaDecide(cmp.Or(s.javaInterval, 3))
+	if javaDue {
+		s.javaDueTick = s.ticks
+	}
 	if !moved && !velChanged && !javaMoved && !javaVelChanged {
 		return
 	}
@@ -294,7 +307,7 @@ func (m *Mob) SendMovement() {
 			v.ViewEntityVelocity(m, now.vel)
 		}
 		if javaMoved {
-			v.ViewEntityMovement(m, now.pos, now.rot, now.onGround)
+			jv.ViewEntityMovementOver(m, now.pos, now.rot, now.onGround, javaTicks)
 		}
 	}
 	// Only what was sent: changes too small to send add up until they are.

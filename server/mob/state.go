@@ -87,6 +87,8 @@ type state struct {
 	// this tick's StageSend whatever the interval (SyncMovement).
 	javaInterval int
 	needsSync    bool
+	// javaDueTick is the tick the movement was last due for Java viewers.
+	javaDueTick int64
 	// vehicle is the first attached component that is a Vehicle (nil:
 	// none), found when the components change (rebuildTickers).
 	vehicle Vehicle

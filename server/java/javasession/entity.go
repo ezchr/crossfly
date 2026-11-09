@@ -234,6 +234,18 @@ func (s *Session) ViewEntityMovement(e world.Entity, pos mgl64.Vec3, rot cube.Ro
 	s.positionSync(e, pos, rot, onGround)
 }
 
+// ViewEntityMovementOver is ViewEntityMovement for a move made over ticks ticks since the move
+// before it was shown (the mob package's Java viewer). On 26.3 the move says so (a one-step
+// PositionPath, as ServerEntity sends it): the client plays it over those ticks, instead of over
+// the update interval of the entity's type, so moves sent off the interval (a mob pushed every
+// tick) do not pile up on its side.
+func (s *Session) ViewEntityMovementOver(e world.Entity, pos mgl64.Vec3, rot cube.Rotation, onGround bool, ticks int) {
+	if e.H() == s.ent || s.drivenBySelf(e) {
+		return
+	}
+	s.positionSyncOver(e, pos, rot, onGround, ticks)
+}
+
 // ViewEntityDisplacement is a server-made move (knockback correction, pushing).
 func (s *Session) ViewEntityDisplacement(e world.Entity, pos mgl64.Vec3, rot cube.Rotation, onGround bool) {
 	if e.H() == s.ent {
@@ -267,12 +279,18 @@ func encodeDelta(v float64) int64 { return int64(math.Floor(v*4096 + 0.5)) }
 // positionSync moves another entity: a delta move (move_entity_pos/_pos_rot/_rot) when it fits,
 // else a full entity_position_sync, which vanilla also sends every 60 moves to undo drift.
 func (s *Session) positionSync(e world.Entity, pos mgl64.Vec3, rot cube.Rotation, onGround bool) {
+	s.positionSyncOver(e, pos, rot, onGround, 0)
+}
+
+// positionSyncOver is positionSync for a move made over ticks ticks (0: the entity type's update
+// interval, a linear path).
+func (s *Session) positionSyncOver(e world.Entity, pos mgl64.Vec3, rot cube.Rotation, onGround bool, ticks int) {
 	id, ok := s.entityID(e)
 	if !ok {
 		return
 	}
 	body, head := entityYaws(e, rot)
-	s.syncEntityHead(id, pos, cube.Rotation{body, rot.Pitch()}, head, onGround)
+	s.syncEntitySteps(id, pos, cube.Rotation{body, rot.Pitch()}, head, onGround, ticks)
 	s.moveModel(id, pos, rot, onGround) // the parts of its model, if it has one (entitymodel.go)
 }
 
@@ -284,6 +302,12 @@ func (s *Session) syncEntity(id int32, pos mgl64.Vec3, rot cube.Rotation, onGrou
 // syncEntityHead is syncEntity with the head yaw apart from the body's (rot): rotate_head carries
 // the head, the move packets the body.
 func (s *Session) syncEntityHead(id int32, pos mgl64.Vec3, rot cube.Rotation, headYaw float64, onGround bool) {
+	s.syncEntitySteps(id, pos, rot, headYaw, onGround, 0)
+}
+
+// syncEntitySteps is syncEntityHead for a move made over ticks ticks: a 26.3 delta move then
+// carries a one-step path of that many ticks. 0 sends a linear one.
+func (s *Session) syncEntitySteps(id int32, pos mgl64.Vec3, rot cube.Rotation, headYaw float64, onGround bool, ticks int) {
 	yaw, pitch, head := angleByte(rot.Yaw()), angleByte(rot.Pitch()), angleByte(headYaw)
 	s.entMu.Lock()
 	t := s.tracks[id]
@@ -320,15 +344,21 @@ func (s *Session) syncEntityHead(id int32, pos mgl64.Vec3, rot cube.Rotation, he
 		return
 	}
 	if fits {
-		props := int32(0)
+		props := int32(0) // bit 0 on ground, bits 1+ the step count (0: a linear delta)
 		if onGround {
-			props = 1 // bit 0 on ground, step count 0 (a linear delta)
+			props = 1
+		}
+		if ticks > 0 {
+			props |= 1 << 1
 		}
 		switch {
 		case moved && turned:
 			w := s.packet()
 			w.VarInt(id)
 			w.VarInt(props)
+			if ticks > 0 {
+				w.VarInt(int32(ticks)) // VecDelta.Stepped: the step's ticks, then its delta
+			}
 			w.Int16(int16(d[0]))
 			w.Int16(int16(d[1]))
 			w.Int16(int16(d[2]))
@@ -339,6 +369,9 @@ func (s *Session) syncEntityHead(id int32, pos mgl64.Vec3, rot cube.Rotation, he
 			w := s.packet()
 			w.VarInt(id)
 			w.VarInt(props)
+			if ticks > 0 {
+				w.VarInt(int32(ticks)) // VecDelta.Stepped: the step's ticks, then its delta
+			}
 			w.Int16(int16(d[0]))
 			w.Int16(int16(d[1]))
 			w.Int16(int16(d[2]))
