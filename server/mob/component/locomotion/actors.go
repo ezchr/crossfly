@@ -399,17 +399,31 @@ func (thornsSource) ReducedByResistance() bool { return true }
 func (thornsSource) Fire() bool                { return false }
 func (thornsSource) IgnoreTotem() bool         { return false }
 
-// guardianThorns is Guardian::_hurt: hit by a mob in melee while its spikes
-// are out (not moving), the attacker takes 2 thorns damage.
-func guardianThorns(m *mob.Mob, dealt float64, src world.DamageSource) {
+// guardianThorns is Guardian::_hurt: hurt by a mob (players included) while
+// its spikes are out (not moving), the mob takes 2 thorns damage, whatever
+// the cause except magic, projectiles and block explosions: melee and
+// contact hits (entity.AttackDamageSource) and the explosion of an exploding
+// mob (a creeper).
+func guardianThorns(m *mob.Mob, _ float64, src world.DamageSource) {
 	if !isGuardian(m) || m.ActorFlag(protocol.EntityDataFlagMoving) {
 		return
 	}
-	a, ok := src.(entity.AttackDamageSource)
-	if !ok || a.Attacker == nil {
+	var attacker world.Entity
+	switch s := src.(type) {
+	case entity.AttackDamageSource:
+		attacker = s.Attacker
+	case entity.ExplosionDamageSource:
+		switch es := s.Source.(type) {
+		case world.EntityExplosionSource:
+			attacker = es.Entity
+		case world.Entity:
+			attacker = es
+		}
+	}
+	if attacker == nil || attacker.H() == m.H() {
 		return
 	}
-	if l, ok := a.Attacker.(entity.Living); ok {
+	if l, ok := attacker.(entity.Living); ok {
 		l.Hurt(2, core.CauseSource{Cause: "thorns"})
 	}
 }
