@@ -229,16 +229,7 @@ func init() {
 		patternColour := mobInt(e, mobColour2.Colour2, 0) & 0xff
 		d.varInt(17, shape|pattern<<8|base<<16|patternColour<<24)
 	}})
-	set("shulker", mobKind{extra: func(_ *Session, d *mobData, e world.Entity, _ string) {
-		if v, ok := mobAs[mobVariant](e); ok {
-			// Bedrock 16 is the default purple shulker (Java 16 too); the dyed ones run backwards.
-			c := byte(16)
-			if n := v.Variant(); n >= 0 && n < 16 {
-				c = byte(15 - n)
-			}
-			d.byteVal(18, c)
-		}
-	}})
+	set("shulker", mobKind{extra: shulkerData})
 	set("salmon", mobKind{extra: func(_ *Session, d *mobData, e world.Entity, _ string) {
 		if sc, ok := mobAs[mobScale](e); ok {
 			// Bedrock salmon sizes are scales 0.5, 1 and 1.5; Java's are types small, medium, large.

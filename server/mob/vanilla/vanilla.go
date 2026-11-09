@@ -20,21 +20,22 @@ import (
 	"github.com/df-mc/dragonfly/server/mob/spawn"
 	// Phase 1 packages. They register themselves from their own register.go
 	// (init); nothing else here changes.
-	_ "github.com/df-mc/dragonfly/server/mob/component/combat" // E hostile components
-	_ "github.com/df-mc/dragonfly/server/mob/component/core"   // D passive components
-	_ "github.com/df-mc/dragonfly/server/mob/control"          // C move/look/jump/body controls, movement.*, jump.*
-	_ "github.com/df-mc/dragonfly/server/mob/def"              // A1 definitions, groups, properties, events
-	_ "github.com/df-mc/dragonfly/server/mob/filter"           // A2 filters
-	_ "github.com/df-mc/dragonfly/server/mob/goal/boss"        // bosses: dragon, wither, warden (+ component/boss)
-	_ "github.com/df-mc/dragonfly/server/mob/goal/combat"      // E hostile goals
-	_ "github.com/df-mc/dragonfly/server/mob/goal/core"        // D passive goals
-	_ "github.com/df-mc/dragonfly/server/mob/goal/equip"       // charge_held_item (crossbow charging)
-	_ "github.com/df-mc/dragonfly/server/mob/goal/locomotion"  // water/flying/slime/squid movement (+ component/locomotion)
-	_ "github.com/df-mc/dragonfly/server/mob/goal/misc"        // misc goals (+ component/misc)
-	_ "github.com/df-mc/dragonfly/server/mob/goal/ride"        // riding, taming, owners (+ component/ride, component/tame)
-	_ "github.com/df-mc/dragonfly/server/mob/goal/village"     // villagers, traders, raids, golems, piglins (+ component/village)
-	_ "github.com/df-mc/dragonfly/server/mob/nav"              // B pathfinder + navigation.*
-	_ "github.com/df-mc/dragonfly/server/mob/physics"          // C travel, knock back, fall damage
+	_ "github.com/df-mc/dragonfly/server/mob/component/combat"  // E hostile components
+	_ "github.com/df-mc/dragonfly/server/mob/component/core"    // D passive components
+	_ "github.com/df-mc/dragonfly/server/mob/component/shulker" // minecraft:peek and the shulker's attachment
+	_ "github.com/df-mc/dragonfly/server/mob/control"           // C move/look/jump/body controls, movement.*, jump.*
+	_ "github.com/df-mc/dragonfly/server/mob/def"               // A1 definitions, groups, properties, events
+	_ "github.com/df-mc/dragonfly/server/mob/filter"            // A2 filters
+	_ "github.com/df-mc/dragonfly/server/mob/goal/boss"         // bosses: dragon, wither, warden (+ component/boss)
+	_ "github.com/df-mc/dragonfly/server/mob/goal/combat"       // E hostile goals
+	_ "github.com/df-mc/dragonfly/server/mob/goal/core"         // D passive goals
+	_ "github.com/df-mc/dragonfly/server/mob/goal/equip"        // charge_held_item (crossbow charging)
+	_ "github.com/df-mc/dragonfly/server/mob/goal/locomotion"   // water/flying/slime/squid movement (+ component/locomotion)
+	_ "github.com/df-mc/dragonfly/server/mob/goal/misc"         // misc goals (+ component/misc)
+	_ "github.com/df-mc/dragonfly/server/mob/goal/ride"         // riding, taming, owners (+ component/ride, component/tame)
+	_ "github.com/df-mc/dragonfly/server/mob/goal/village"      // villagers, traders, raids, golems, piglins (+ component/village)
+	_ "github.com/df-mc/dragonfly/server/mob/nav"               // B pathfinder + navigation.*
+	_ "github.com/df-mc/dragonfly/server/mob/physics"           // C travel, knock back, fall damage
 )
 
 // Definitions parses every embedded entity definition with the installed
