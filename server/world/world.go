@@ -95,6 +95,10 @@ type World struct {
 	analogWatchers []cube.Pos
 	// beTicks are the block entities ticked in the current tick (Java redstone).
 	beTicks blockEntityTicks
+	// changes logs the positions of the latest block changes, so that values worked out from the blocks around a
+	// position (redstoneMemo) are kept until a block near it changes.
+	changes changeLog
+	memo    redstoneMemo
 
 	viewerMu sync.Mutex
 	viewers  map[*Loader]Viewer
@@ -290,6 +294,7 @@ func (w *World) blockInChunk(c *Column, pos cube.Pos) Block {
 			w.beTicks.noteWrite(c, pos, nil, false)
 		}
 		c.BlockEntities[pos] = nbtB
+		w.blockChangedAt(pos)
 		for _, v := range c.viewers {
 			v.ViewBlockUpdate(pos, nbtB, 0)
 		}
@@ -462,6 +467,7 @@ func (tx *Tx) setBlock(pos cube.Pos, b Block, opts *SetOpts) {
 			delete(c.blockEntityOrder, pos)
 		}
 	}
+	w.blockChangedAt(pos)
 
 	viewers := slices.Clone(c.viewers)
 
@@ -490,6 +496,7 @@ func (tx *Tx) setBlock(pos cube.Pos, b Block, opts *SetOpts) {
 		}
 
 		if secondLayer != nil {
+			w.blockChangedAt(pos)
 			for _, viewer := range viewers {
 				viewer.ViewBlockUpdate(pos, secondLayer, 1)
 			}
@@ -580,6 +587,7 @@ func (tx *Tx) setBlockEntity(pos cube.Pos, b Block) {
 	}
 	c.BlockEntities[pos] = b
 	c.modified = true
+	w.blockChangedAt(pos)
 }
 
 // setBiome sets the Biome at the position passed. If a chunk is not yet loaded
@@ -676,6 +684,7 @@ func (tx *Tx) buildStructure(pos cube.Pos, s Structure) {
 			}
 			c.SetBlock(0, 0, 0, 0, c.Block(0, 0, 0, 0)) // Make sure the heightmap is recalculated.
 			c.modified = true
+			w.everyBlockChanged()
 			if javaRedstone {
 				w.invalidateCurrentSky(chunkPos)
 			}
@@ -763,6 +772,7 @@ func (tx *Tx) setLiquid(pos cube.Pos, b Liquid) {
 		}
 	}
 	c.modified = true
+	w.blockChangedAt(pos)
 
 	w.doBlockUpdatesAround(pos)
 	w.redstone.invalidateAroundLiquidChange(w, pos, w.Range())
@@ -776,6 +786,7 @@ func (w *World) removeLiquids(c *Column, pos cube.Pos) bool {
 	air := w.conf.Blocks.Air()
 
 	noneLeft := false
+	defer w.blockChangedAt(pos)
 	if noLeft, changed := w.removeLiquidOnLayer(c.Chunk, x, y, z, 0); noLeft {
 		if changed {
 			for _, v := range c.viewers {
@@ -1371,6 +1382,7 @@ func (w *World) closeChunk(tx *Tx, pos ChunkPos, c *Column) {
 	}
 	clear(c.Entities)
 	delete(w.chunks, pos)
+	w.everyBlockChanged()
 }
 
 // Close closes the world and saves all chunks currently loaded.
@@ -1598,6 +1610,7 @@ func (w *World) loadChunkAsync(tx *Tx, pos ChunkPos, callback chunkCallback) boo
 func (w *World) addChunk(pos ChunkPos, c *chunk.Column) *Column {
 	column := w.columnFrom(c, pos)
 	w.chunks[pos] = column
+	w.everyBlockChanged()
 	for _, e := range column.Entities {
 		w.entities[e] = pos
 		e.setAndUnlockWorld(w)

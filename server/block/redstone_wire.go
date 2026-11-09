@@ -48,7 +48,7 @@ func (r RedstoneWire) RedstonePower(pos cube.Pos, tx *world.Tx, face cube.Face) 
 	if face == cube.FaceUp {
 		return 0
 	}
-	if tx != nil && redstoneWireFaceHorizontal(face) && !redstoneWirePoweredHorizontalFaces(pos, loadedSource{tx: tx})[face] {
+	if tx != nil && redstoneWireFaceHorizontal(face) && !redstoneWirePoweredFaces(pos, loadedSource{tx: tx})[redstoneHorizontalIndex(face)] {
 		return 0
 	}
 	return r.Power
@@ -62,14 +62,17 @@ func (RedstoneWire) RedstoneSignalLoss(cube.Pos, *world.Tx) int {
 	return 1
 }
 
+// RedstoneLocalRelayerNeighbours: the neighbours of dust depend only on the blocks up to two blocks away.
+func (RedstoneWire) RedstoneLocalRelayerNeighbours() {}
+
 // RedstoneRelayerNeighbours returns all wire positions directly connected to this dust, including dust stepping up or
 // down adjacent blocks.
 func (RedstoneWire) RedstoneRelayerNeighbours(pos cube.Pos, tx *world.Tx) []cube.Pos {
 	neighbours := make([]cube.Pos, 0, 12)
 	src := loadedSource{tx: tx}
-	faces := redstoneWirePoweredHorizontalFaces(pos, src)
-	for _, face := range cube.HorizontalFaces() {
-		if !faces[face] {
+	faces := redstoneWirePoweredFaces(pos, src)
+	for i, face := range cube.HorizontalFaces() {
+		if !faces[i] {
 			continue
 		}
 		side := pos.Side(face)
@@ -239,27 +242,71 @@ func redstoneWireConnections(pos cube.Pos, src world.BlockSource) WireConnection
 	return WireConnections{north: connection(0), east: connection(1), south: connection(2), west: connection(3)}
 }
 
-// redstoneWirePoweredHorizontalFaces returns the horizontal faces connected by the wire shape.
-func redstoneWirePoweredHorizontalFaces(pos cube.Pos, src world.BlockSource) map[cube.Face]bool {
+// redstoneWirePoweredFaces returns the horizontal faces connected by the wire shape, in the order of
+// [cube.HorizontalFaces].
+func redstoneWirePoweredFaces(pos cube.Pos, src world.BlockSource) [4]bool {
 	links := redstoneWireLinksAround(pos, src)
 	if world.JavaRedstone() && redstoneWireIsDot(pos, src, links) {
-		return map[cube.Face]bool{}
+		return [4]bool{}
 	}
-	faces := redstoneWireShape(links, redstoneWireLinks.connected)
-	connections := make(map[cube.Face]bool, len(faces))
-	for i, face := range cube.HorizontalFaces() {
-		if faces[i] {
-			connections[face] = true
-		}
+	return redstoneWireShape(links, redstoneWireLinks.connected)
+}
+
+// redstoneHorizontalIndex returns the index of a horizontal face in [cube.HorizontalFaces].
+func redstoneHorizontalIndex(face cube.Face) int {
+	switch face {
+	case cube.FaceNorth:
+		return 0
+	case cube.FaceEast:
+		return 1
+	case cube.FaceSouth:
+		return 2
+	default:
+		return 3
 	}
-	return connections
 }
 
 // redstoneWireLinksAround returns the links of the wire at pos through each
-// horizontal face, in the order of [cube.HorizontalFaces].
+// horizontal face, in the order of [cube.HorizontalFaces]. The links depend
+// only on the blocks around pos: read from a world, they are kept until a
+// block changes (world.RedstoneMemoWireLinks).
 func redstoneWireLinksAround(pos cube.Pos, src world.BlockSource) (links [4]redstoneWireLinks) {
+	ls, memo := src.(loadedSource)
+	memo = memo && ls.tx != nil
+	var gen uint64
+	if memo {
+		var v uint64
+		var ok bool
+		if v, ok, gen = ls.tx.RedstoneMemo(world.RedstoneMemoWireLinks, pos); ok {
+			return unpackRedstoneWireLinks(v)
+		}
+	}
 	for i, face := range cube.HorizontalFaces() {
 		links[i] = redstoneWireLinksThrough(pos, src, face)
+	}
+	if memo {
+		ls.tx.SetRedstoneMemo(world.RedstoneMemoWireLinks, pos, gen, packRedstoneWireLinks(links))
+	}
+	return links
+}
+
+// packRedstoneWireLinks packs links into five bits a face.
+func packRedstoneWireLinks(links [4]redstoneWireLinks) (v uint64) {
+	for i, l := range links {
+		for j, b := range [5]bool{l.side, l.up, l.down, l.drawnUp, l.drawnDown} {
+			if b {
+				v |= 1 << (i*5 + j)
+			}
+		}
+	}
+	return v
+}
+
+// unpackRedstoneWireLinks is the inverse of packRedstoneWireLinks.
+func unpackRedstoneWireLinks(v uint64) (links [4]redstoneWireLinks) {
+	for i := range links {
+		bit := func(j int) bool { return v&(1<<(i*5+j)) != 0 }
+		links[i] = redstoneWireLinks{side: bit(0), up: bit(1), down: bit(2), drawnUp: bit(3), drawnDown: bit(4)}
 	}
 	return links
 }
