@@ -84,8 +84,10 @@ type (
 // Damage is damage about to be dealt to a mob, passed through the
 // DamageModifier components.
 type Damage struct {
-	Amount float64
-	Source world.DamageSource
+	// Amount is the damage after the mob's armour and protection
+	// enchantments; Raw is the damage Hurt was called with.
+	Amount, Raw float64
+	Source      world.DamageSource
 	// Attacker is the entity responsible (the attacker, or a projectile's
 	// owner), or nil.
 	Attacker world.Entity

@@ -3,6 +3,7 @@
 package boss_test
 
 import (
+	"math"
 	"testing"
 
 	"github.com/df-mc/dragonfly/server/block"
@@ -112,8 +113,10 @@ func TestWitherHalfHealth(t *testing.T) {
 		if wi.Phase1 {
 			t.Fatalf("still phase 1 at %v/%v", m.Health(), m.MaxHealth())
 		}
-		if wi.Damage[pl.H()] != 5 {
-			t.Errorf("player damage %v, want 5", wi.Damage[pl.H()])
+		// 5 less the wither's natural armour of 4 (WitherBoss::
+		// getArmorValue): max(4-5/2, 0.8) points, 6% off.
+		if want := 5 * (1 - 0.04*1.5); math.Abs(wi.Damage[pl.H()]-want) > 1e-9 {
+			t.Errorf("player damage %v, want %v", wi.Damage[pl.H()], want)
 		}
 	})
 	w.Tick(25)

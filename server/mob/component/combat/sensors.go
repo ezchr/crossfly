@@ -255,8 +255,12 @@ func (s *DamageSensor) ModifyDamage(m *mob.Mob, d *mob.Damage) {
 	ctx := m.Ctx()
 	ctx.Other, ctx.Damager, ctx.Damage = d.Attacker, d.Attacker, d.Source
 	// DamageSensorComponent::recordGenericDamage: fatal is the damage before
-	// the sensor changes it against the health (an int in BDS).
-	ctx.DamageFatal = d.Amount >= math.Trunc(m.Health())
+	// armour and the sensor change it, against the health (an int in BDS).
+	raw := d.Raw
+	if raw == 0 {
+		raw = d.Amount
+	}
+	ctx.DamageFatal = raw >= math.Trunc(m.Health())
 	if d.Attacker == nil {
 		if _, ok := d.Source.(entity.LightningDamageSource); ok {
 			ctx.Other = nearbyLightning(m)

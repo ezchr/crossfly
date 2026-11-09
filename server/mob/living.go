@@ -130,10 +130,18 @@ func (m *Mob) Hurt(dmg float64, src world.DamageSource) (float64, world.HurtResu
 	if m.Dead() || dmg < 0 {
 		return 0, world.HurtIgnored
 	}
-	d := &Damage{Amount: dmg, Source: src, Attacker: attackerOf(src)}
+	d := &Damage{Amount: dmg, Raw: dmg, Source: src, Attacker: attackerOf(src)}
 	if m.riderInvulnerable(d.Attacker) {
 		return 0, world.HurtIgnored
 	}
+	// HealthAttributeDelegate::getBuffValueWithModifiers: armour, then the
+	// protection enchantments, come before the damage sensor's multiplier
+	// and the actor's own damage rules (a wither's lethal hit, a witch's
+	// magic resistance).
+	if src.ReducedByArmour() {
+		d.Amount = m.armourReduced(d.Amount)
+	}
+	d.Amount = m.protectionReduced(d.Amount, src)
 	for _, c := range s.comps {
 		if dm, ok := c.comp.(DamageModifier); ok {
 			dm.ModifyDamage(m, d)
@@ -155,10 +163,6 @@ func (m *Mob) Hurt(dmg float64, src world.DamageSource) (float64, world.HurtResu
 		return 0, world.HurtIgnored
 	}
 	total := d.Amount
-	if src.ReducedByArmour() {
-		total = m.armourReduced(total)
-	}
-	total = m.protectionReduced(total, src)
 	if res, ok := s.effects.Effect(effect.Resistance); ok && src.ReducedByResistance() {
 		total *= math.Max(0, 1-0.2*float64(res.Level()))
 	}
@@ -176,7 +180,7 @@ func (m *Mob) Hurt(dmg float64, src world.DamageSource) (float64, world.HurtResu
 	s.noAction = 0
 	m.viewHealth()
 	if src.ReducedByArmour() {
-		m.hurtArmour(d.Amount)
+		m.hurtArmour(d.Raw)
 	}
 
 	if d.Attacker != nil && d.Attacker.H() != m.H() {
