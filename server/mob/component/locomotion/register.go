@@ -12,6 +12,7 @@ package locomotion
 
 import (
 	"github.com/df-mc/dragonfly/server/mob"
+	"github.com/df-mc/dragonfly/server/mob/filter"
 	"github.com/sandertv/gophertunnel/minecraft/protocol"
 )
 
@@ -50,4 +51,5 @@ func init() {
 	mob.RegisterSystem(mob.System{Name: "locomotion/float_facing", Stage: mob.StageTravel, Order: 21, Tick: floatNavigationAfter})
 	mob.RegisterHurtHook(mob.HurtHook{Name: "locomotion/guardian_thorns", Hurt: guardianThorns})
 	mob.RegisterDeathHook(mob.DeathHook{Name: "locomotion/slime_split", Die: slimeSplit})
+	filter.RegisterFlagSource(waterBottleFlag)
 }

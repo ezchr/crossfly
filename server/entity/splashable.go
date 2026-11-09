@@ -87,13 +87,14 @@ func potionSplash(durMul float64, pot potion.Potion, linger bool) func(e *Ent, t
 				if b, ok := tx.Block(resultPos).(SplashableBlock); ok {
 					b.Splash(tx, resultPos)
 				}
-			case trace.EntityResult:
-				// TODO: Damage endermen, blazes, striders and snow golems when implemented and rehydrate axolotls.
 			}
 
 			for otherE := range filterLiving(tx.EntitiesWithin(box.GrowVec3(mgl64.Vec3{8.25, 4.25, 8.25}))) {
 				if splashE, ok := otherE.(SplashableEntity); ok {
 					splashE.Splash(tx, otherE.Position())
+				}
+				if otherE.Position().Sub(pos).LenSqr() < waterSplashRange*waterSplashRange {
+					markWaterBottle(otherE)
 				}
 			}
 		}
@@ -101,4 +102,42 @@ func potionSplash(durMul float64, pot potion.Potion, linger bool) func(e *Ent, t
 			tx.AddEntity(NewAreaEffectCloud(world.EntitySpawnOpts{Position: pos}, pot))
 		}
 	}
+}
+
+// waterSplashRange is the projectile splash_range BDS uses for splash
+// potions (4).
+const waterSplashRange = 4
+
+// waterBottleKey is the per-mob Data key of the tick a water bottle splashed
+// the mob.
+type waterBottleKey struct{}
+
+// waterBottleHolder is a mob (server/mob *Mob) as the water splash sees it.
+type waterBottleHolder interface {
+	Data(key any) (any, bool)
+	SetData(key, v any)
+	Ticks() int64
+}
+
+// markWaterBottle is Actor::onAffectedByWaterBottle
+// (SplashPotionEffectSubcomponent::applyMobEffects, water bottle): the
+// entity counts as in contact with water during its next tick.
+func markWaterBottle(e world.Entity) {
+	if h, ok := e.(waterBottleHolder); ok {
+		h.SetData(waterBottleKey{}, h.Ticks())
+	}
+}
+
+// AffectedByWaterBottle reports whether a splash water bottle hit e (a mob)
+// just before its current tick, Actor::isAffectedByWaterBottle: BDS keeps
+// the in_contact_with_water filter true for that one tick, so blazes,
+// endermen, striders and snow golems take their hurt_on_condition drowning
+// damage, and drying_out_timer refills.
+func AffectedByWaterBottle(e world.Entity) bool {
+	h, ok := e.(waterBottleHolder)
+	if !ok {
+		return false
+	}
+	v, ok := h.Data(waterBottleKey{})
+	return ok && v.(int64)+1 == h.Ticks()
 }

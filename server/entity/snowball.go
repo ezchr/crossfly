@@ -2,6 +2,7 @@ package entity
 
 import (
 	"github.com/df-mc/dragonfly/server/block/cube"
+	"github.com/df-mc/dragonfly/server/block/cube/trace"
 	"github.com/df-mc/dragonfly/server/world"
 	"github.com/df-mc/dragonfly/server/world/particle"
 )
@@ -18,6 +19,26 @@ var snowballConf = ProjectileBehaviourConfig{
 	Drag:          0.01,
 	Particle:      particle.SnowballPoof{},
 	ParticleCount: 6,
+	Hit:           snowballHit,
+}
+
+// snowballHit is the snowball impact_damage of the Bedrock definition
+// (damage 3, filter blaze): a snowball hurts only blazes, by 3. Every other
+// entity hit takes the 0 damage hit and the knock back of the projectile.
+func snowballHit(e *Ent, tx *world.Tx, res trace.Result) {
+	r, ok := res.(trace.EntityResult)
+	if !ok || r.Entity().H().Type().EncodeEntity() != "minecraft:blaze" {
+		return
+	}
+	l, ok := r.Entity().(Living)
+	if !ok {
+		return
+	}
+	var owner world.Entity
+	if h := e.ProjectileOwner(); h != nil {
+		owner, _ = h.Entity(tx)
+	}
+	l.Hurt(3, ProjectileDamageSource{Projectile: e, Owner: owner})
 }
 
 // SnowballType is a world.EntityType implementation for snowballs.

@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"slices"
 
+	"github.com/df-mc/dragonfly/server/entity"
 	"github.com/df-mc/dragonfly/server/item"
 	"github.com/df-mc/dragonfly/server/mob"
 	"github.com/df-mc/dragonfly/server/mob/component/combat/sense"
@@ -66,6 +67,9 @@ func (c *dryingOutTimer) Tick(m *mob.Mob) {
 		c.state = 2
 		c.stopped.Fire(m, nil)
 		return
+	}
+	if entity.AffectedByWaterBottle(m) {
+		c.RefillWater(m)
 	}
 	if c.timer > 0 {
 		c.timer--
