@@ -10,3 +10,9 @@
 
 # NetherNet server identity keys
 /keys
+
+# Crossfly binaries and server data
+/crossfly
+/crossfly-full
+/dragonfly
+/ops.json

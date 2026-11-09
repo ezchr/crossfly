@@ -21,6 +21,9 @@ jobs:
       - name: Test
         run: go test ./...
 
+      - name: Test Crossfly Full
+        run: go test -tags crossfly_full ./...
+
       - name: Verify generated code
         run: |
           go generate ./server/block/

@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"os"
 
+	"github.com/df-mc/dragonfly/commands"
 	"github.com/df-mc/dragonfly/server"
 	"github.com/df-mc/dragonfly/server/java/javasession"
 	jserver "github.com/df-mc/dragonfly/server/java/protocol/server"
@@ -13,10 +14,20 @@ import (
 	"github.com/pelletier/go-toml"
 )
 
-// fileConfig is config.toml: Dragonfly's settings plus the Java Edition listener.
+// fileConfig is config.toml: Dragonfly's settings plus the Java Edition listener, the commands and, in Crossfly
+// Full, its features (Edition: core.go, full.go).
 type fileConfig struct {
 	server.UserConfig
-	Java javaConfig
+	Java     javaConfig
+	Commands commandsConfig
+	Edition
+}
+
+// commandsConfig holds the settings of the commands.
+type commandsConfig struct {
+	// OperatorsFile is the JSON file with the players who may run every command (/op, /deop). The server
+	// console runs every command too: type "op <name>" there to add the first one.
+	OperatorsFile string `comment:"OperatorsFile is the JSON file of the players who may run every command (/op, /deop). The server console runs every command too: type op <name> there to add the first operator."`
 }
 
 // javaConfig holds the settings of the Java Edition listener.
@@ -50,14 +61,22 @@ func defaultConfig() fileConfig {
 			CompressionThreshold: 256,
 			ChunkRadius:          12,
 		},
+		Commands: commandsConfig{OperatorsFile: "ops.json"},
+		Edition:  defaultEdition(),
 	}
 }
 
 func main() {
 	log := slog.Default()
 	chat.Global.Subscribe(chat.StdoutSubscriber{})
-	fc, err := readConfig()
+	fc, created, err := readConfig()
 	if err != nil {
+		log.Error("config.toml", "err", err)
+		os.Exit(1)
+	}
+	// Blocks, items and entities of Crossfly Full are registered before the server is configured: the block
+	// registry and the creative inventory are made then.
+	if err := fc.Edition.register(log); err != nil {
 		log.Error("config.toml", "err", err)
 		os.Exit(1)
 	}
@@ -66,9 +85,21 @@ func main() {
 		log.Error("config.toml", "err", err)
 		os.Exit(1)
 	}
+	fc.Edition.configure(&conf)
+	ops, err := commands.LoadOperators(fc.Commands.OperatorsFile)
+	if err != nil {
+		log.Error("operators", "file", fc.Commands.OperatorsFile, "err", err)
+		os.Exit(1)
+	}
 
 	srv := conf.New()
 	srv.CloseOnProgramEnd()
+	commands.Register(srv, ops)
+	fc.Edition.start(srv, log)
+	if created {
+		firstStart(log)
+	}
+	go commands.RunConsole(os.Stdin, log)
 	if fc.Java.Enabled {
 		if err := startJava(srv, conf, fc.Java, log); err != nil {
 			log.Error("Java Edition listener", "err", err)
@@ -118,23 +149,23 @@ func startJava(srv *server.Server, conf server.Config, jc javaConfig, log *slog.
 	return nil
 }
 
-// readConfig reads config.toml, or writes the default one if it does not exist yet. Settings missing from an
-// older file keep their defaults.
-func readConfig() (fileConfig, error) {
-	c := defaultConfig()
+// readConfig reads config.toml, or writes the default one if it does not exist yet (created is then true).
+// Settings missing from an older file keep their defaults.
+func readConfig() (c fileConfig, created bool, err error) {
+	c = defaultConfig()
 	data, err := os.ReadFile("config.toml")
 	if os.IsNotExist(err) {
 		data, err := toml.Marshal(c)
 		if err != nil {
-			return c, fmt.Errorf("encode default config: %w", err)
+			return c, false, fmt.Errorf("encode default config: %w", err)
 		}
-		return c, os.WriteFile("config.toml", data, 0644)
+		return c, true, os.WriteFile("config.toml", data, 0644)
 	}
 	if err != nil {
-		return c, fmt.Errorf("read config: %w", err)
+		return c, false, fmt.Errorf("read config: %w", err)
 	}
 	if err := toml.Unmarshal(data, &c); err != nil {
-		return c, fmt.Errorf("decode config: %w", err)
+		return c, false, fmt.Errorf("decode config: %w", err)
 	}
-	return c, nil
+	return c, false, nil
 }
