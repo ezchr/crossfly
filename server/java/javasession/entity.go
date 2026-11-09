@@ -203,6 +203,29 @@ func (s *Session) HideEntity(e world.Entity) {
 	}
 }
 
+// EntityUpdateInterval is how many ticks apart vanilla sends the movement of the Java entity type e
+// is shown as (EntityType.updateInterval): 3 for most mobs, 2 for allays. The client spreads each
+// move over as many ticks (SteppedInterpolationHandler), so movement sent more often only queues up
+// on its side. Entities drawn with displays (a text display stand-in, or a model of item displays)
+// are sent every tick, as displays are.
+func (s *Session) EntityUpdateInterval(e world.Entity) int {
+	name := bedrockName(e)
+	entityModelsMu.RLock()
+	_, model := entityModels[name]
+	entityModelsMu.RUnlock()
+	if model {
+		return 1
+	}
+	typ, _ := javaTypeName(e)
+	switch typ {
+	case "minecraft:text_display", "minecraft:item_display", "minecraft:block_display":
+		return 1
+	case "minecraft:allay", "minecraft:player", "minecraft:mannequin", "minecraft:evoker_fangs":
+		return 2
+	}
+	return 3
+}
+
 // ViewEntityMovement moves another entity to an absolute position.
 func (s *Session) ViewEntityMovement(e world.Entity, pos mgl64.Vec3, rot cube.Rotation, onGround bool) {
 	if e.H() == s.ent || s.drivenBySelf(e) {

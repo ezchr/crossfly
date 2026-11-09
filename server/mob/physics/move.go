@@ -174,8 +174,10 @@ func pushEntities(m *mob.Mob, s *state) {
 		if p, ok := e.(*player.Player); ok {
 			// The player's own pushActors pushes the mob, never itself.
 			if s.pushable && p.GameMode().HasCollision() && !p.Dead() {
-				d := pushVector(m.Position(), p.Position(), 0)
-				m.SetVelocity(m.Velocity().Add(d))
+				if d := pushVector(m.Position(), p.Position(), 0); d != (mgl64.Vec3{}) {
+					m.SetVelocity(m.Velocity().Add(d))
+					m.SyncMovement()
+				}
 			}
 			continue
 		}
@@ -188,9 +190,16 @@ func pushEntities(m *mob.Mob, s *state) {
 			continue
 		}
 		d := pushVector(m.Position(), o.Position(), os.pushThrough)
+		if d == (mgl64.Vec3{}) {
+			continue
+		}
+		// A push shows both mobs to Java viewers at once (Entity.push sets
+		// needsSync).
 		o.SetVelocity(o.Velocity().Sub(d))
+		o.SyncMovement()
 		if s.pushable {
 			m.SetVelocity(m.Velocity().Add(d))
+			m.SyncMovement()
 		}
 	}
 }

@@ -3,6 +3,7 @@
 package mob
 
 import (
+	"cmp"
 	"math"
 
 	"github.com/df-mc/dragonfly/server/block"
@@ -216,50 +217,144 @@ func (m *Mob) defaultEnvironment() {
 	}
 }
 
-// SendMovement is the default StageSend step: it shows position, rotation
-// (yaw, pitch, head and body yaw) and velocity changes since the last send to
-// the viewers of the mob.
+// sentMovement is the movement of a mob as its viewers of one edition were
+// last shown it.
+type sentMovement struct {
+	pos, vel         mgl64.Vec3
+	rot              cube.Rotation
+	headYaw, bodyYaw float64
+	onGround         bool
+}
+
+// movementNow is the mob's current movement, to compare with what was sent.
+func (m *Mob) movementNow() sentMovement {
+	s := m.s
+	return sentMovement{pos: m.Position(), vel: m.Velocity(), rot: m.Rotation(), headYaw: s.headYaw, bodyYaw: s.bodyYaw, onGround: s.physics.OnGround}
+}
+
+// javaViewer is a viewer that is a Java Edition client (package
+// javasession). Java Edition shows entity movement with its own rules and
+// cadence (ServerEntity.sendChanges), so the mob keeps what it last showed
+// Java viewers apart from what it showed Bedrock viewers.
+type javaViewer interface {
+	// EntityUpdateInterval returns the update interval of the Java entity
+	// type e is shown as (EntityType.updateInterval, 3 for most mobs): its
+	// movement is sent every that many ticks, and the client spreads each
+	// move over as many ticks.
+	EntityUpdateInterval(e world.Entity) int
+}
+
+// SendMovement is the default StageSend step: it shows the mob's movement to
+// its viewers by the rules of their edition, as the vanilla servers do.
+//
+// Bedrock viewers (BDS SpatialActorNetworkData::sendUpdate and
+// Actor::sendMotionPacketIfNeeded, every tick): the position and rotation
+// when MoveActorAbsoluteData::isDifferenceSignificant, the velocity when it
+// changed by more than 0.2 a tick or became zero.
+//
+// Java viewers (ServerEntity.sendChanges): every update interval of the
+// mob's Java type, or at once after a push or knockback (Entity.needsSync),
+// the position, rotation, head turn and velocity that changed.
 func (m *Mob) SendMovement() {
 	s := m.s
-	pos, rot, vel := m.Position(), m.Rotation(), m.Velocity()
-	moved := posChanged(pos, s.sent.pos) || angleChanged(rot[0], s.sent.rot[0]) || angleChanged(rot[1], s.sent.rot[1]) ||
-		angleChanged(s.headYaw, s.sent.headYaw) || angleChanged(s.bodyYaw, s.sent.bodyYaw) || s.physics.OnGround != s.sent.onGround
-	velChanged := velocityChanged(vel, s.sent.vel)
-	if !moved && !velChanged {
+	needsSync := s.needsSync
+	s.needsSync = false
+	now := m.movementNow()
+
+	moved, velChanged := bedrockMoved(now, s.sent), bedrockVelocityChanged(now.vel, s.sent.vel)
+	var javaMoved, javaVelChanged bool
+	javaDecide := func(interval int) {
+		javaMoved, javaVelChanged = false, false
+		if needsSync || s.ticks%int64(interval) == 0 {
+			javaMoved, javaVelChanged = javaMovedFrom(now, s.sentJava), javaVelocityChanged(now.vel, s.sentJava.vel)
+		}
+	}
+	// The Java update interval is asked of the first Java viewer met while
+	// sending; until then it is taken to be the usual 3.
+	javaDecide(cmp.Or(s.javaInterval, 3))
+	if !moved && !velChanged && !javaMoved && !javaVelChanged {
 		return
 	}
-	for _, v := range m.Tx().Viewers(pos) {
-		if velChanged {
-			v.ViewEntityVelocity(m, vel)
+	for _, v := range m.Tx().Viewers(now.pos) {
+		jv, java := v.(javaViewer)
+		if !java {
+			if velChanged {
+				v.ViewEntityVelocity(m, now.vel)
+			}
+			if moved {
+				v.ViewEntityMovement(m, now.pos, now.rot, now.onGround)
+			}
+			continue
 		}
-		if moved {
-			v.ViewEntityMovement(m, pos, rot, s.physics.OnGround)
+		if s.javaInterval <= 0 {
+			s.javaInterval = max(jv.EntityUpdateInterval(m), 1)
+			javaDecide(s.javaInterval)
+		}
+		if javaVelChanged {
+			v.ViewEntityVelocity(m, now.vel)
+		}
+		if javaMoved {
+			v.ViewEntityMovement(m, now.pos, now.rot, now.onGround)
 		}
 	}
 	// Only what was sent: changes too small to send add up until they are.
+	s.sent.update(now, moved, velChanged)
+	s.sentJava.update(now, javaMoved, javaVelChanged)
+}
+
+// update records what was sent of now.
+func (s *sentMovement) update(now sentMovement, moved, velChanged bool) {
 	if moved {
-		s.sent.pos, s.sent.rot = pos, rot
-		s.sent.headYaw, s.sent.bodyYaw, s.sent.onGround = s.headYaw, s.bodyYaw, s.physics.OnGround
+		vel := s.vel
+		*s = now
+		s.vel = vel
 	}
 	if velChanged {
-		s.sent.vel = vel
+		s.vel = now.vel
 	}
 }
 
-// posChanged reports whether a mob moved from the position last sent: more
-// than 1/1024 of a block on an axis. (mgl64's ApproxEqualThreshold, used
-// before, compares relative to the size of the values: near the origin it
-// sent every speck of movement, 1000 blocks out it held moves back until
-// they were a block long.)
-func posChanged(pos, sent mgl64.Vec3) bool {
-	const d = 1.0 / 1024
-	return math.Abs(pos[0]-sent[0]) > d || math.Abs(pos[1]-sent[1]) > d || math.Abs(pos[2]-sent[2]) > d
+// bedrockMoved is BDS MoveActorAbsoluteData::isDifferenceSignificant: the
+// pitch, yaw and head yaw (as the bytes the packet carries) turned by more
+// than 4 degrees together, the mob moved more than 0.01 blocks, or it moved
+// more than 0.001 blocks and has (almost) no velocity left. The body yaw and
+// the on-ground flag are not compared: the client turns the body itself.
+func bedrockMoved(now, sent sentMovement) bool {
+	turn := byteAngleDiff(now.rot[1], sent.rot[1]) + byteAngleDiff(now.rot[0], sent.rot[0]) + byteAngleDiff(now.headYaw, sent.headYaw)
+	d := now.pos.Sub(sent.pos).LenSqr()
+	return turn > 4 || d > 1e-4 || now.vel.LenSqr() < 1e-6 && d > 1e-6
 }
 
-// velocityChanged is Java's ServerEntity rule for sending entity motion: the
+// byteAngleDiff is the difference in degrees between two angles as BDS
+// compares them: each packed into a byte (PacketUtil::degreesToByte) and
+// read back as a signed byte (byteToDegrees), without wrapping around.
+func byteAngleDiff(a, b float64) float64 {
+	const step = 360.0 / 256
+	return math.Abs(float64(int8(angleStep(a)))-float64(int8(angleStep(b)))) * step
+}
+
+// bedrockVelocityChanged is Actor::sendMotionPacketIfNeeded: a
+// SetActorMotion when the velocity moved more than 0.2 a tick from the one
+// last sent, or became zero.
+func bedrockVelocityChanged(vel, sent mgl64.Vec3) bool {
+	d := vel.Sub(sent).LenSqr()
+	return d > 0.04 || d > 0 && vel.LenSqr() == 0
+}
+
+// javaMovedFrom is ServerEntity's test for a move packet: the position moved
+// by at least sqrt(7.6293945e-6) blocks from the one last sent, the yaw or
+// pitch byte changed (the move packets carry the body yaw), the head yaw byte
+// changed (rotate_head), or the mob landed or left the ground (vanilla then
+// sends a full entity_position_sync).
+func javaMovedFrom(now, sent sentMovement) bool {
+	return now.pos.Sub(sent.pos).LenSqr() >= 7.6293945e-6 || angleChanged(now.bodyYaw, sent.bodyYaw) ||
+		angleChanged(now.rot[1], sent.rot[1]) || angleChanged(now.headYaw, sent.headYaw) || now.onGround != sent.onGround
+}
+
+// javaVelocityChanged is ServerEntity's rule for set_entity_motion: the
 // velocity moved by more than sqrt(1e-7) from the one last sent, or it became
-// zero. Bedrock clients only predict with it between position updates.
-func velocityChanged(vel, sent mgl64.Vec3) bool {
+// zero.
+func javaVelocityChanged(vel, sent mgl64.Vec3) bool {
 	d := vel.Sub(sent).LenSqr()
 	return d > 1e-7 || d > 0 && vel.LenSqr() == 0
 }
@@ -272,11 +367,17 @@ func angleChanged(a, sent float64) bool {
 
 func angleStep(a float64) int64 { return int64(math.Floor(a*256/360)) & 255 }
 
+// SyncMovement shows the mob's movement to Java viewers in this tick's
+// StageSend even if their update interval is not due (vanilla
+// Entity.needsSync, set by pushes and knockback). Bedrock viewers are shown
+// every tick anyway.
+func (m *Mob) SyncMovement() { m.s.needsSync = true }
+
 // MarkSent records what viewers were last shown, for custom movement
 // senders.
 func (s *state) MarkSent(pos, vel mgl64.Vec3, rot cube.Rotation) {
-	s.sent.pos, s.sent.vel, s.sent.rot = pos, vel, rot
-	s.sent.headYaw, s.sent.bodyYaw, s.sent.onGround = s.headYaw, s.bodyYaw, s.physics.OnGround
+	s.sent = sentMovement{pos: pos, vel: vel, rot: rot, headYaw: s.headYaw, bodyYaw: s.bodyYaw, onGround: s.physics.OnGround}
+	s.sentJava = s.sent
 }
 
 // MarkSent records that viewers were shown the mob's current movement (for

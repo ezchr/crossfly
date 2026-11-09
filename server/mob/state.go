@@ -12,7 +12,6 @@ import (
 	"github.com/df-mc/dragonfly/server/item"
 	"github.com/df-mc/dragonfly/server/item/inventory"
 	"github.com/df-mc/dragonfly/server/world"
-	"github.com/go-gl/mathgl/mgl64"
 )
 
 // state is everything a mob keeps between ticks. It is the entity.Behaviour
@@ -80,12 +79,14 @@ type state struct {
 	// minecraft:web, so the environment step skips cobwebs.
 	ignoreWebs bool
 
-	sent struct {
-		pos, vel         mgl64.Vec3
-		rot              cube.Rotation
-		headYaw, bodyYaw float64
-		onGround         bool
-	}
+	// sent and sentJava are the movement Bedrock and Java viewers were last
+	// shown (SendMovement).
+	sent, sentJava sentMovement
+	// javaInterval is the update interval of the Java type the mob is shown
+	// as (0: not known yet); needsSync shows the movement to Java viewers in
+	// this tick's StageSend whatever the interval (SyncMovement).
+	javaInterval int
+	needsSync    bool
 
 	scratch map[any]any
 

@@ -39,4 +39,5 @@ func KnockBack(m *mob.Mob, src mgl64.Vec3, force, height float64) {
 		v[1] = height
 	}
 	m.SetVelocity(v)
+	m.SyncMovement() // LivingEntity.knockback sets needsSync
 }

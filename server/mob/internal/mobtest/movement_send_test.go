@@ -61,3 +61,68 @@ func TestMovementSentFarFromOrigin(t *testing.T) {
 		}
 	}
 }
+
+// javaMoveCounter is a moveCounter that is a Java Edition viewer.
+type javaMoveCounter struct{ moveCounter }
+
+func (*javaMoveCounter) EntityUpdateInterval(world.Entity) int { return 3 }
+
+// TestMovementSentPerEdition: a mob that moves every tick is shown to a
+// Bedrock viewer every tick (BDS) and to a Java viewer every third tick, its
+// Java update interval (ServerEntity), unless it was pushed (needsSync). Its
+// velocity changing by small steps is shown to Java viewers, not to Bedrock
+// ones (BDS sends motion only on a change of more than 0.2 a tick).
+func TestMovementSentPerEdition(t *testing.T) {
+	w := mobtest.New(t, mobtest.Options{})
+	w.Do(func(tx *world.Tx) {
+		w.Fill(tx, cube.Pos{-8, 0, -8}, cube.Pos{40, 0, 8}, block.Stone{})
+	})
+	r := w.Spawn("minecraft:cow", mgl64.Vec3{0.5, 1, 0.5})
+	r.With(func(m *mob.Mob) {
+		m.Goals().StopAll(m)
+		m.Goals().ClearAll()
+	})
+	bedrock, java := &moveCounter{}, &javaMoveCounter{}
+	w.Do(func(tx *world.Tx) {
+		for _, v := range []world.Viewer{bedrock, java} {
+			l := world.NewLoader(3, tx.World(), v)
+			l.Move(tx, mgl64.Vec3{0.5, 1, 0})
+			l.Load(tx, 100)
+		}
+	})
+	w.Tick(40)
+	for _, c := range []*moveCounter{bedrock, &java.moveCounter} {
+		c.moves.Store(0)
+		c.motions.Store(0)
+	}
+	for i := range 30 {
+		r.With(func(m *mob.Mob) {
+			m.SetPosition(mgl64.Vec3{0.5 + float64(i+1)*0.1, 1, 0.5})
+			m.SetVelocity(mgl64.Vec3{0.1 + float64(i)*0.001, 0, 0})
+		})
+		w.Tick(1)
+	}
+	if n := bedrock.moves.Load(); n < 29 {
+		t.Errorf("Bedrock viewer: shown %d moves in 30 ticks of moving, want every tick", n)
+	}
+	if n := java.moves.Load(); n < 9 || n > 11 {
+		t.Errorf("Java viewer: shown %d moves in 30 ticks of moving, want every 3rd tick", n)
+	}
+	if n := java.motions.Load(); n < 9 || n > 11 {
+		t.Errorf("Java viewer: shown %d motions in 30 ticks, want every 3rd tick", n)
+	}
+	if n := bedrock.motions.Load(); n > 1 {
+		t.Errorf("Bedrock viewer: shown %d motions for a velocity changing 0.001 a tick, want at most 1", n)
+	}
+	java.moves.Store(0)
+	for i := range 6 {
+		r.With(func(m *mob.Mob) {
+			m.SetPosition(mgl64.Vec3{3.5 + float64(i+1)*0.1, 1, 0.5})
+			m.SyncMovement()
+		})
+		w.Tick(1)
+	}
+	if n := java.moves.Load(); n < 6 {
+		t.Errorf("Java viewer: a mob pushed every tick was shown %d moves in 6 ticks, want 6", n)
+	}
+}

@@ -97,6 +97,7 @@ func (m *Mob) KnockBack(src mgl64.Vec3, force, height float64) {
 	}
 	v[1] = height
 	m.SetVelocity(v.Mul(1 - m.Attr(AttrKnockbackResistance)))
+	m.SyncMovement()
 }
 
 // attackerOf returns the entity responsible for src.
