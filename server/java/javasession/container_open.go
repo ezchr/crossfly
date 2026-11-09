@@ -59,7 +59,7 @@ func (s *Session) OpenBlockContainer(pos cube.Pos, tx *world.Tx) {
 	switch {
 	case m.ender:
 		m.inv = c.EnderChestInventory()
-	case m.kind == menuChest || m.kind == menuShulker || m.kind == menuHopper || m.kind == menuFurnace || m.kind == menuBrewing:
+	case m.kind == menuChest || m.kind == menuShulker || m.kind == menuHopper || m.kind == menuDispenser || m.kind == menuFurnace || m.kind == menuBrewing:
 		m.inv = b.(block.Container).Inventory(tx, pos)
 		if m.kind == menuChest && m.inv.Size() != m.size {
 			m.size = m.inv.Size()
@@ -463,4 +463,10 @@ func (s *Session) closeContainers(tx *world.Tx, c session.Controllable) {
 	st.applying.Store(true)
 	c.MoveItemsToInventory()
 	st.applying.Store(false)
+}
+
+// CountsForContainerPower excludes spectators from trapped-chest opener counts.
+func (s *Session) CountsForContainerPower(_ *world.Tx) bool {
+	_, c := s.items().current()
+	return c != nil && c.GameMode() != world.GameModeSpectator
 }

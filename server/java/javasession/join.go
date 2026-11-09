@@ -17,6 +17,9 @@ import (
 	"golang.org/x/text/language"
 )
 
+// simulationDistance is the simulation distance in chunks Java clients are told.
+const simulationDistance = 4
+
 // Config configures Run.
 type Config struct {
 	// Server is the Dragonfly server Java players join.
@@ -148,10 +151,10 @@ func (s *Session) sendLogin(pc player.Config, w *world.World) {
 	p.String("minecraft:the_end")
 	p.VarInt(100) // max players (only for the tab list layout)
 	p.VarInt(s.chunkRadius)
-	p.VarInt(s.chunkRadius) // simulation distance
-	p.Bool(false)           // reduced debug info
-	p.Bool(true)            // death screen
-	p.Bool(false)           // limited crafting
+	p.VarInt(min(s.chunkRadius, simulationDistance))
+	p.Bool(false) // reduced debug info
+	p.Bool(true)  // death screen
+	p.Bool(false) // limited crafting
 	p.VarInt(s.ver.RegistryID("minecraft:dimension_type", dim))
 	p.String(dim)
 	p.Int64(0)                        // hashed seed (biome noise; unknown to us)

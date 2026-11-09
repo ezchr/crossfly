@@ -3,6 +3,7 @@ package javamap
 import (
 	"slices"
 	"sort"
+	"strings"
 	"sync"
 
 	"github.com/df-mc/dragonfly/server/world"
@@ -38,7 +39,34 @@ func BlockStatesWithMisses(reg chunk.BlockRegistry) (table []int32, misses []uin
 			}
 		}
 	}
+	pressedPlates(reg, table)
 	return table, misses
+}
+
+// pressedPlates shows every pressed stone, wooden and polished blackstone pressure plate pressed. Bedrock keeps a
+// pressed one at redstone_signal 1 (vanilla's data value, and what Dragonfly sets), while the generated table only
+// has redstone_signal 15 as Java's powered=true.
+func pressedPlates(reg chunk.BlockRegistry, table []int32) {
+	pressed := map[string]int32{}
+	for rid := range uint32(len(table)) {
+		name, props, ok := reg.RuntimeIDToState(rid)
+		if !ok || !strings.HasSuffix(name, "_pressure_plate") || strings.Contains(name, "weighted") {
+			continue
+		}
+		if sig, _ := props["redstone_signal"].(int32); sig == 15 {
+			pressed[name] = table[rid]
+		}
+	}
+	for rid := range uint32(len(table)) {
+		name, props, ok := reg.RuntimeIDToState(rid)
+		if !ok {
+			continue
+		}
+		java, ok := pressed[name]
+		if sig, _ := props["redstone_signal"].(int32); ok && sig > 0 {
+			table[rid] = java
+		}
+	}
 }
 
 // DefaultBlockStates returns BlockStates(world.DefaultBlockRegistry), built on first use. The returned slice is

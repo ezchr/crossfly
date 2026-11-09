@@ -263,7 +263,7 @@ func (s *Session) handleInput(id int32, body []byte) (bool, error) {
 		s.do(func(tx *world.Tx, c session.Controllable) {
 			if h := c.RidingEntityHandle(); h != nil {
 				if e, ok := h.Entity(tx); ok {
-					if rideable, ok := e.(entity.Rideable); ok {
+					if rideable, ok := entity.RideableOf(e); ok {
 						rot := c.Rotation()
 						rideable.MoveInput(move, float32(rot.Yaw()), float32(rot.Pitch()))
 					}
@@ -289,12 +289,16 @@ func (s *Session) handleInput(id int32, body []byte) (bool, error) {
 	case v777.ServerboundPlayPlayerCommand:
 		r.VarInt() // entity id: always the player
 		action := r.VarInt()
-		r.VarInt()
+		data := r.VarInt()
 		if r.Err != nil {
 			return true, r.Err
 		}
 		s.do(func(tx *world.Tx, c session.Controllable) {
 			switch action {
+			case commandStartRidingJump: // data: the jump bar, 0..100
+				vehicleJump(tx, c, float64(data)/100)
+			case commandOpenInventory: // E while riding a horse
+				s.openVehicleInventory(tx, c)
 			case commandStopSleeping: // the Leave Bed button
 				c.Wake()
 			case commandStartSprinting:
@@ -311,6 +315,16 @@ func (s *Session) handleInput(id int32, body []byte) (bool, error) {
 				c.StartGliding()
 			}
 		})
+	case v777.ServerboundPlayMoveVehicle:
+		x, y, z := r.Float64(), r.Float64(), r.Float64()
+		yaw, pitch := r.Float32(), r.Float32()
+		if r.Err != nil {
+			return true, r.Err
+		}
+		s.do(func(tx *world.Tx, c session.Controllable) {
+			vehicleMove(tx, c, mgl64.Vec3{x, y, z}, float64(yaw), float64(pitch))
+		})
+		return true, nil
 	case v777.ServerboundPlayClientCommand:
 		if action := r.VarInt(); r.Err == nil && action == 0 { // perform respawn
 			s.do(func(tx *world.Tx, c session.Controllable) { c.Respawn() })

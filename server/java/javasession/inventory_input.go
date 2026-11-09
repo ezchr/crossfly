@@ -300,6 +300,9 @@ func (st *itemState) creativeStack(js *jitem.Stack, target int) (item.Stack, int
 		}
 		got.Reset()
 		javaStack(ds, &conv)
+		// The client lists components in its own order (for a named head, the profile before or
+		// after the name): written in the same order, the same item encodes the same.
+		conv.Order = append(conv.Order[:0], js.Order...)
 		conv.Count = 1
 		conv.EncodeFor(&got, st.proto)
 		return string(got.B) == string(want.B)
@@ -728,6 +731,8 @@ func (v *view) quickRoute(js int, it *item.Stack) bool {
 			return v.moveStack(it, m.size, m.slots(), true)
 		}
 		return v.moveStack(it, 0, m.size, false)
+	case menuMount:
+		return v.quickRouteMount(js, it)
 	case menuFurnace:
 		switch {
 		case js == 2:

@@ -124,6 +124,20 @@ func bedrockSkin(img image.Image, slim bool) skin.Skin {
 	s := skin.New(64, 64)
 	rgba := image.NewRGBA(image.Rect(0, 0, 64, 64))
 	draw.Draw(rgba, img.Bounds().Intersect(rgba.Bounds()), img, img.Bounds().Min, draw.Src)
+	if img.Bounds().Dy() == 32 {
+		// Legacy skin: no left limbs of its own; Java draws the right ones there.
+		draw.Draw(rgba, image.Rect(16, 48, 32, 64), rgba, image.Pt(0, 16), draw.Src)
+		draw.Draw(rgba, image.Rect(32, 48, 48, 64), rgba, image.Pt(40, 16), draw.Src)
+	}
+	// Java draws the inner layer opaque whatever its alpha; Bedrock honours it, so a skin with
+	// transparent inner pixels would be invisible there (a pvp advantage). Make it opaque.
+	for _, r := range innerLayer {
+		for y := r.Min.Y; y < r.Max.Y; y++ {
+			for x := r.Min.X; x < r.Max.X; x++ {
+				rgba.Pix[rgba.PixOffset(x, y)+3] = 0xff
+			}
+		}
+	}
 	copy(s.Pix, rgba.Pix)
 	s.ArmSize = "wide"
 	s.ModelConfig = skin.ModelConfig{Default: "geometry.humanoid.custom"}
@@ -140,4 +154,11 @@ func bedrockSkin(img image.Image, slim bool) skin.Skin {
 	s.SkinID = id
 	s.FullID = id
 	return s
+}
+
+// innerLayer is where a 64x64 skin keeps the inner (non-overlay) layer: head, right leg, body,
+// right arm, left leg, left arm.
+var innerLayer = []image.Rectangle{
+	image.Rect(0, 0, 32, 16), image.Rect(0, 16, 16, 32), image.Rect(16, 16, 40, 32),
+	image.Rect(40, 16, 56, 32), image.Rect(16, 48, 32, 64), image.Rect(32, 48, 48, 64),
 }

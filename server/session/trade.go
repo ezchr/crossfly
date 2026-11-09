@@ -3,6 +3,7 @@ package session
 import (
 	"fmt"
 	"math"
+	"strconv"
 	"time"
 
 	"github.com/df-mc/dragonfly/server/block/cube"
@@ -32,6 +33,15 @@ import (
 type TradeOffer struct {
 	Buy, Buy2, Sell item.Stack
 	Uses, MaxUses   int
+
+	// The fields below are optional (villager trading, see TradeWindow):
+	// the offer's tier, the trader experience and reward flag, its demand,
+	// the base payment counts before discounts and the price multipliers.
+	Tier, TraderExp                   int
+	RewardExp                         bool
+	Demand                            int
+	BaseBuyCount, BaseBuy2Count       int
+	PriceMultiplier, PriceMultiplier2 float64
 }
 
 type tradeState struct {
@@ -41,6 +51,8 @@ type tradeState struct {
 	name      string
 	offers    []TradeOffer
 	onTrade   func(index, times int) bool
+	// window is set by OpenTradeWindow (villager levels).
+	window *TradeWindow
 }
 
 // Offer network ids live far above any real recipe network id.
@@ -112,18 +124,18 @@ func (s *Session) UpdateTradeOffers(offers []TradeOffer) {
 	if old == nil {
 		return
 	}
-	st := &tradeState{traderRID: old.traderRID, traderID: old.traderID, name: old.name, offers: append([]TradeOffer(nil), offers...), onTrade: old.onTrade}
+	st := &tradeState{traderRID: old.traderRID, traderID: old.traderID, name: old.name, offers: append([]TradeOffer(nil), offers...), onTrade: old.onTrade, window: old.window}
 	s.trade.Store(st)
 	s.sendTradeOffers(st, byte(s.openedWindowID.Load()))
 }
 
 func (s *Session) sendTradeOffers(st *tradeState, windowID byte) {
-	data, err := encodeTradeOffers(st.offers)
+	data, err := encodeTradeOffersWindow(st.offers, st.window)
 	if err != nil {
 		s.conf.Log.Error("encode trade offers: " + err.Error())
 		return
 	}
-	s.writePacket(&packet.UpdateTrade{
+	pk := &packet.UpdateTrade{
 		WindowID:         windowID,
 		WindowType:       protocol.ContainerTypeTrade,
 		Size:             int32(len(st.offers)),
@@ -132,12 +144,24 @@ func (s *Session) sendTradeOffers(st *tradeState, windowID byte) {
 		DisplayName:      st.name,
 		NewTradeUI:       true,
 		SerialisedOffers: data,
-	})
+	}
+	if st.window != nil {
+		pk.Size = 0
+		pk.TradeTier = int32(st.window.Tier)
+		pk.DemandBasedPrices = st.window.Economic
+	}
+	s.writePacket(pk)
 }
 
 // encodeTradeOffers builds the network NBT compound UpdateTrade carries, in
 // the vanilla recipe format (see PowerNukkitX TradeRecipeBuildUtils).
 func encodeTradeOffers(offers []TradeOffer) ([]byte, error) {
+	return encodeTradeOffersWindow(offers, nil)
+}
+
+// encodeTradeOffersWindow is encodeTradeOffers with the villager fields of
+// the offers and the tiers of w (nil: one tier, as before).
+func encodeTradeOffersWindow(offers []TradeOffer, w *TradeWindow) ([]byte, error) {
 	recipes := make([]map[string]any, 0, len(offers))
 	for i, o := range offers {
 		maxUses := o.MaxUses
@@ -163,11 +187,29 @@ func encodeTradeOffers(offers []TradeOffer) ([]byte, error) {
 			r["buyB"] = tradeItemNBT(o.Buy2)
 			r["buyCountB"] = int32(o.Buy2.Count())
 		}
+		if w != nil {
+			r["tier"], r["traderExp"], r["demand"] = int32(o.Tier), int32(o.TraderExp), int32(o.Demand)
+			r["rewardExp"] = boolByte(o.RewardExp)
+			r["priceMultiplierA"], r["priceMultiplierB"] = float32(o.PriceMultiplier), float32(o.PriceMultiplier2)
+			if o.BaseBuyCount > 0 {
+				r["buyCountA"] = int32(o.BaseBuyCount)
+			}
+			if o.BaseBuy2Count > 0 && !o.Buy2.Empty() {
+				r["buyCountB"] = int32(o.BaseBuy2Count)
+			}
+		}
 		recipes = append(recipes, r)
+	}
+	tiers := []map[string]any{{"0": int32(0)}}
+	if w != nil && len(w.TierExp) > 0 {
+		tiers = tiers[:0]
+		for i, e := range w.TierExp {
+			tiers = append(tiers, map[string]any{strconv.Itoa(i): int32(e)})
+		}
 	}
 	return nbt.MarshalEncoding(map[string]any{
 		"Recipes":             recipes,
-		"TierExpRequirements": []map[string]any{{"0": int32(0)}},
+		"TierExpRequirements": tiers,
 	}, nbt.NetworkLittleEndian)
 }
 
@@ -183,6 +225,9 @@ func (s *Session) closeTrade() bool {
 	st := s.trade.Swap(nil)
 	if st == nil {
 		return false
+	}
+	if st.window != nil && st.window.OnClose != nil {
+		st.window.OnClose()
 	}
 	s.setTradeTarget(st.traderRID, 0)
 	s.conf.Log.Debug("trade window closed", "trader", st.traderRID)
@@ -231,7 +276,11 @@ func (h *ItemStackRequestHandler) handleTrade(netID uint32, times int, req proto
 	if !o.Buy2.Empty() && !tradeInputMatches(inB, o.Buy2, times) {
 		return fmt.Errorf("trade offer %v: second payment slot holds %v, need %v x%v", index, inB, o.Buy2, times)
 	}
-	if st.onTrade != nil && !st.onTrade(index, times) {
+	if st.window != nil && st.window.OnTradeTx != nil {
+		if !st.window.OnTradeTx(tx, index, times) {
+			return fmt.Errorf("trade offer %v refused by trader", index)
+		}
+	} else if st.onTrade != nil && !st.onTrade(index, times) {
 		return fmt.Errorf("trade offer %v refused by trader", index)
 	}
 

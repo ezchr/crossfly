@@ -85,7 +85,7 @@ func BenchmarkLegacyWrite(b *testing.B) {
 	b.ReportAllocs()
 	for i := 0; i < b.N; i++ {
 		w.Reset()
-		c := Legacy("§l§6ZID §r§7| §aKills: §f12 §gCoins", Bedrock)
+		c := Legacy("§l§6Server §r§7| §aKills: §f12 §gCoins", Bedrock)
 		c.Write(&w)
 	}
 }

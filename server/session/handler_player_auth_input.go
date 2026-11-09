@@ -57,6 +57,7 @@ func (h PlayerAuthInputHandler) handleMovement(pk *packet.PlayerAuthInput, s *Se
 				move = keyVector(pk)
 			}
 			rideable.MoveInput(move, pk.Yaw, pk.Pitch)
+			s.vehicleInput(pk, c, rideable)
 		}
 	}
 
@@ -69,7 +70,12 @@ func (h PlayerAuthInputHandler) handleMovement(pk *packet.PlayerAuthInput, s *Se
 	// were unchanged.
 	if !mgl64.FloatEqual(deltaPos.Len(), 0) || !mgl64.FloatEqual(deltaYaw, 0) || !mgl64.FloatEqual(deltaPitch, 0) {
 		if expected := s.teleportPos.Load(); expected != nil {
-			if newPos.Sub(*expected).Len() > 1 {
+			if _, riding := c.RidingEntity(tx); riding {
+				// A rider is where its vehicle puts it, which may be anywhere near the teleport (a
+				// seat placed after it): waiting for the client to reach the teleport would ignore
+				// its movement for good.
+				s.teleportPos.Store(nil)
+			} else if newPos.Sub(*expected).Len() > 1 {
 				// The player has moved before it received the teleport packet. Ignore this movement entirely and
 				// wait for the client to sync itself back to the server. Once we get a movement that is close
 				// enough to the teleport position, we'll allow the player to move around again.

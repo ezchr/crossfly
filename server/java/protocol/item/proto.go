@@ -202,7 +202,7 @@ func (p *Proto) EffectIn(id int32) int32 {
 // keepRaw reports whether a raw component of newest type t can be sent to the version as it is: the
 // version has it and its wire form is a plain value, the same in both versions.
 func (p *Proto) keepRaw(t int32) bool {
-	return uint32(t) < ComponentTypes && rawKinds[t] != kindNone && mapID(p.comps, t) >= 0
+	return uint32(t) < ComponentTypes && rawKind(t) != kindNone && mapID(p.comps, t) >= 0
 }
 
 // skipOld skips the value of the version's component type ot that the newest version lacks.

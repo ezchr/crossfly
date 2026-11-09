@@ -70,6 +70,14 @@ func (s *Session) addBlockEntities(col *jchunk.Column, blocks map[cube.Pos]world
 		}
 		name, _ := b.EncodeBlock()
 		java := javaBlockEntityName(name)
+		var data []byte
+		if jb, ok := b.(JavaBlock); ok {
+			java, data = javaBlockEntityData(jb)
+			section := (pos[1] - javaDimensionMinY(s.dim)) / 16
+			if section >= 0 && section < len(col.Sections) {
+				col.Sections[section].Blocks[jchunk.BlockIndex(pos[0]&15, pos[1]&15, pos[2]&15)] = uint32(s.ver.BlockState(jb.JavaState()))
+			}
+		}
 		if java == "" {
 			continue
 		}
@@ -79,6 +87,7 @@ func (s *Session) addBlockEntities(col *jchunk.Column, blocks map[cube.Pos]world
 		}
 		col.BlockEntities = append(col.BlockEntities, jchunk.BlockEntity{
 			XZ: uint8(pos[0]&15)<<4 | uint8(pos[2]&15), Y: int16(pos[1]), Type: typ,
+			NBT: data,
 		})
 	}
 }

@@ -86,11 +86,16 @@ func (s *Session) ViewEntity(e world.Entity) {
 			actualPlayer = sessions.isPeer(v.UUID())
 		}
 		if !actualPlayer {
+			var playFabID string
+			if p, ok := v.(interface{ PlayFabID() string }); ok {
+				playFabID = p.PlayFabID()
+			}
 			s.writePacket(&packet.PlayerList{Entries: []protocol.PlayerListEntry{{
 				ActionType:     protocol.PlayerListActionAdd,
 				UUID:           v.UUID(),
 				EntityUniqueID: int64(runtimeID),
 				Username:       v.Name(),
+				PlayFabID:      playFabID,
 				BuildPlatform:  int32(protocol.DeviceUnknown),
 				Skin:           skinToProtocol(v.Skin()),
 			}}})
@@ -154,16 +159,18 @@ func (s *Session) ViewEntity(e world.Entity) {
 	}
 
 	s.writePacket(&packet.AddActor{
-		EntityUniqueID:  int64(runtimeID),
-		EntityRuntimeID: runtimeID,
-		EntityType:      id,
-		EntityMetadata:  metadata,
-		Position:        vec64To32(e.Position().Add(entityOffset(e))),
-		Velocity:        vec64To32(vel),
-		Pitch:           float32(pitch),
-		Yaw:             float32(yaw),
-		HeadYaw:         float32(yaw),
-		BodyYaw:         float32(yaw),
+		EntityUniqueID:   int64(runtimeID),
+		EntityRuntimeID:  runtimeID,
+		EntityType:       id,
+		EntityMetadata:   metadata,
+		EntityProperties: entityProperties(e),
+		Attributes:       entityAttributes(e),
+		Position:         vec64To32(e.Position().Add(entityOffset(e))),
+		Velocity:         vec64To32(vel),
+		Pitch:            float32(pitch),
+		Yaw:              float32(yaw),
+		HeadYaw:          float32(entityHeadYaw(e, yaw)),
+		BodyYaw:          float32(entityBodyYaw(e, yaw)),
 	})
 }
 
@@ -193,14 +200,14 @@ func (s *Session) HideEntity(e world.Entity) {
 	if s.entityRuntimeID(e) == selfEntityRuntimeID {
 		return
 	}
-	if rideable, ok := e.(entity.Rideable); ok {
+	if rideable, ok := entity.RideableOf(e); ok {
 		for _, rider := range rideable.Riders() {
 			if rider.Handle != nil {
 				s.viewEntityDismountHandles(rider.Handle, e.H(), true)
 			}
 		}
 	}
-	if rider, ok := e.(entity.Rider); ok {
+	if rider, ok := entity.RiderOf(e); ok {
 		if rideable := rider.RidingEntityHandle(); rideable != nil {
 			s.viewEntityDismountHandles(e.H(), rideable, true)
 		}
@@ -223,7 +230,7 @@ func (s *Session) HideEntity(e world.Entity) {
 // ViewEntityMovement ...
 func (s *Session) ViewEntityMovement(e world.Entity, pos mgl64.Vec3, rot cube.Rotation, onGround bool) {
 	id := s.entityRuntimeID(e)
-	if (id == selfEntityRuntimeID && s.moving) || s.entityHidden(e) {
+	if (id == selfEntityRuntimeID && s.moving) || s.entityHidden(e) || s.drivenBySelf(e) {
 		return
 	}
 	s.viewEntityAbsoluteMovement(id, e, pos, rot, onGround, false)
@@ -246,17 +253,19 @@ func (s *Session) viewEntityAbsoluteMovement(id uint64, e world.Entity, pos mgl6
 	if authoritative {
 		flags |= packet.MoveFlagTeleport
 	}
+	// The rotation is pitch, yaw and head yaw, read by BDS into
+	// MoveActorAbsoluteData. The body yaw is not sent: clients turn the body.
 	s.writePacket(&packet.MoveActorAbsolute{
 		EntityRuntimeID: id,
 		Position:        vec64To32(pos.Add(entityOffset(e))),
-		Rotation:        vec64To32(mgl64.Vec3{rot.Pitch(), rot.Yaw(), rot.Yaw()}),
+		Rotation:        vec64To32(mgl64.Vec3{rot.Pitch(), rot.Yaw(), entityHeadYaw(e, rot.Yaw())}),
 		Flags:           flags,
 	})
 }
 
 // ViewEntityVelocity ...
 func (s *Session) ViewEntityVelocity(e world.Entity, velocity mgl64.Vec3) {
-	if s.entityHidden(e) {
+	if s.entityHidden(e) || s.drivenBySelf(e) {
 		return
 	}
 	s.writePacket(&packet.SetActorMotion{
@@ -313,7 +322,7 @@ func (s *Session) ViewEntityTeleport(e world.Entity, position mgl64.Vec3) {
 	s.writePacket(&packet.MoveActorAbsolute{
 		EntityRuntimeID: id,
 		Position:        vec64To32(position.Add(entityOffset(e))),
-		Rotation:        vec64To32(mgl64.Vec3{pitch, yaw, yaw}),
+		Rotation:        vec64To32(mgl64.Vec3{pitch, yaw, entityHeadYaw(e, yaw)}),
 		Flags:           packet.MoveFlagTeleport,
 	})
 }
@@ -364,7 +373,7 @@ func (s *Session) viewEntityDismountHandles(rider, rideable *world.EntityHandle,
 }
 
 func (s *Session) viewEntityLinks(e world.Entity) {
-	if rideable, ok := e.(entity.Rideable); ok {
+	if rideable, ok := entity.RideableOf(e); ok {
 		controller := rideable.ControllingRider()
 		for _, rider := range rideable.Riders() {
 			if rider.Handle != nil {
@@ -372,7 +381,7 @@ func (s *Session) viewEntityLinks(e world.Entity) {
 			}
 		}
 	}
-	if rider, ok := e.(entity.Rider); ok {
+	if rider, ok := entity.RiderOf(e); ok {
 		if rideable := rider.RidingEntityHandle(); rideable != nil {
 			s.viewEntityMountHandles(e.H(), rideable, rider.RidingEntityController())
 		}
@@ -392,12 +401,14 @@ func (s *Session) ViewEntityItems(e world.Entity) {
 	}
 
 	mainHand, offHand := c.HeldItems()
+	_, isPlayer := e.(Controllable)
 	if h, ok := e.(interface {
 		Invisible() bool
 		NameTag() string
-	}); ok && h.Invisible() && h.NameTag() == "" {
+	}); ok && isPlayer && h.Invisible() && h.NameTag() == "" {
 		// A hidden player (invisible with no name shown, as a tank driver in the tank arena)
-		// holds nothing for others: held items show even on invisible players.
+		// holds nothing for others: held items show even on invisible players. Invisible mobs
+		// keep showing their items, as on BDS.
 		mainHand, offHand = item.Stack{}, item.Stack{}
 	}
 
@@ -421,25 +432,34 @@ func (s *Session) ViewEntityArmour(e world.Entity) {
 		// Don't view the items of the entity if the entity is the Controllable entity of the session.
 		return
 	}
-	armoured, ok := e.(interface {
+	var helmet, chestplate, leggings, boots, body item.Stack
+	armoured, hasArmour := e.(interface {
 		Armour() *inventory.Armour
 	})
-	if !ok {
-		return
+	if hasArmour {
+		if inv := armoured.Armour(); inv != nil {
+			helmet, chestplate, leggings, boots = inv.Helmet(), inv.Chestplate(), inv.Leggings(), inv.Boots()
+		} else {
+			hasArmour = false
+		}
 	}
-
-	inv := armoured.Armour()
-	if inv == nil {
+	// Body armour, such as horse armour, goes in the body slot.
+	b, hasBody := lookupEntity[BodyArmouredEntity](e)
+	if hasBody {
+		body = b.BodyArmour()
+	}
+	if !hasArmour && !hasBody {
 		return
 	}
 
 	// Show the entity's armour
 	s.writePacket(&packet.MobArmourEquipment{
 		EntityRuntimeID: runtimeID,
-		Helmet:          instanceFromItem(s.br, inv.Helmet()),
-		Chestplate:      instanceFromItem(s.br, inv.Chestplate()),
-		Leggings:        instanceFromItem(s.br, inv.Leggings()),
-		Boots:           instanceFromItem(s.br, inv.Boots()),
+		Helmet:          instanceFromItem(s.br, helmet),
+		Chestplate:      instanceFromItem(s.br, chestplate),
+		Leggings:        instanceFromItem(s.br, leggings),
+		Boots:           instanceFromItem(s.br, boots),
+		Body:            instanceFromItem(s.br, body),
 	})
 }
 
@@ -661,6 +681,15 @@ func (s *Session) playSound(pos mgl64.Vec3, t world.Sound, disableRelative bool)
 		ExtraData:             -1,
 		DisableRelativeVolume: disableRelative,
 	}
+	// Mob sound events (server/mob.Sound): the client picks the sound from
+	// the event and the entity type, as for BDS.
+	if ls, ok := t.(interface {
+		LevelSoundEvent() (event, entityType string, baby bool)
+	}); ok {
+		pk.SoundType, pk.EntityType, pk.BabyMob = ls.LevelSoundEvent()
+		s.writePacket(pk)
+		return
+	}
 	switch so := t.(type) {
 	case sound.EquipItem:
 		switch i := so.Item.(type) {
@@ -690,9 +719,23 @@ func (s *Session) playSound(pos mgl64.Vec3, t world.Sound, disableRelative bool)
 		pk.SoundType = packet.SoundEventExplode
 	case sound.Thunder:
 		pk.SoundType, pk.EntityType = packet.SoundEventThunder, "minecraft:lightning_bolt"
+	case sound.PressurePlateClickOn:
+		pk.SoundType, pk.ExtraData = packet.SoundEventPressurePlateClickOn, int32(s.br.BlockRuntimeID(so.Block))
+	case sound.PressurePlateClickOff:
+		pk.SoundType, pk.ExtraData = packet.SoundEventPressurePlateClickOff, int32(s.br.BlockRuntimeID(so.Block))
+	case sound.ButtonClickOn:
+		pk.SoundType, pk.ExtraData = packet.SoundEventButtonClickOn, int32(s.br.BlockRuntimeID(so.Block))
+	case sound.ButtonClickOff:
+		pk.SoundType, pk.ExtraData = packet.SoundEventButtonClickOff, int32(s.br.BlockRuntimeID(so.Block))
 	case sound.Click:
 		s.writePacket(&packet.LevelEvent{
 			EventType: packet.LevelEventSoundClick,
+			Position:  vec64To32(pos),
+		})
+		return
+	case sound.ClickFail:
+		s.writePacket(&packet.LevelEvent{
+			EventType: packet.LevelEventSoundClickFail,
 			Position:  vec64To32(pos),
 		})
 		return
@@ -1025,6 +1068,9 @@ func (s *Session) playSound(pos mgl64.Vec3, t world.Sound, disableRelative bool)
 		})
 		return
 	case sound.MusicDiscEnd:
+		// Stops the disc music by the handle it was started with (PlaySound above). The old
+		// LevelSoundEvent RecordNull did not stop it. Needs gophertunnel PR #549 (the update's
+		// variant index), or the client crashes on this packet.
 		s.writePacket(&packet.ClientboundUpdateSoundData{
 			ServerSoundHandle: so.Handle,
 			Update:            protocol.SoundDataUpdate{Type: protocol.SoundDataUpdateStop},
@@ -1183,7 +1229,7 @@ func (s *Session) ViewBlockUpdate(pos cube.Pos, b world.Block, layer int) {
 		Layer:             uint32(layer),
 	})
 	if v, ok := b.(world.NBTer); ok {
-		if nbtData := v.EncodeNBT(); nbtData != nil {
+		if nbtData := world.NetworkNBT(v); nbtData != nil {
 			nbtData["x"], nbtData["y"], nbtData["z"] = int32(pos.X()), int32(pos.Y()), int32(pos.Z())
 			s.writePacket(&packet.BlockActorData{
 				Position: blockPos,
@@ -1281,14 +1327,29 @@ func (s *Session) ViewEntityAction(e world.Entity, a world.EntityAction) {
 			EntityRuntimeID: s.entityRuntimeID(e),
 			EventType:       packet.ActorEventTalismanActivate,
 		})
+	case interface{ TNTMinecartPrimed() }: // entity.MinecartPrimeAction (Crossfly Full)
+		s.writePacket(&packet.ActorEvent{
+			EntityRuntimeID: s.entityRuntimeID(e),
+			EventType:       packet.ActorEventCartWithPrimeTNT,
+		})
+	case interface{ ActorEvent() uint8 }:
+		// Mob actions that are plain actor events (packet.ActorEvent*): a
+		// sheep eating grass, the elder guardian curse, the dragon breath...
+		s.writePacket(&packet.ActorEvent{
+			EntityRuntimeID: s.entityRuntimeID(e),
+			EventType:       act.ActorEvent(),
+		})
 	}
 }
 
 // ViewEntityState ...
 func (s *Session) ViewEntityState(e world.Entity) {
+	// Unlike BDS, which sends only changed properties, all synced property
+	// values go out every time: the client keeps the last value of each.
 	s.writePacket(&packet.SetActorData{
-		EntityRuntimeID: s.entityRuntimeID(e),
-		EntityMetadata:  s.entityMetadata(e),
+		EntityRuntimeID:  s.entityRuntimeID(e),
+		EntityMetadata:   s.entityMetadata(e),
+		EntityProperties: entityProperties(e),
 	})
 }
 
@@ -1430,6 +1491,11 @@ func (s *Session) openNormalContainer(b block.Container, pos cube.Pos, tx *world
 		containerType = protocol.ContainerTypeSmoker
 	case block.Hopper:
 		containerType = protocol.ContainerTypeHopper
+	case dispenserContainer: // block.Dispenser (Crossfly Full)
+		containerType = protocol.ContainerTypeDispenser
+		if dropper, _ := b.(dispenserContainer).DispenserContainer(); dropper {
+			containerType = protocol.ContainerTypeDropper
+		}
 	}
 
 	s.openedContainerID.Store(uint32(containerType))
@@ -1525,9 +1591,12 @@ func (s *Session) ViewEmote(player world.Entity, emote uuid.UUID) {
 // ViewSkin ...
 func (s *Session) ViewSkin(e world.Entity) {
 	if v, ok := e.(Controllable); ok {
+		sk := skinToProtocol(v.Skin())
+		// Named, as Geyser sends it: vanilla clients did not draw a changed skin without the name.
 		s.writePacket(&packet.PlayerSkin{
-			UUID: v.UUID(),
-			Skin: skinToProtocol(v.Skin()),
+			UUID:        v.UUID(),
+			Skin:        sk,
+			NewSkinName: sk.SkinID,
 		})
 	}
 }
@@ -1667,4 +1736,22 @@ func abs(a int) int {
 // playNamedSound plays a sound by its resource pack name, as /playsound does.
 func (s *Session) playNamedSound(pos mgl64.Vec3, name string, volume, pitch float32) {
 	s.writePacket(&packet.PlaySound{SoundName: name, Position: vec64To32(pos), Volume: volume, Pitch: pitch})
+}
+
+// CountsForContainerPower excludes spectators from trapped-chest opener counts.
+func (s *Session) CountsForContainerPower(tx *world.Tx) bool {
+	if s.ent == nil {
+		return false
+	}
+	e, ok := s.ent.Entity(tx)
+	if !ok {
+		return false
+	}
+	c, ok := e.(interface{ GameMode() world.GameMode })
+	return ok && c.GameMode() != world.GameModeSpectator
+}
+
+// dispenserContainer is a dispenser or dropper (block.Dispenser, part of Crossfly Full).
+type dispenserContainer interface {
+	DispenserContainer() (dropper bool, customName string)
 }

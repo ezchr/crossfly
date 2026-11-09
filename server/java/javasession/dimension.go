@@ -88,6 +88,7 @@ func (s *Session) removeAllEntities() {
 	clear(s.tracks)
 	clear(s.modelParts)
 	clear(s.nameDisplays)
+	clear(s.textModelIDs)
 	s.entMu.Unlock()
 	if len(ids) == 0 {
 		return
@@ -98,4 +99,11 @@ func (s *Session) removeAllEntities() {
 		w.VarInt(id)
 	}
 	s.queue(v777.ClientboundPlayRemoveEntities, w)
+}
+
+func javaDimensionMinY(dim string) int {
+	if dim == "minecraft:overworld" {
+		return -64
+	}
+	return 0
 }

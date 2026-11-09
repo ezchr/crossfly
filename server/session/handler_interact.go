@@ -27,12 +27,15 @@ func (h *InteractHandler) Handle(p packet.Packet, s *Session, tx *world.Tx, c Co
 			h.HoverEntity(tx, target)
 		}
 	case packet.InteractActionOpenInventory:
-		if s.invOpened {
+		if s.openVehicleInventory(tx, c) {
+			// Riding a horse, the inventory key opens the horse's window (mob_container.go).
+			return nil
+		}
+		if !s.invOpened.CompareAndSwap(false, true) {
 			// When there is latency, this might end up being sent multiple times. If we send a ContainerOpen
 			// multiple times, the client crashes.
 			return nil
 		}
-		s.invOpened = true
 		s.writePacket(&packet.ContainerOpen{
 			WindowID:                0,
 			ContainerType:           0xff,

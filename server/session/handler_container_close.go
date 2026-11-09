@@ -22,7 +22,7 @@ func (h *ContainerCloseHandler) Handle(p packet.Packet, s *Session, tx *world.Tx
 	switch pk.WindowID {
 	case 0:
 		// Closing of the normal inventory.
-		s.invOpened = false
+		s.invOpened.Store(false)
 	case byte(s.openedWindowID.Load()):
 		containerType = byte(s.openedContainerID.Load())
 		if !trading {
@@ -30,7 +30,7 @@ func (h *ContainerCloseHandler) Handle(p packet.Packet, s *Session, tx *world.Tx
 		}
 	case 0xff:
 		// Sent when an inventory/container is opened at the same time as chat.
-		s.invOpened = false
+		s.invOpened.Store(false)
 		if !trading {
 			if s.containerOpened.Load() {
 				s.closeCurrentContainer(tx, false)

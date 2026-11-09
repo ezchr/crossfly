@@ -61,6 +61,10 @@ func centre(pos mgl64.Vec3) mgl64.Vec3 {
 // the client may have predicted it); PlaySound's sounds are always played.
 func (s *Session) playSound(pos mgl64.Vec3, t world.Sound, broadcast bool) {
 	s.maybeProbe()
+	if ls, ok := t.(levelSound); ok {
+		s.mobSound(pos, ls)
+		return
+	}
 	switch so := t.(type) {
 	// Entities.
 	case sound.Attack:

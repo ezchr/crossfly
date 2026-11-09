@@ -6,7 +6,6 @@ import (
 	"github.com/df-mc/dragonfly/server/entity"
 	"github.com/df-mc/dragonfly/server/item"
 	v777 "github.com/df-mc/dragonfly/server/java/protocol/v777"
-	"github.com/df-mc/dragonfly/server/player"
 	"github.com/df-mc/dragonfly/server/world"
 )
 
@@ -25,6 +24,9 @@ func (s *Session) ViewEntityMount(rider, rideable world.Entity, _ bool) {
 	}
 	s.entMu.Unlock()
 	s.sendPassengers(rideable.H())
+	if rider.H() == s.ent {
+		s.sendVehicleAttributes(rideable)
+	}
 }
 
 // ViewEntityDismount shows rider getting off rideable.
@@ -44,7 +46,7 @@ func (s *Session) ViewEntityDismount(rider, rideable world.Entity) {
 // that involve it: a vehicle comes into view with its riders, or a rider after its vehicle.
 func (s *Session) noteRiding(e world.Entity) {
 	var vehicles []*world.EntityHandle
-	if r, ok := e.(entity.Rideable); ok {
+	if r, ok := entity.RideableOf(e); ok {
 		var hs []*world.EntityHandle
 		for _, seat := range r.Riders() {
 			hs = append(hs, seat.Handle)
@@ -59,7 +61,7 @@ func (s *Session) noteRiding(e world.Entity) {
 			vehicles = append(vehicles, e.H())
 		}
 	}
-	if p, ok := e.(*player.Player); ok {
+	if p, ok := entity.RiderOf(e); ok {
 		if v := p.RidingEntityHandle(); v != nil {
 			s.entMu.Lock()
 			if s.riders == nil {

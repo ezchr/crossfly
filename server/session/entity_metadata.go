@@ -40,12 +40,15 @@ func (s *Session) parseEntityMetadata(e world.Entity) protocol.EntityMetadata {
 	if ent, ok := e.(interface{ Behaviour() entity.Behaviour }); ok {
 		s.addSpecificMetadata(ent.Behaviour(), m)
 	}
+	if b, ok := lookupEntity[BedrockMetadataEntity](e); ok {
+		b.BedrockMetadata(m)
+	}
 	return m
 }
 
 // seatOffset returns the rider's current seat position.
 func (s *Session) seatOffset(e any) (mgl64.Vec3, bool) {
-	if r, ok := e.(entity.Rider); ok {
+	if r, ok := riderOf(e); ok {
 		return r.SeatOffset()
 	}
 	return mgl64.Vec3{}, false
@@ -124,15 +127,28 @@ func (s *Session) addSpecificMetadata(e any, m protocol.EntityMetadata) {
 	if w, ok := e.(wobbling); ok {
 		m[protocol.EntityDataKeyHurt] = int32(w.HurtTicks())
 	}
+	if w, ok := e.(minecartWobbling); ok {
+		// The shake of a hit minecart, mapped as Geyser does: hurt time, direction and Java Edition's damage.
+		hurtTime, hurtDir, damage := w.MinecartWobble()
+		m[protocol.EntityDataKeyStructuralIntegrity] = int32(hurtTime)
+		m[protocol.EntityDataKeyHurtDirection] = int32(hurtDir)
+		m[protocol.EntityDataKeyHurt] = int32(min(int(damage), 15))
+	}
+	if f, ok := e.(minecartFused); ok {
+		if fuse, primed := f.TNTFuse(); primed {
+			m.SetFlag(protocol.EntityDataKeyFlags, protocol.EntityDataFlagIgnited)
+			m[protocol.EntityDataKeyFuseTime] = int32(fuse)
+		}
+	}
 	if pos, ok := s.seatOffset(e); ok {
 		m[protocol.EntityDataKeySeatOffset] = vec64To32(pos)
 		m.SetFlag(protocol.EntityDataKeyFlags, protocol.EntityDataFlagRiding)
-	} else if rider, ok := e.(entity.Rider); ok && rider.SeatIndex() >= 0 {
+	} else if rider, ok := riderOf(e); ok && rider.SeatIndex() >= 0 {
 		// Use the entity position when no seat position is available.
 		m[protocol.EntityDataKeySeatOffset] = vec64To32(mgl64.Vec3{})
 		m.SetFlag(protocol.EntityDataKeyFlags, protocol.EntityDataFlagRiding)
 	}
-	if r, ok := e.(entity.Rideable); ok {
+	if r, ok := rideableOf(e); ok {
 		// A value of -1 clears the controlling seat.
 		m[protocol.EntityDataKeyControllingSeatIndex] = int32(r.ControllingSeatIndex())
 	}
@@ -158,6 +174,16 @@ func (s *Session) addSpecificMetadata(e any, m protocol.EntityMetadata) {
 	if a, ok := e.(interface{ Angry() bool }); ok && a.Angry() {
 		m.SetFlag(protocol.EntityDataKeyFlags, protocol.EntityDataFlagAngry)
 	}
+	// A creeper's swelling is worked out by the client from the ignited flag,
+	// as Creeper::normalTick does on both sides, so no swell data is sent.
+	if c, ok := e.(interface{ Ignited() bool }); ok && c.Ignited() {
+		m.SetFlag(protocol.EntityDataKeyFlags, protocol.EntityDataFlagIgnited)
+		m[protocol.EntityDataKeyFuseTime] = mobFuseTicks(e)
+	}
+	if c, ok := e.(interface{ Powered() bool }); ok && c.Powered() {
+		m.SetFlag(protocol.EntityDataKeyFlags, protocol.EntityDataFlagPowered)
+	}
+	s.addMobMetadata(e, m)
 	if t, ok := e.(interactTexter); ok {
 		m[protocol.EntityDataKeyInteractText] = t.InteractText()
 	}
@@ -459,6 +485,16 @@ type interactTexter interface {
 // posed is an entity shown in one of several poses, such as an armour stand.
 type posed interface {
 	PoseIndex() int
+}
+
+// minecartWobbling is a minecart, which shakes after a hit.
+type minecartWobbling interface {
+	MinecartWobble() (hurtTime, hurtDir int, damage float32)
+}
+
+// minecartFused is a TNT minecart.
+type minecartFused interface {
+	TNTFuse() (int, bool)
 }
 
 // wobbling is an entity that wobbles after a hit, such as an armour stand.

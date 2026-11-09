@@ -26,6 +26,11 @@ func buildBlockInfo() *blockInfo {
 		if s, ok := customBlockState(name); ok {
 			bi.java[rid] = uint32(s)
 		}
+		if b, ok := world.BlockByRuntimeID(uint32(rid)); ok {
+			if jb, ok := b.(JavaBlock); ok {
+				bi.java[rid] = uint32(jb.JavaState())
+			}
+		}
 		// The state to use when Bedrock keeps water in the block's second layer.
 		bi.waterlogged[rid] = bi.java[rid]
 		if javamap.Waterloggable(java[rid]) {

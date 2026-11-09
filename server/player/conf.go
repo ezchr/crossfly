@@ -18,13 +18,16 @@ import (
 
 // Config holds options that a Player can be created with.
 type Config struct {
-	Session  Session
-	Skin     skin.Skin
-	XUID     string
-	UUID     uuid.UUID
-	Name     string
-	Locale   language.Tag
-	GameMode world.GameMode
+	Session Session
+	Skin    skin.Skin
+	XUID    string
+	// PlayFabID is sent with the player list entry of a player without a session: clients draw a persona
+	// skin only for an entry that has one.
+	PlayFabID string
+	UUID      uuid.UUID
+	Name      string
+	Locale    language.Tag
+	GameMode  world.GameMode
 
 	Position               mgl64.Vec3
 	Rotation               cube.Rotation
@@ -57,6 +60,7 @@ func (cfg Config) Apply(data *world.EntityData) {
 	slot := uint32(conf.HeldSlot)
 	pdata := &playerData{
 		xuid:                conf.XUID,
+		playFabID:           conf.PlayFabID,
 		ui:                  inventory.New(54, nil),
 		inv:                 conf.Inventory,
 		enderChest:          conf.EnderChestInventory,

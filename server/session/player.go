@@ -67,6 +67,10 @@ func (s *Session) StartShowingEntity(e world.Entity) {
 
 // closeCurrentContainer closes the container the player might currently have open.
 func (s *Session) closeCurrentContainer(tx *world.Tx, clientRequested bool) {
+	if s.closeEntityWindow(clientRequested) {
+		// An entity window has no block behind it (mob_container.go).
+		return
+	}
 	if s.closeTrade() {
 		// A trading window has no block behind it.
 		s.closeWindow(clientRequested)
@@ -87,6 +91,11 @@ func (s *Session) closeCurrentContainer(tx *world.Tx, clientRequested bool) {
 
 // SendRespawn spawns the Controllable entity of the session client-side in the world, provided it has died.
 func (s *Session) SendRespawn(pos mgl64.Vec3, c Controllable) {
+	// A client that died with its inventory open shut it without saying so. Left as open here, the
+	// inventory would never open for it again.
+	if s.invOpened.CompareAndSwap(true, false) {
+		s.writePacket(&packet.ContainerClose{WindowID: 0, ContainerType: 0xff, ServerSide: true})
+	}
 	s.writePacket(&packet.Respawn{
 		Position:        vec64To32(pos.Add(entityOffset(c))),
 		State:           packet.RespawnStateReadyToSpawn,
@@ -322,6 +331,11 @@ func (s *Session) invByID(id int32, tx *world.Tx) (*inventory.Inventory, bool) {
 		switch id {
 		case protocol.ContainerLevelEntity:
 			return s.openedWindow.Load(), true
+		case protocol.ContainerHorseEquip:
+			// The equipment of an entity window (mob_container.go).
+			if s.entityWindowOpen() {
+				return s.openedWindow.Load(), true
+			}
 		case protocol.ContainerShulkerBox:
 			if _, shulkerbox := tx.Block(*s.openedPos.Load()).(block.ShulkerBox); shulkerbox {
 				return s.openedWindow.Load(), true

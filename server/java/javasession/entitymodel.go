@@ -215,6 +215,7 @@ func (s *Session) hideModel(id int32) {
 	delete(s.modelParts, id)
 	for _, pid := range ids {
 		delete(s.tracks, pid)
+		delete(s.textModelIDs, pid)
 	}
 	s.entMu.Unlock()
 	if len(ids) == 0 {

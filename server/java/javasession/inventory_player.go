@@ -364,6 +364,7 @@ func (s *Session) ViewEntityArmour(e world.Entity) {
 	if !ok || id == selfEntityID {
 		return
 	}
+	s.viewMobEquipment(e, id) // a saddle, horse armour (mobdata.go)
 	a, ok := e.(interface{ Armour() *inventory.Armour })
 	if !ok {
 		return

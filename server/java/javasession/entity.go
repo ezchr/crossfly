@@ -52,7 +52,45 @@ func (s *Session) removeEntityID(e world.Entity) (int32, bool) {
 	id, ok := s.entityIDs[e.H()]
 	delete(s.entityIDs, e.H())
 	delete(s.tracks, id)
+	delete(s.textModelIDs, id)
 	return id, ok
+}
+
+// ownerID is the Java id of the entity that cast or shot e (a fishing hook's player), if this
+// client knows it.
+func (s *Session) ownerID(e world.Entity) (int32, bool) {
+	var owner *world.EntityHandle
+	if o, ok := mobAs[projectileOwner](e); ok {
+		owner = o.Owner()
+	} else if o, ok := e.(interface{ ProjectileOwner() *world.EntityHandle }); ok {
+		owner = o.ProjectileOwner()
+	}
+	if owner == nil {
+		return 0, false
+	}
+	if owner == s.ent {
+		return selfEntityID, true
+	}
+	s.entMu.Lock()
+	defer s.entMu.Unlock()
+	id, ok := s.entityIDs[owner]
+	return id, ok
+}
+
+// entityYaws are the Java body and head yaw of e: a mob's own body and head rotation when it has
+// them (BodyYaw, HeadYaw), else its yaw for both. Bedrock boats face 90 degrees off Java's.
+func entityYaws(e world.Entity, rot cube.Rotation) (body, head float64) {
+	body, head = rot.Yaw(), rot.Yaw()
+	if b, ok := mobAs[mobBodyYaw](e); ok {
+		body = b.BodyYaw()
+	}
+	if h, ok := mobAs[mobHeadYaw](e); ok {
+		head = h.HeadYaw()
+	}
+	if isBoat(e) {
+		body, head = body-90, head-90
+	}
+	return body, head
 }
 
 // tabName is a name the Java client accepts in the tab list (at most 16 characters).
@@ -159,6 +197,7 @@ func (s *Session) HideEntity(e world.Entity) {
 	s.queue(v777.ClientboundPlayRemoveEntities, w)
 	s.forgetEntityText(e)
 	s.forgetRiding(e.H())
+	s.hideMobBossBarOf(e.H())
 	if p, ok := e.(*player.Player); ok {
 		s.hideTabFor(p.UUID()) // online players stay listed
 	}
@@ -166,8 +205,8 @@ func (s *Session) HideEntity(e world.Entity) {
 
 // ViewEntityMovement moves another entity to an absolute position.
 func (s *Session) ViewEntityMovement(e world.Entity, pos mgl64.Vec3, rot cube.Rotation, onGround bool) {
-	if e.H() == s.ent {
-		return // the client moves itself
+	if e.H() == s.ent || s.drivenBySelf(e) {
+		return // the client moves itself (and the vehicle it drives)
 	}
 	s.positionSync(e, pos, rot, onGround)
 }
@@ -209,13 +248,20 @@ func (s *Session) positionSync(e world.Entity, pos mgl64.Vec3, rot cube.Rotation
 	if !ok {
 		return
 	}
-	s.syncEntity(id, pos, rot, onGround)
+	body, head := entityYaws(e, rot)
+	s.syncEntityHead(id, pos, cube.Rotation{body, rot.Pitch()}, head, onGround)
 	s.moveModel(id, pos, rot, onGround) // the parts of its model, if it has one (entitymodel.go)
 }
 
-// syncEntity is positionSync for the entity the client knows by id.
+// syncEntity is positionSync for the entity the client knows by id, its head turned as its body.
 func (s *Session) syncEntity(id int32, pos mgl64.Vec3, rot cube.Rotation, onGround bool) {
-	yaw, pitch := angleByte(rot.Yaw()), angleByte(rot.Pitch())
+	s.syncEntityHead(id, pos, rot, rot.Yaw(), onGround)
+}
+
+// syncEntityHead is syncEntity with the head yaw apart from the body's (rot): rotate_head carries
+// the head, the move packets the body.
+func (s *Session) syncEntityHead(id int32, pos mgl64.Vec3, rot cube.Rotation, headYaw float64, onGround bool) {
+	yaw, pitch, head := angleByte(rot.Yaw()), angleByte(rot.Pitch()), angleByte(headYaw)
 	s.entMu.Lock()
 	t := s.tracks[id]
 	if t == nil {
@@ -232,7 +278,7 @@ func (s *Session) syncEntity(id int32, pos mgl64.Vec3, rot cube.Rotation, onGrou
 	}
 	moved := d[0] != 0 || d[1] != 0 || d[2] != 0
 	turned := yaw != t.yaw || pitch != t.pitch
-	headTurned := yaw != t.hd
+	headTurned := head != t.hd
 	if fits {
 		t.sinceSync++
 		for i := range d {
@@ -243,11 +289,11 @@ func (s *Session) syncEntity(id int32, pos mgl64.Vec3, rot cube.Rotation, onGrou
 	} else {
 		t.base, t.sinceSync, t.synced = pos, 0, true
 	}
-	t.yaw, t.pitch, t.hd = yaw, pitch, yaw
+	t.yaw, t.pitch, t.hd = yaw, pitch, head
 	s.entMu.Unlock()
 
 	if !s.ver.Native() {
-		s.positionSync262(id, fits, moved, turned, headTurned, d, yaw, pitch, pos, rot, onGround)
+		s.positionSync262(id, fits, moved, turned, headTurned, d, yaw, pitch, head, pos, rot, onGround)
 		return
 	}
 	if fits {
@@ -285,7 +331,7 @@ func (s *Session) syncEntity(id int32, pos mgl64.Vec3, rot cube.Rotation, onGrou
 		if headTurned {
 			w := s.packet()
 			w.VarInt(id)
-			w.Byte(yaw)
+			w.Byte(head)
 			s.queue(v777.ClientboundPlayRotateHead, w)
 		}
 		return
@@ -302,7 +348,7 @@ func (s *Session) syncEntity(id int32, pos mgl64.Vec3, rot cube.Rotation, onGrou
 	s.queue(v777.ClientboundPlayEntityPositionSync, w)
 	w = s.packet()
 	w.VarInt(id)
-	w.Angle(float32(rot.Yaw()))
+	w.Byte(head)
 	s.queue(v777.ClientboundPlayRotateHead, w)
 }
 
@@ -310,7 +356,7 @@ func (s *Session) syncEntity(id int32, pos mgl64.Vec3, rot cube.Rotation, onGrou
 // with onGround as a trailing bool (move_entity_rot: yaw, pitch, onGround), and
 // entity_position_sync is position, delta movement (unused by the client), yaw, pitch, onGround.
 // The delta codec is the same as 26.3's.
-func (s *Session) positionSync262(id int32, fits, moved, turned, headTurned bool, d [3]int64, yaw, pitch byte, pos mgl64.Vec3, rot cube.Rotation, onGround bool) {
+func (s *Session) positionSync262(id int32, fits, moved, turned, headTurned bool, d [3]int64, yaw, pitch, head byte, pos mgl64.Vec3, rot cube.Rotation, onGround bool) {
 	if fits {
 		switch {
 		case moved && turned:
@@ -342,7 +388,7 @@ func (s *Session) positionSync262(id int32, fits, moved, turned, headTurned bool
 		if headTurned {
 			w := s.packet()
 			w.VarInt(id)
-			w.Byte(yaw)
+			w.Byte(head)
 			s.queue(v777.ClientboundPlayRotateHead, w)
 		}
 		return
@@ -361,15 +407,19 @@ func (s *Session) positionSync262(id int32, fits, moved, turned, headTurned bool
 	s.queue(v777.ClientboundPlayEntityPositionSync, w)
 	w = s.packet()
 	w.VarInt(id)
-	w.Angle(float32(rot.Yaw()))
+	w.Byte(head)
 	s.queue(v777.ClientboundPlayRotateHead, w)
 }
 
 // setTrack records what an add_entity told the client: the delta base starts at the spawn position.
 func (s *Session) setTrack(id int32, pos mgl64.Vec3, rot cube.Rotation) {
-	y := angleByte(rot.Yaw())
+	s.setTrackHead(id, pos, rot, rot.Yaw())
+}
+
+// setTrackHead is setTrack for an entity spawned with its head yaw apart from its body's.
+func (s *Session) setTrackHead(id int32, pos mgl64.Vec3, rot cube.Rotation, headYaw float64) {
 	s.entMu.Lock()
-	s.tracks[id] = &track{base: pos, yaw: y, pitch: angleByte(rot.Pitch()), hd: y, synced: true}
+	s.tracks[id] = &track{base: pos, yaw: angleByte(rot.Yaw()), pitch: angleByte(rot.Pitch()), hd: angleByte(headYaw), synced: true}
 	s.entMu.Unlock()
 }
 
@@ -379,7 +429,7 @@ func angleByte(deg float64) byte { return byte(int32(math.Floor(deg * 256 / 360)
 // ViewEntityVelocity sets an entity's motion; for the player itself this is knockback.
 func (s *Session) ViewEntityVelocity(e world.Entity, vel mgl64.Vec3) {
 	id, ok := s.entityID(e)
-	if !ok {
+	if !ok || s.drivenBySelf(e) {
 		return
 	}
 	w := s.packet()
@@ -394,7 +444,7 @@ func (s *Session) ViewEntityAction(e world.Entity, a world.EntityAction) {
 	if !ok {
 		return
 	}
-	switch a.(type) {
+	switch a := a.(type) {
 	case entity.DeathAction:
 		if id == selfEntityID {
 			return // the client has its own death screen
@@ -446,10 +496,25 @@ func (s *Session) ViewEntityAction(e world.Entity, a world.EntityAction) {
 		w.VarInt(0) // no direct entity
 		w.Bool(false)
 		s.queue(v777.ClientboundPlayDamageEvent, w)
+		if id != selfEntityID {
+			s.viewMobData(e, id) // its health (an iron golem's cracks, a wolf's tail)
+		}
+	case interface{ TNTMinecartPrimed() }: // entity.MinecartPrimeAction (Crossfly Full)
+		w := s.packet()
+		w.Int32(id)
+		w.Byte(70) // EntityEvent: a TNT minecart is primed
+		s.queue(v777.ClientboundPlayEntityEvent, w)
 	case entity.CriticalHitAction:
 		s.animate(id, 1) // CRITICAL_HIT
 	case entity.EnchantedHitAction:
 		s.animate(id, 2) // MAGIC_CRITICAL_HIT
+	case mobActorEvent:
+		if s.bossEntityEvent(e, id, a.ActorEvent()) { // mobdata_boss.go
+			return
+		}
+		if id != selfEntityID {
+			s.viewActorEvent(e, id, a.ActorEvent()) // a sheep eating grass, a wolf shaking...
+		}
 	}
 }
 
@@ -487,6 +552,14 @@ func (s *Session) ViewBlockUpdate(pos cube.Pos, b world.Block, layer int) {
 	}
 	w := s.packet()
 	w.Position(pos[0], pos[1], pos[2])
-	w.VarInt(int32(bi.java[rid]))
+
+	state := int32(bi.java[rid])
+	if jb, ok := b.(JavaBlock); ok {
+		state = s.ver.BlockState(jb.JavaState())
+	}
+	w.VarInt(state)
 	s.queue(v777.ClientboundPlayBlockUpdate, w)
+	if jb, ok := b.(JavaBlock); ok {
+		s.sendBlockEntity(pos, jb)
+	}
 }

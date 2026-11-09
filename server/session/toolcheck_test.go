@@ -127,13 +127,13 @@ func TestToolVerdict(t *testing.T) {
 
 func TestToolAllowed(t *testing.T) {
 	t.Chdir(t.TempDir())
-	if toolAllowed("2535406275782630") {
+	if toolAllowed("2535400000000001") {
 		t.Error("allowed without a file")
 	}
-	if err := os.WriteFile(toolAllowFile, []byte("# admins\n2535406275782630 # ZIDSMP\n\n  2535416316089810\n"), 0o644); err != nil {
+	if err := os.WriteFile(toolAllowFile, []byte("# admins\n2535400000000001 # owner\n\n  2535400000000002\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	for xuid, want := range map[string]bool{"2535406275782630": true, "2535416316089810": true, "2535400000000000": false, "": false} {
+	for xuid, want := range map[string]bool{"2535400000000001": true, "2535400000000002": true, "2535400000000000": false, "": false} {
 		if got := toolAllowed(xuid); got != want {
 			t.Errorf("%q allowed = %v, want %v", xuid, got, want)
 		}

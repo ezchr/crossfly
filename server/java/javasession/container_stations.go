@@ -58,6 +58,8 @@ func (v *view) computeResult() item.Stack {
 			return list[m.sel].out
 		}
 		m.sel = -1
+	case menuMerchant:
+		return merchantResult(m, v.slots[0], v.slots[1])
 	case menuSmithing:
 		return smithResult(v.slots[0], v.slots[1], v.slots[2])
 	}
@@ -141,6 +143,8 @@ func (v *view) takeResult() {
 		})
 	case menuStonecutter:
 		v.slots[0] = v.slots[0].Grow(-1)
+	case menuMerchant:
+		merchantPay(v.tx, m, v.slots[:2])
 	case menuSmithing:
 		for i := range 3 {
 			v.slots[i] = v.slots[i].Grow(-1)

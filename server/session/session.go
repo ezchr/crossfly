@@ -94,7 +94,7 @@ type Session struct {
 	// subLimits is how many sub-chunks of each chunk the client was told to
 	// ask for; see subChunkLimit.
 	subLimits map[world.ChunkPos]int32
-	invOpened             bool
+	invOpened atomic.Bool
 
 	hudMu      sync.RWMutex
 	hudUpdates map[hud.Element]bool
@@ -287,6 +287,7 @@ func (s *Session) Spawn(c Controllable, tx *world.Tx) {
 	s.sendInv(s.ui, protocol.WindowIDUI)
 	s.sendInv(s.offHand, protocol.WindowIDOffHand)
 	s.sendInv(s.armour.Inventory(), protocol.WindowIDArmour)
+	s.writePacket(&packet.PlayerHotBar{SelectedHotBarSlot: *s.heldSlot, WindowID: protocol.WindowIDInventory, SelectHotBarSlot: true})
 
 	chat.Global.Subscribe(c)
 	if !s.conf.JoinMessage.Zero() {
@@ -673,4 +674,6 @@ func (s *Session) sendAvailableEntities(w *world.World) {
 		panic("should never happen")
 	}
 	s.writePacket(&packet.AvailableActorIdentifiers{SerialisedEntityIdentifiers: serialisedEntityData})
+	// The property schemas must arrive before the first AddActor that carries property values.
+	s.sendActorPropertySchemas(w.EntityRegistry().Types())
 }

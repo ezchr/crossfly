@@ -128,6 +128,9 @@ func (s *Session) SendScoreboard(sb *scoreboard.Scoreboard) {
 	if len(pk.Entries) > 0 {
 		s.writePacket(pk)
 	}
+	// What is shown now, for the next update to remove: the lines may have changed in number.
+	lines := append([]string(nil), sb.Lines()...)
+	s.currentLines.Store(&lines)
 }
 
 // colours holds a list of colour codes to be filled out for empty lines in a scoreboard.

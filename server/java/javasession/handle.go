@@ -16,6 +16,10 @@ import (
 func (s *Session) handle(id int32, body []byte) error {
 	r := wire.NewReader(body)
 	switch id {
+	case v777.ServerboundPlaySelectTrade:
+		if i := r.VarInt(); r.Err == nil {
+			s.MerchantSelect(int(i))
+		}
 	case v777.ServerboundPlayKeepAlive:
 		s.keepAliveAnswered(body, time.Now()) // normally timed by readLoop's reader on arrival
 	case v777.ServerboundPlayAcceptTeleportation:

@@ -75,6 +75,10 @@ func CloseInventory(p *player.Player, tx *world.Tx) {
 // refreshVirtual sends the slots of a virtual window that changed since they were last sent:
 // nothing tells a viewer when someone else changes the inventory.
 func (s *Session) refreshVirtual(m *menu) {
+	if m.inv == nil {
+		// The merchant window is virtual but has no backing inventory (its slots live in the menu).
+		return
+	}
 	now := m.inv.Slots()
 	for i, it := range now {
 		if i < len(m.shown) && sameItem(m.shown[i], it) {

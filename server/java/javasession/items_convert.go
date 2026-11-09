@@ -126,6 +126,13 @@ func dyedColour(t item.ArmourTier, js *jitem.Stack) {
 }
 
 // javaStack converts a Dragonfly stack to a Java one, reusing js's slices.
+// javaMaxCount and javaMaxEnchantLevel are the most a Java client reads: past them it drops the
+// connection on the packet, which /enchant or /give can reach on any item it sees.
+const (
+	javaMaxCount        = 99
+	javaMaxEnchantLevel = 255
+)
+
 func javaStack(ds item.Stack, js *jitem.Stack) {
 	// Most item.Stack getters call Stack.Empty, which calls EncodeItem, which allocates for tools and
 	// armour (names built per call): each getter is called at most once here.
@@ -134,7 +141,7 @@ func javaStack(ds item.Stack, js *jitem.Stack) {
 	if it == nil {
 		return
 	}
-	js.Count = int32(ds.Count())
+	js.Count = min(int32(ds.Count()), javaMaxCount)
 	name, meta := it.EncodeItem()
 	if id, ok := javamap.ItemID(name, meta); ok || !applyCustomItem(name, js) {
 		js.ID = id
@@ -207,7 +214,7 @@ func javaStack(ds item.Stack, js *jitem.Stack) {
 			if !ok || id < 0 || id >= len(t.toJava) || t.toJava[id] < 0 {
 				continue
 			}
-			*dst = append(*dst, jitem.Enchantment{ID: t.toJava[id], Level: int32(e.Level())})
+			*dst = append(*dst, jitem.Enchantment{ID: t.toJava[id], Level: min(int32(e.Level()), javaMaxEnchantLevel)})
 		}
 		if len(*dst) > 0 {
 			js.Add(comp)
@@ -323,6 +330,7 @@ func dragonflyStack(js *jitem.Stack) (item.Stack, bool) {
 		}
 		ds = ds.WithLore(lines...)
 	}
+	ds = withHeadSkin(ds, js) // a player head's skin (heads_java.go)
 	ench := js.Enchantments
 	if js.ID == javaEnchantedBook {
 		ench = js.StoredEnchantments

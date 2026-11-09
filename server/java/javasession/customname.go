@@ -74,5 +74,7 @@ func (s *Session) viewCustomName(e world.Entity, id int32) {
 func (s *Session) forgetCustomName(id int32) {
 	s.entMu.Lock()
 	delete(s.named, id)
+	delete(s.mobData, id)
+	delete(s.mobEquip, id)
 	s.entMu.Unlock()
 }

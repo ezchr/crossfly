@@ -1,6 +1,8 @@
 package javasession
 
 import (
+	"time"
+
 	"github.com/df-mc/dragonfly/server/block/cube"
 	v777 "github.com/df-mc/dragonfly/server/java/protocol/v777"
 	"github.com/df-mc/dragonfly/server/player"
@@ -178,31 +180,39 @@ func (s *Session) ViewEntityState(e world.Entity) {
 	}
 	s.viewCustomName(e, id)
 	s.viewArmourStand(e, id)
-	st, ok := e.(stateful)
-	if !ok {
-		return
+	s.viewMinecart(e, id)
+	s.viewMobData(e, id)      // mob flags, health, baby, variants... (mobdata.go)
+	s.viewMobEquipment(e, id) // saddle and body armour
+	_, isStateful := e.(stateful)
+	_, isLiving := mobAs[mobHealth](e)
+	if !isStateful && !isLiving {
+		return // an item, a projectile, a display stand-in: no shared flags of its own
 	}
+	// Players have all of these; mobs (mob_iface.go) any of them.
 	var flags byte
 	pose := int32(poseStanding)
-	if st.Sneaking() {
+	if mobBool(e, mobSneaking.Sneaking) {
 		flags |= 0x02
 		pose = poseCrouching
 	}
-	if st.Sprinting() {
+	if mobBool(e, (interface{ Sprinting() bool }).Sprinting) {
 		flags |= 0x08
 	}
-	if st.Swimming() {
+	if mobBool(e, (interface{ Swimming() bool }).Swimming) {
 		flags |= 0x10
 		pose = poseSwimming
 	}
-	if st.Gliding() {
+	if mobBool(e, (interface{ Gliding() bool }).Gliding) {
 		flags |= 0x80
 		pose = poseFallFly
 	}
-	if f, ok := e.(interface{ OnFireDuration() int }); ok && f.OnFireDuration() > 0 {
+	if p, ok := mobFlagPose(e); ok { // a warden roaring, a breeze shooting (mobdata_boss.go)
+		pose = p
+	}
+	if onFire(e) {
 		flags |= 0x01
 	}
-	if inv, ok := e.(interface{ Invisible() bool }); ok && inv.Invisible() {
+	if mobBool(e, (interface{ Invisible() bool }).Invisible) {
 		flags |= 0x20
 	}
 	w := s.packet()
@@ -213,9 +223,22 @@ func (s *Session) ViewEntityState(e world.Entity) {
 	w.Byte(6)
 	w.VarInt(dataTypePose)
 	w.VarInt(pose)
+	if u, ok := mobAs[mobUsing](e); ok {
+		// LivingEntity.DATA_LIVING_ENTITY_FLAGS: using the main-hand item draws a bow (a skeleton
+		// aiming), raises a shield or plays eating.
+		w.Byte(dataLivingFlags)
+		w.VarInt(dataTypeByte)
+		w.Byte(bit(u.UsingItem(), 0x01))
+	}
 	s.writeLivingFxData(w, e)
 	w.Byte(0xff)
 	s.queue(v777.ClientboundPlaySetEntityData, w)
+}
+
+// onFire reports whether e burns (OnFireDuration, which players, entity.Ent and mobs have).
+func onFire(e world.Entity) bool {
+	f, ok := mobAs[interface{ OnFireDuration() time.Duration }](e)
+	return ok && f.OnFireDuration() > 0
 }
 
 // viewSelfFlags sends the player their own entity flags, as vanilla servers do: the client keeps its
@@ -237,7 +260,7 @@ func (s *Session) viewSelfFlags(e world.Entity) {
 			flags |= 0x80
 		}
 	}
-	if f, ok := e.(interface{ OnFireDuration() int }); ok && f.OnFireDuration() > 0 {
+	if onFire(e) {
 		flags |= 0x01
 	}
 	if inv, ok := e.(interface{ Invisible() bool }); ok && inv.Invisible() {

@@ -287,3 +287,18 @@ func (s *Session) reskinPlayer(h *world.EntityHandle) {
 		})
 	}()
 }
+
+// BedrockTextures gives the signed skin texture Java players are shown for the Bedrock player xuid,
+// once this server has it (uploaded or looked up), so it can be kept (player heads).
+func BedrockTextures(xuid string) (value, signature string, ok bool) {
+	bedrockSkinMu.Lock()
+	defer bedrockSkinMu.Unlock()
+	if sk := bedrockSkins[xuid]; sk != nil {
+		for _, p := range sk.props {
+			if p.Name == "textures" && p.Signature != "" {
+				return p.Value, p.Signature, true
+			}
+		}
+	}
+	return "", "", false
+}

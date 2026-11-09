@@ -3,7 +3,6 @@ package player
 import (
 	"errors"
 	"fmt"
-	"log/slog"
 	"math"
 	"math/rand/v2"
 	"net"
@@ -43,7 +42,7 @@ import (
 )
 
 type playerData struct {
-	xuid              string
+	xuid, playFabID   string
 	locale            language.Tag
 	nameTag, scoreTag string
 	alwaysShowNameTag bool
@@ -167,6 +166,11 @@ func (p *Player) UUID() uuid.UUID {
 // authenticated with XBOX Live.
 func (p *Player) XUID() string {
 	return p.xuid
+}
+
+// PlayFabID returns the PlayFab ID of the player, or an empty string if it is not known.
+func (p *Player) PlayFabID() string {
+	return p.playFabID
 }
 
 // DeviceID returns the device ID of the player. If the Player is not connected to a network session, an empty string is
@@ -605,6 +609,9 @@ func (p *Player) fall(distance float64) {
 	if pos, lander, ok := p.landedOn(); ok && p.GameMode() != world.GameModeSpectator {
 		lander.EntityLand(pos, p.tx, p, &distance)
 	}
+	if p.GameMode().AllowsFlying() {
+		return // survival with flight (/fly) takes no fall damage
+	}
 	dmg := distance - 3
 	if boost, ok := p.Effect(effect.JumpBoost); ok {
 		dmg -= float64(boost.Level())
@@ -682,6 +689,9 @@ func (p *Player) Hurt(dmg float64, src world.DamageSource) (float64, world.HurtR
 		}
 	}
 	p.setAttackImmunity(immunity, totalDamage)
+	if entity.Mobs() {
+		p.recordAttacker(src)
+	}
 
 	if a := p.Absorption(); a > 0 {
 		remaining := a - damageLeft
@@ -915,7 +925,7 @@ func (p *Player) Exhaust(points float64) {
 			return
 		}
 		p.hunger.SetFood(after)
-		if before >= 7 && after <= 6 {
+		if before >= 7 && after <= 6 && !p.GameMode().AllowsFlying() {
 			// The client will stop sprinting by itself too, but we force it just to be sure.
 			p.StopSprinting()
 		}
@@ -1158,7 +1168,14 @@ func (p *Player) spawnLocation() (playerSpawn cube.Pos, w *world.World, spawnBlo
 // particles show up under the feet. The player will only start sprinting if its food level is high enough.
 // If the player is sneaking when calling StartSprinting, it is stopped from sneaking.
 func (p *Player) StartSprinting() {
-	if !p.hunger.canSprint() && p.GameMode().AllowsTakingDamage() || p.crawling || p.sprinting {
+	if p.crawling || p.sprinting {
+		return
+	}
+	// Only a player who is flying sprints whatever its food. Vanilla lets every player who may fly do so,
+	// which let survival players with flight allowed run on an empty food bar.
+	if !p.hunger.canSprint() && p.GameMode().AllowsTakingDamage() && !p.flying {
+		// The client may have started sprinting already: tell it it is not.
+		p.updateState()
 		return
 	}
 	ctx := NewEventContext(p.tx, p)
@@ -1358,6 +1375,9 @@ func (p *Player) Jump() {
 			jumpVel = float64(e.Level()) / 10
 		}
 		p.data.Vel = mgl64.Vec3{0, jumpVel}
+	}
+	if p.Flying() {
+		return // flying costs no food, as in vanilla: going up is sent as jumps
 	}
 	if p.Sprinting() {
 		p.Exhaust(0.2)
@@ -2112,8 +2132,6 @@ func (p *Player) attackWithSpear(named world.Entity) bool {
 			hits++
 		}
 	}
-	slog.Info("spear jab", "player", p.Name(), "targets", len(targets), "hits", hits) // TEMP
-	p.logSpearJab(spear, len(targets), hits)                                          // TEMP: diagnosing missed jabs
 	if hits > 0 {
 		p.damageHeldItem()
 	}
@@ -2131,19 +2149,15 @@ func (p *Player) triggerSpearLunge() {
 		return
 	}
 	if p.Gliding() || p.insideOfWater() {
-		slog.Info("spear lunge skipped", "player", p.Name(), "reason", "gliding or in water") // TEMP
 		return
 	}
 	if _, riding := p.RidingEntity(p.tx); riding {
-		slog.Info("spear lunge skipped", "player", p.Name(), "reason", "riding") // TEMP
 		return
 	}
 	level := l.Level()
 	if p.Food() < enchantment.Lunge.MinimumFood() {
-		slog.Info("spear lunge skipped", "player", p.Name(), "reason", "hunger", "food", p.Food()) // TEMP
 		return
 	}
-	slog.Info("spear lunge", "player", p.Name(), "level", level, "speed", enchantment.Lunge.Speed(level)) // TEMP
 
 	p.Exhaust(enchantment.Lunge.ExhaustionCost(level))
 	p.AddFood(-enchantment.Lunge.FoodCost(level))
@@ -2299,27 +2313,6 @@ func (p *Player) spearJabTargets(spear item.Spear) []spearTarget {
 		}
 	})
 	return targets
-}
-
-// logSpearJab is a TEMPORARY diagnostic: for every other player within 10
-// blocks it logs how far along and how far off the jab's line they were.
-func (p *Player) logSpearJab(spear item.Spear, targets, hits int) {
-	start := entity.EyePosition(p)
-	dir := p.Rotation().Vec3()
-	minRange, maxRange := spear.AttackRange(p.GameMode().CreativeInventory())
-	for e := range p.tx.EntitiesWithin(cube.Box(start[0]-10, start[1]-10, start[2]-10, start[0]+10, start[1]+10, start[2]+10)) {
-		other, ok := e.(*Player)
-		if !ok || other == p {
-			continue
-		}
-		centre := other.Position().Add(mgl64.Vec3{0, 0.9})
-		rel := centre.Sub(start)
-		along := rel.Dot(dir)
-		off := rel.Sub(dir.Mul(along)).Len()
-		slog.Info("spear jab", "attacker", p.Name(), "target", other.Name(),
-			"distance", fmt.Sprintf("%.2f", rel.Len()), "along", fmt.Sprintf("%.2f", along), "offLine", fmt.Sprintf("%.2f", off),
-			"range", fmt.Sprintf("%.1f-%.1f", minRange, maxRange), "targetsFound", targets, "hits", hits)
-	}
 }
 
 // spearOnCooldown reports whether the spear's jab cooldown still has more
@@ -2726,6 +2719,10 @@ func (p *Player) BreakBlock(pos cube.Pos) {
 	held, left := p.HeldItems()
 
 	p.SwingArm()
+	if wb, ok := b.(block.PlayerWillBreaker); ok {
+		wb.PlayerWillBreak(pos, held, p.tx)
+		b = p.tx.Block(pos)
+	}
 	p.tx.SetBlock(pos, nil, nil)
 	p.tx.AddParticle(pos.Vec3Centre(), particle.BlockBreak{Block: b})
 
@@ -2767,6 +2764,11 @@ func (p *Player) drops(held item.Stack, b world.Block) []item.Stack {
 		}
 	} else if it, ok := b.(world.Item); ok && !p.GameMode().CreativeInventory() {
 		drops = []item.Stack{item.NewStack(it, 1)}
+	} else if box, ok := b.(block.ShulkerBox); ok {
+		// Creative drops nothing, but for a shulker box holding items: they would be lost.
+		if inv := box.Inventory(nil, cube.Pos{}); inv != nil && !inv.Empty() {
+			drops = []item.Stack{item.NewStack(box, 1)}
+		}
 	}
 	return drops
 }
@@ -2967,6 +2969,9 @@ func (p *Player) Move(deltaPos mgl64.Vec3, deltaYaw, deltaPitch float64) {
 	p.onGround = p.checkOnGround(deltaPos)
 	p.updateFallState(deltaPos.Y())
 
+	if p.Flying() {
+		return // flying costs no food, as in vanilla: fast flight counts as sprinting
+	}
 	if p.Swimming() {
 		p.Exhaust(0.01 * horizontalVel.Len())
 	} else if p.Sprinting() {
@@ -3237,6 +3242,12 @@ func (p *Player) ShowEntity(e world.Entity) {
 // the player.
 // The latency returned is updated continuously and is half the round trip time (RTT).
 // If the Player does not have a session associated with it, Latency returns 0.
+// ChangingDimension reports whether the player's client is still on a dimension loading screen
+// (Bedrock); it is false for players without one.
+func (p *Player) ChangingDimension() bool {
+	return p.session().ChangingDimension()
+}
+
 func (p *Player) Latency() time.Duration {
 	if p.conn() == session.Nop {
 		return 0
@@ -3371,7 +3382,7 @@ func (p *Player) Tick(tx *world.Tx, current int64) {
 	}
 	p.prevWorld = tx.World()
 
-	if p.conn() == session.Nop && !p.Immobile() {
+	if p.conn() == session.Nop && !p.Immobile() && p.riddenEntity == nil {
 		m := p.mc.TickMovement(p, p.Position(), p.Velocity(), p.Rotation(), p.tx)
 		m.Send()
 
@@ -3480,7 +3491,7 @@ func (p *Player) tickFood() {
 		}
 	}
 
-	if !p.hunger.canSprint() {
+	if !p.hunger.canSprint() && p.GameMode().AllowsTakingDamage() && !p.flying {
 		p.StopSprinting()
 	}
 
@@ -3542,8 +3553,29 @@ func (p *Player) RidingEntity(tx *world.Tx) (entity.Rideable, bool) {
 	if !ok {
 		return nil, false
 	}
-	rideable, ok := e.(entity.Rideable)
-	return rideable, ok
+	return entity.RideableOf(e)
+}
+
+// ResendMount sends the player's own client the seat it rides again, as when it got on, without
+// getting it off first (which jerks its camera): for a client that lost the seat while the server
+// still has it riding.
+func (p *Player) ResendMount(tx *world.Tx) {
+	rideable, ok := p.RidingEntity(tx)
+	if !ok {
+		return
+	}
+	p.conn().ViewEntityMount(p, rideable, p.controlling)
+}
+
+// SetVehiclePosition puts a riding player where its vehicle carries it, without showing a movement: viewers place a
+// rider on its vehicle themselves. A minecart moves its rider every tick, as Java Edition's positionRider, since a
+// Java Edition client sends no position while riding.
+func (p *Player) SetVehiclePosition(pos mgl64.Vec3) {
+	if p.riddenEntity == nil {
+		return
+	}
+	p.data.Pos = pos
+	p.ResetFallDistance()
 }
 
 // RidingEntityHandle returns the handle of the entity being ridden.
@@ -3836,7 +3868,7 @@ func (p *Player) syncRideableState(tx *world.Tx, rideable entity.Rideable) bool 
 			rideable.RemoveRider(rider.Handle)
 			continue
 		}
-		registered, ok := entityValue.(entity.Rider)
+		registered, ok := entity.RiderOf(entityValue)
 		if !ok || registered.RidingEntityHandle() != rideable.H() {
 			rideable.RemoveRider(rider.Handle)
 			continue
@@ -3866,7 +3898,7 @@ func (p *Player) viewRiderMount(v world.Viewer, tx *world.Tx, handle *world.Enti
 	if !ok {
 		return
 	}
-	rider, ok := e.(entity.Rider)
+	rider, ok := entity.RiderOf(e)
 	if !ok {
 		return
 	}
@@ -4365,6 +4397,9 @@ func (p *Player) close(msg string) {
 }
 
 func (p *Player) quit(msg string) {
+	if entity.Mobs() {
+		lastAttackers.Delete(p.H())
+	}
 	p.h.HandleQuit(p)
 	p.h = NopHandler{}
 

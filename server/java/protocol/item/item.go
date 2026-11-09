@@ -485,7 +485,7 @@ func (s *Stack) decode(r *wire.Reader, delimited bool, p *Proto) {
 					s.fromOld(t, p)
 				}
 				s.Added.Add(t)
-			} else if p != nil && rawKinds[t] == kindNone {
+			} else if p != nil && rawKind(t) == kindNone {
 				continue // its wire form may differ in the newest version
 			} else {
 				s.Raw = append(s.Raw, RawComponent{t, append([]byte(nil), b...)})
@@ -565,10 +565,19 @@ const (
 	kindUnit
 	kindNBT
 	kindInt32
+	kindProfile // minecraft:profile (ResolvableProfile), the same in 26.2 and 26.3
 )
 
+// rawKind is how the component t, which Stack does not model, is written (kindNone: not known).
+func rawKind(t int32) uint8 {
+	if t == CompProfile {
+		return kindProfile
+	}
+	return rawKinds[t]
+}
+
 // skipRaw skips the value of a component Stack does not model, if its wire form is known.
-func skipRaw(r *wire.Reader, t int32) bool { return skipKind(r, rawKinds[t]) }
+func skipRaw(r *wire.Reader, t int32) bool { return skipKind(r, rawKind(t)) }
 
 // skipKind skips a value of wire form kind (false: kindNone, not known).
 func skipKind(r *wire.Reader, kind uint8) bool {
@@ -586,10 +595,42 @@ func skipKind(r *wire.Reader, kind uint8) bool {
 	case kindUnit:
 	case kindNBT:
 		skipNBT(r)
+	case kindProfile:
+		skipProfile(r)
 	default:
 		return false
 	}
 	return true
+}
+
+// skipProfile skips a ResolvableProfile: a full game profile or a partial one, then the skin patch.
+func skipProfile(r *wire.Reader) {
+	if r.Bool() {
+		r.UUID()
+		r.String(16)
+	} else {
+		if r.Bool() {
+			r.String(16)
+		}
+		if r.Bool() {
+			r.UUID()
+		}
+	}
+	for n := length(r, 16, 2); n > 0 && r.Err == nil; n-- {
+		r.String(64)
+		r.String(32767)
+		if r.Bool() {
+			r.String(1024)
+		}
+	}
+	for range 3 { // body, cape and elytra textures
+		if r.Bool() {
+			r.String(32767)
+		}
+	}
+	if r.Bool() { // the model
+		r.Bool()
+	}
 }
 
 const maxList = 1 << 16

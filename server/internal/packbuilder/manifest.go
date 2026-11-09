@@ -20,15 +20,17 @@ func buildManifest(dir string, headerUUID, moduleUUID uuid.UUID) {
 			Name:               "dragonfly auto-generated resource pack",
 			Description:        "This resource pack contains auto-generated content from dragonfly",
 			UUID:               headerUUID,
-			Version:            [3]int{0, 0, 1},
+			Version:            [3]int{0, 0, 5},
 			MinimumGameVersion: parseVersion(protocol.CurrentVersion),
 		},
+		// Vibrant Visuals stays available for a pack that says it supports it.
+		Capabilities: []resource.Capability{"pbr"},
 		Modules: []resource.Module{
 			{
 				UUID:        moduleUUID.String(),
 				Description: "This resource pack contains auto-generated content from dragonfly",
 				Type:        "resources",
-				Version:     [3]int{0, 0, 1},
+				Version:     [3]int{0, 0, 5},
 			},
 		},
 	})

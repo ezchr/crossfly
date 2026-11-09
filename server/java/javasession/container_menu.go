@@ -24,6 +24,7 @@ const (
 	menuPlayer menuKind = iota
 	menuChest           // generic_9x3 / 9x6: chests, barrels, ender chests
 	menuShulker
+	menuDispenser
 	menuHopper
 	menuFurnace // furnace, blast furnace, smoker
 	menuBrewing
@@ -35,6 +36,8 @@ const (
 	menuSmithing
 	menuLoom
 	menuBeacon
+	menuMerchant // villager trading (trade_merchant.go)
+	menuMount    // horse screen of an entity window (mob_container.go)
 )
 
 // Slots of the UI inventory that hold the inputs of block windows without an inventory of their
@@ -85,6 +88,7 @@ const (
 	kindTemplate // smithing template
 	kindSmithBase
 	kindSmithAddition
+	kindMountEquip // saddle (idx 0) or body (idx 1) slot of a mount window (mob_container.go)
 )
 
 type slotRef struct {
@@ -122,6 +126,9 @@ type menu struct {
 	// Stonecutter: the selected recipe (index in the input's list), -1 for none.
 	sel     int
 	selItem string
+
+	// merchant: the trades of a merchant window (trade_merchant.go).
+	merchant *merchantState
 
 	data      [10]int32
 	dataN     int
@@ -177,7 +184,7 @@ func (m *menu) resultSlot() int {
 	switch m.kind {
 	case menuPlayer, menuCrafting:
 		return 0
-	case menuAnvil, menuGrindstone:
+	case menuAnvil, menuGrindstone, menuMerchant:
 		return 2
 	case menuStonecutter:
 		return 1
@@ -212,6 +219,7 @@ var uiSection = map[menuKind][]struct {
 	menuEnchanting:  {{uiEnchantInput, kindSingle}, {uiEnchantLapis, kindLapis}},
 	menuGrindstone:  {{uiGrindFirst, kindGrind}, {uiGrindSecond, kindGrind}, {-1, kindResult}},
 	menuStonecutter: {{uiStonecutter, kindPlain}, {-1, kindResult}},
+	menuMerchant:    {{4, kindPlain}, {5, kindPlain}, {-1, kindResult}},
 	menuSmithing:    {{uiSmithTemplate, kindTemplate}, {uiSmithBase, kindSmithBase}, {uiSmithAddition, kindSmithAddition}, {-1, kindResult}},
 	menuLoom:        {{uiLoomBanner, kindBanner}, {uiLoomDye, kindDye}, {uiLoomPattern, kindPattern}, {-1, kindResult}},
 	menuBeacon:      {{uiBeacon, kindBeacon}},
@@ -227,9 +235,17 @@ func (st *itemState) refs(m *menu, out *[maxWindow]slotRef) int {
 		return playerSlots
 	}
 	switch m.kind {
-	case menuChest, menuHopper:
+	case menuChest, menuHopper, menuDispenser:
 		for i := range m.size {
 			out[i] = slotRef{m.inv, i, kindPlain}
+		}
+	case menuMount:
+		for i := range m.size {
+			kind := kindPlain
+			if i < 2 {
+				kind = kindMountEquip
+			}
+			out[i] = slotRef{m.inv, i, kind}
 		}
 	case menuShulker:
 		for i := range m.size {
@@ -322,6 +338,8 @@ func (r *slotRef) mayPlace(it item.Stack) bool {
 	case kindGrind:
 		_, durable := it.Item().(item.Durable)
 		return durable || len(it.Enchantments()) > 0
+	case kindMountEquip:
+		return mountAccepts(r.inv, r.idx, it)
 	case kindBeacon:
 		p, ok := it.Item().(item.BeaconPayment)
 		return ok && p.PayableForBeacon()
@@ -404,6 +422,15 @@ func menuFor(b any) (m *menu, titleC text.Component, ok bool) {
 		m.kind, m.size, title, m.ender = menuChest, 27, "container.enderchest", true
 	case block.ShulkerBox:
 		m.kind, m.size, title, custom = menuShulker, 27, "container.shulkerBox", b.CustomName
+	case interface {
+		DispenserContainer() (dropper bool, customName string)
+	}: // block.Dispenser (Crossfly Full)
+		var dropper bool
+		dropper, custom = b.DispenserContainer()
+		m.kind, m.size, title = menuDispenser, 9, "container.dispenser"
+		if dropper {
+			title = "container.dropper"
+		}
 	case block.Hopper:
 		m.kind, m.size, title, custom = menuHopper, 5, "container.hopper", b.CustomName
 	case block.Furnace:
@@ -443,6 +470,8 @@ func menuFor(b any) (m *menu, titleC text.Component, ok bool) {
 			"minecraft:generic_9x4", "minecraft:generic_9x5", "minecraft:generic_9x6"}[min(max(m.size/9, 1), 6)-1]
 	case menuShulker:
 		name = "minecraft:shulker_box"
+	case menuDispenser:
+		name = "minecraft:generic_3x3"
 	case menuHopper:
 		name = "minecraft:hopper"
 	case menuFurnace:

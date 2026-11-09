@@ -412,6 +412,10 @@ func (srv *Server) makeBlockEntries() {
 
 	for i, b := range custom {
 		name, _ := b.EncodeBlock()
+		if r, ok := b.(world.RawDefinitionBlock); ok {
+			srv.customBlocks = append(srv.customBlocks, protocol.BlockEntry{Name: name, Properties: r.RawDefinition()})
+			continue
+		}
 		srv.customBlocks = append(srv.customBlocks, protocol.BlockEntry{
 			Name:       name,
 			Properties: blockinternal.Components(name, b, 10000+int32(i)),
@@ -440,6 +444,10 @@ func (srv *Server) makeItemComponents() {
 			RuntimeID:      int16(rid),
 			Version:        entryVersion,
 			Data:           iteminternal.Components(it),
+		}
+		if r, ok := it.(world.RawDefinitionItem); ok {
+			e := &srv.customItems[i]
+			e.ComponentBased, e.Version, e.Data = r.RawDefinition()
 		}
 	}
 }
@@ -598,6 +606,7 @@ func (srv *Server) createPlayer(id uuid.UUID, conn session.Conn, conf player.Con
 
 	conf.Name = conn.IdentityData().DisplayName
 	conf.XUID = conn.IdentityData().XUID
+	conf.PlayFabID = conn.IdentityData().PlayFabID
 	conf.UUID = id
 	conf.Locale, _ = language.Parse(strings.Replace(conn.ClientData().LanguageCode, "_", "-", 1))
 	conf.Skin = srv.parseSkin(conn.ClientData())
@@ -622,18 +631,20 @@ func (srv *Server) createWorld(dim world.Dimension, nether, end **world.World) *
 	logger.Debug("Loading dimension...")
 
 	conf := world.Config{
-		Log:                 logger,
-		Dim:                 dim,
-		Provider:            srv.conf.WorldProvider,
-		Generator:           srv.conf.Generator(dim),
-		RandomTickSpeed:     srv.conf.RandomTickSpeed,
-		ReadOnly:            srv.conf.ReadOnlyWorld,
-		SaveInterval:        srv.conf.SaveInterval,
-		ChunkUnloadInterval: srv.conf.ChunkUnloadInterval,
-		ChunkLoadWorkers:    srv.conf.ChunkLoadWorkers,
-		Entities:            srv.conf.Entities,
-		Blocks:              srv.conf.Blocks,
-		SoundHandles:        &srv.soundHandles,
+		Log:                    logger,
+		Dim:                    dim,
+		Provider:               srv.conf.WorldProvider,
+		Generator:              srv.conf.Generator(dim),
+		RandomTickSpeed:        srv.conf.RandomTickSpeed,
+		ReadOnly:               srv.conf.ReadOnlyWorld,
+		SaveInterval:           srv.conf.SaveInterval,
+		ChunkUnloadInterval:    srv.conf.ChunkUnloadInterval,
+		ChunkLoadWorkers:       srv.conf.ChunkLoadWorkers,
+		Entities:               srv.conf.Entities,
+		Blocks:                 srv.conf.Blocks,
+		SoundHandles:           &srv.soundHandles,
+		AllowPistonDuplication: srv.conf.AllowPistonDuplication,
+		EntitiesCreatePortals:  srv.conf.EntitiesCreatePortals,
 		PortalDestination: func(dim world.Dimension) *world.World {
 			switch dim {
 			case world.Nether:

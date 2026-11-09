@@ -242,10 +242,10 @@ func TestEffects262(t *testing.T) {
 func TestPositionSync262(t *testing.T) {
 	s := fxTestSession262()
 	rot := cube.Rotation{90, 10}
-	s.positionSync262(7, true, true, true, true, [3]int64{4096, -1, 2}, 64, 7, mgl64.Vec3{}, rot, true)
-	s.positionSync262(7, true, true, false, false, [3]int64{1, 2, 3}, 64, 7, mgl64.Vec3{}, rot, false)
-	s.positionSync262(7, true, false, true, false, [3]int64{}, 64, 7, mgl64.Vec3{}, rot, true)
-	s.positionSync262(7, false, true, true, true, [3]int64{}, 64, 7, mgl64.Vec3{1, 2, 3}, rot, true)
+	s.positionSync262(7, true, true, true, true, [3]int64{4096, -1, 2}, 64, 7, 64, mgl64.Vec3{}, rot, true)
+	s.positionSync262(7, true, true, false, false, [3]int64{1, 2, 3}, 64, 7, 64, mgl64.Vec3{}, rot, false)
+	s.positionSync262(7, true, false, true, false, [3]int64{}, 64, 7, 64, mgl64.Vec3{}, rot, true)
+	s.positionSync262(7, false, true, true, true, [3]int64{}, 64, 7, 64, mgl64.Vec3{1, 2, 3}, rot, true)
 	out := s.take()
 	want := []struct {
 		id  int32
@@ -373,7 +373,7 @@ func TestParticlesMatchVanilla262(t *testing.T) {
 // Bytes vanilla 26.2 sent for a mob's delta move (move_entity_pos: shorts, then onGround).
 func TestMoveMatchesVanilla262(t *testing.T) {
 	s := fxTestSession262()
-	s.positionSync262(396, true, true, false, false, [3]int64{}, 0, 0, mgl64.Vec3{}, cube.Rotation{}, true)
+	s.positionSync262(396, true, true, false, false, [3]int64{}, 0, 0, 0, mgl64.Vec3{}, cube.Rotation{}, true)
 	if got := hex.EncodeToString(s.take()[0].w.B); got != "8c0300000000000001" {
 		t.Errorf("move_entity_pos %s", got)
 	}

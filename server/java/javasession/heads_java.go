@@ -44,3 +44,41 @@ func headProfile(ds item.Stack, js *jitem.Stack) {
 	}
 	js.Raw = append(js.Raw, jitem.RawComponent{Type: jitem.CompProfile, Data: append([]byte(nil), w.B...)})
 }
+
+// withHeadSkin gives ds the skin of the minecraft:profile js carries (HeadSkinKey), so a head a
+// creative client sends back keeps it.
+func withHeadSkin(ds item.Stack, js *jitem.Stack) item.Stack {
+	for _, c := range js.Raw {
+		if c.Type != jitem.CompProfile {
+			continue
+		}
+		r := wire.Reader{B: c.Data}
+		if r.Bool() {
+			r.UUID()
+			r.String(16)
+		} else {
+			if r.Bool() {
+				r.String(16)
+			}
+			if r.Bool() {
+				r.UUID()
+			}
+		}
+		n := r.VarInt()
+		for i := int32(0); i < n && i < 16 && r.Err == nil; i++ {
+			name, value := r.String(64), r.String(32767)
+			var sig string
+			if r.Bool() {
+				sig = r.String(1024)
+			}
+			if r.Err == nil && name == "textures" && value != "" {
+				ds = ds.WithValue(HeadSkinKey, value)
+				if sig != "" {
+					ds = ds.WithValue(HeadSignatureKey, sig)
+				}
+				return ds
+			}
+		}
+	}
+	return ds
+}

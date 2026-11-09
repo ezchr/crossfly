@@ -251,7 +251,8 @@ func javaMapColour(c color.RGBA) byte {
 		for shade, mul := range [4]int{180, 220, 255, 135} {
 			r, g, b := int(base[0])*mul/255, int(base[1])*mul/255, int(base[2])*mul/255
 			dr, dg, db := r-int(c.R), g-int(c.G), b-int(c.B)
-			d := 2*dr*dr + 4*dg*dg + 3*db*db
+			// Plain distance: weighting green more picked terracotta (brownish) for black.
+			d := dr*dr + dg*dg + db*db
 			if bestD < 0 || d < bestD {
 				best, bestD = byte(id*4+shade), d
 			}

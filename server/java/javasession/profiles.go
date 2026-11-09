@@ -66,6 +66,17 @@ func isJavaPlayer(id uuid.UUID) bool {
 	return ok
 }
 
+// JavaTextures gives the signed skin texture of the Java player id while they are online, so their
+// skin can be kept (statues).
+func JavaTextures(id uuid.UUID) (value, signature string, ok bool) {
+	for _, p := range profileProperties(id) {
+		if p.Name == "textures" && p.Signature != "" {
+			return p.Value, p.Signature, true
+		}
+	}
+	return "", "", false
+}
+
 func profileProperties(id uuid.UUID) []jserver.Property {
 	if v, ok := profiles.Load(id); ok {
 		return v.([]jserver.Property)

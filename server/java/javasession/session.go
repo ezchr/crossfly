@@ -65,12 +65,18 @@ type Session struct {
 	// when they come into view again.
 	hiddenEnts map[*world.EntityHandle]bool
 	// named is the name tag last sent for each non-player entity, under entMu.
-	named        map[int32]string
+	named map[int32]string
+	// mobData is the mob data last sent for each entity (viewMobData), under entMu.
+	mobData map[int32][]byte
+	// mobEquip is the saddle and body armour last sent for each mob (viewMobEquipment), under entMu.
+	mobEquip     map[int32]string
 	riders       map[*world.EntityHandle][]*world.EntityHandle // vehicle -> riders (riding.go)
 	deferred     map[*world.EntityHandle]struct{}              // Bedrock players waiting for their skin (deferForSkin)
 	tracks       map[int32]*track
 	modelParts   map[int32][]int32      // entity id -> its model's part ids (entitymodel.go)
 	nameDisplays map[int32]*nameDisplay // player entity id -> the text display of its name (namedisplay.go)
+	textModelIDs map[int32]struct{}     // entities shown as a text model (textmodel.go)
+	remeasure    bool                   // the line width remeasureTextModels sent last time
 	nextEntityID int32
 
 	chunkRadius int32
@@ -281,6 +287,7 @@ func (s *Session) cleanup() {
 		forgetProfile(s.id)
 		forgetProfile(s.selfID)
 		untrackJavaSession(s.id)
+		forgetMobBossBars(s)
 		if s.peer != nil {
 			session.RemovePeer(s.peer)
 		}
@@ -321,6 +328,7 @@ func (s *Session) Close(tx *world.Tx, c session.Controllable) {
 		clear(s.entityIDs)
 		clear(s.modelParts)
 		clear(s.nameDisplays)
+		clear(s.textModelIDs)
 		s.entMu.Unlock()
 	})
 }
@@ -390,6 +398,7 @@ func (s *Session) tickLoop() {
 		case <-s.closed:
 			return
 		case <-ka.C:
+			s.remeasureTextModels()
 			if id := s.keepAlive.Load(); id != 0 {
 				if time.Since(time.Unix(0, id)) > keepAliveTimeout {
 					s.log.Info("keep-alive timed out")

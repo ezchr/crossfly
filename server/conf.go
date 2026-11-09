@@ -76,6 +76,12 @@ type Config struct {
 	// joining or quitting.
 	// ShutdownMessage is set to chat.MessageServerDisconnect if empty.
 	JoinMessage, QuitMessage, ShutdownMessage chat.Translation
+	// AllowPistonDuplication lets pistons duplicate blocks as in vanilla Java Edition (TNT, rail and carpet duping).
+	// It is false by default, as on Paper servers.
+	AllowPistonDuplication bool
+	// EntitiesCreatePortals lets entities other than players create nether portals, as in vanilla Java Edition.
+	// It is false by default: only players create portals.
+	EntitiesCreatePortals bool
 	// StatusProvider provides the server status shown to players in the server
 	// list. By default, StatusProvider will show the server name from the Name
 	// field and the current player count and maximum players.
