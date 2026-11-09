@@ -157,7 +157,7 @@ func ExplodeEntitiesOnly(tx *world.Tx, src world.Entity, power float64) {
 	var hit []world.Entity
 	for e := range tx.EntitiesWithin(box) {
 		dist := e.Position().Sub(origin).Len()
-		if e.H() == src.H() || dist > d || dist == 0 {
+		if e.H() == src.H() || dist == 0 || ExplosionDistance(e, dist) > d {
 			continue
 		}
 		hit = append(hit, e)
@@ -167,7 +167,7 @@ func ExplodeEntitiesOnly(tx *world.Tx, src world.Entity, power float64) {
 		if !ok {
 			continue
 		}
-		impact := (1 - e.Position().Sub(origin).Len()/d) * exposure(tx, origin, e)
+		impact := (1 - ExplosionDistance(e, e.Position().Sub(origin).Len())/d) * exposure(tx, origin, e)
 		if impact > 0 {
 			ex.Explode(es, impact)
 		}
@@ -194,4 +194,17 @@ func exposure(tx *world.Tx, origin mgl64.Vec3, e world.Entity) float64 {
 		}
 	}
 	return float64(seen) / float64(len(pts))
+}
+
+func init() { block.EntityExplosionDistance = ExplosionDistance }
+
+// ExplosionDistance is the distance Explosion::explode uses for a mob dist
+// blocks from the centre: dist minus half the mob's width, at least 0
+// (players and other entities keep dist).
+func ExplosionDistance(e world.Entity, dist float64) float64 {
+	m, ok := mob.Of(e)
+	if !ok {
+		return dist
+	}
+	return math.Max(dist-m.BBox().Width()/2, 0)
 }

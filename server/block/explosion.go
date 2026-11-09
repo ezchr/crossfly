@@ -59,6 +59,11 @@ func (s configuredExplosionSource) ShieldBlockInfo() (world.ShieldBlockInfo, boo
 	return world.ShieldBlockInfo{Origin: s.Position(), Source: s.source, BlockWhenImmune: true}, true
 }
 
+// EntityExplosionDistance, when set, adjusts the distance of an entity from
+// an explosion's centre before the range check and the impact (Crossfly
+// Full: BDS Explosion::explode measures mobs from their side, not centre).
+var EntityExplosionDistance func(e world.Entity, dist float64) float64
+
 // ExplodableEntity represents an entity that can be exploded.
 type ExplodableEntity interface {
 	// Explode is called when an explosion occurs. The entity can react using the source and impact provided.
@@ -137,7 +142,13 @@ func (c ExplosionConfig) Explode(tx *world.Tx, src world.ExplosionSource) {
 	for e := range tx.EntitiesWithin(box.Grow(2)) {
 		pos := e.Position()
 		dist := pos.Sub(explosionPos).Len()
-		if dist > d || dist == 0 {
+		if dist == 0 {
+			continue
+		}
+		if EntityExplosionDistance != nil {
+			dist = EntityExplosionDistance(e, dist)
+		}
+		if dist > d {
 			continue
 		}
 
@@ -231,7 +242,11 @@ func (c ExplosionConfig) Explode(tx *world.Tx, src world.ExplosionSource) {
 		if !ok {
 			continue
 		}
-		impact := (1 - e.Position().Sub(explosionPos).Len()/d) * c.exposure(tx, explosionPos, e, grid)
+		dist := e.Position().Sub(explosionPos).Len()
+		if EntityExplosionDistance != nil {
+			dist = EntityExplosionDistance(e, dist)
+		}
+		impact := (1 - dist/d) * c.exposure(tx, explosionPos, e, grid)
 		if c.SuppressUnderwaterImpact && impact <= 0 {
 			// The blast never reached the entity. Skip the call entirely, as entities with a constant damage term,
 			// such as players, would otherwise still be hurt through the liquid that blocked it.
