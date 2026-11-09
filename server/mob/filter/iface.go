@@ -299,6 +299,10 @@ type Context struct {
 	Rand *rand.Rand
 	// Damage is set while evaluating damage_sensor triggers.
 	Damage *Damage
+
+	// scopes are the scopes of the tests being evaluated (Leaf.eval).
+	scopes [4]Scope
+	depth  int
 }
 
 // Subject returns the actor for s, or nil if the context does not have one.

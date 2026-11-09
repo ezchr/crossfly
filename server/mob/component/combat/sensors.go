@@ -19,6 +19,9 @@ import (
 // list mid-iteration.
 type EnvironmentSensor struct {
 	triggers []sense.Trigger
+	// fctx is the filter context of run, kept to not allocate one per
+	// trigger and tick.
+	fctx mob.FilterContext
 }
 
 func newEnvironmentSensor(_ string, raw json.RawMessage) (mob.Component, error) {
@@ -43,13 +46,28 @@ func (*EnvironmentSensor) Detach(*mob.Mob) {}
 
 func (s *EnvironmentSensor) run(m *mob.Mob) {
 	// A fired event may replace this component; keep going with the
-	// triggers read at the start of the tick, as BDS does.
-	for _, t := range slices.Clone(s.triggers) {
-		ctx := m.Ctx()
+	// triggers read at the start of the tick, as BDS does (the list is never
+	// changed, a new component gets its own).
+	for _, t := range s.triggers {
+		if t.Empty() {
+			continue
+		}
+		ctx := &s.fctx
+		*ctx = mob.FilterContext{Tx: m.Tx(), Self: m}
 		if tg, ok := m.Target(); ok {
 			ctx.Target = tg
 		}
-		t.Run(m, ctx)
+		pass := t.Test(m, ctx)
+		var fire *mob.FilterContext
+		if pass {
+			// The event gets a context of its own.
+			fire = new(mob.FilterContext)
+			*fire = *ctx
+		}
+		*ctx = mob.FilterContext{}
+		if pass {
+			t.Fire(m, fire)
+		}
 		if m.Dead() || m.H().Closed() {
 			return
 		}

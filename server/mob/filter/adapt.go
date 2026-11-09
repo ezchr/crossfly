@@ -157,6 +157,10 @@ func (a EntityActor) HasFamily(f string) bool {
 		if m.HasFamily(f) {
 			return true
 		}
+		if m.ComponentsApplied() {
+			// The attached type_family is the active one.
+			return false
+		}
 		// type_family may not have been attached yet (the event that adds
 		// the components is still running): read the JSON.
 		if raw, ok := a.componentRaw("minecraft:type_family"); ok {
@@ -399,11 +403,16 @@ func (a EntityActor) Number(n Number) (float64, bool) {
 // component), falling back to the mob metadata.
 func (a EntityActor) variant(key string, meta func(m *mob.Mob) int32) (float64, bool) {
 	if raw, ok := a.componentRaw(key); ok {
-		var v struct {
-			Value float64 `json:"value"`
-		}
-		if json.Unmarshal(raw, &v) == nil {
+		if v, ok := variantJSON.get(raw, func(raw json.RawMessage) (float64, bool) {
+			var v struct {
+				Value float64 `json:"value"`
+			}
+			if json.Unmarshal(raw, &v) != nil {
+				return 0, false
+			}
 			return v.Value, true
+		}); ok {
+			return v, true
 		}
 	}
 	if m := a.mob(); m != nil {
@@ -695,19 +704,22 @@ func DamageCause(src world.DamageSource) string {
 
 // familyListHas reads {"family": [...]}.
 func familyListHas(raw json.RawMessage, f string) bool {
-	var tf struct {
-		Family []string `json:"family"`
-	}
-	if json.Unmarshal(raw, &tf) != nil {
-		return false
-	}
-	for _, x := range tf.Family {
-		if x == f {
-			return true
+	fams, ok := familyJSON.get(raw, func(raw json.RawMessage) ([]string, bool) {
+		var tf struct {
+			Family []string `json:"family"`
 		}
-	}
-	return false
+		if json.Unmarshal(raw, &tf) != nil {
+			return nil, false
+		}
+		return tf.Family, true
+	})
+	return ok && contains(fams, f)
 }
+
+var (
+	familyJSON  rawCache[[]string]
+	variantJSON rawCache[float64]
+)
 
 var familyCache sync.Map // identifier -> []string
 

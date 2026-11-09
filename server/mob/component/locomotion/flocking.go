@@ -413,7 +413,7 @@ func (f *Flocking) blockAvoidance(m *mob.Mob) mgl64.Vec3 {
 			for iz := -b; iz <= b; iz++ {
 				q := pos.Add(mgl64.Vec3{float64(ix), float64(iy), float64(iz)})
 				bp := cube.PosFromVec3(q)
-				if solidAt(tx, bp) || (inWater && airAt(tx, bp)) {
+				if solid, air := solidOrAirAt(tx, bp, inWater); solid || air {
 					d := norm(pos.Sub(q))
 					if clip(tx, pos, pos.Sub(d.Mul(f.cfg.BlockDistance))) {
 						sum = sum.Add(d)

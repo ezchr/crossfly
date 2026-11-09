@@ -72,6 +72,19 @@ type World struct {
 	// that the Entity was in. These are tracked so that a call to RemoveEntity
 	// can find the correct Entity.
 	entities map[*EntityHandle]ChunkPos
+	// players are the handles in entities that are players, so that
+	// Tx.Players does not go over every entity (mobs look for players every
+	// tick). It is copied on removal: iterators hold on to the old slice.
+	players []*EntityHandle
+	// handleBufs are reusable buffers for entitiesWithin.
+	handleBufs [][]*EntityHandle
+	// sim caches the viewer chunks for Tx.Simulated.
+	sim simulation
+	// lastCol is the column Tx.chunk found last, at lastColPos: entities
+	// read many blocks of one chunk in a row. Cleared when chunks are added
+	// or closed.
+	lastCol    *Column
+	lastColPos ChunkPos
 
 	r *rand.Rand
 
@@ -1019,6 +1032,7 @@ func (w *World) addEntityAt(tx *Tx, handle *EntityHandle, pos mgl64.Vec3) Entity
 	handle.setAndUnlockWorldAt(w, pos)
 	chunkPos := chunkPosFromVec3(handle.data.Pos)
 	w.entities[handle] = chunkPos
+	w.trackPlayer(handle)
 
 	c := tx.chunk(chunkPos)
 	c.Entities, c.modified = append(c.Entities, handle), true
@@ -1054,6 +1068,7 @@ func (w *World) removeEntity(e Entity, tx *Tx) *EntityHandle {
 		v.HideEntity(e)
 	}
 	delete(w.entities, handle)
+	w.untrackPlayer(handle)
 	handle.unsetAndLockWorld()
 	return handle
 }
@@ -1079,6 +1094,14 @@ func (w *World) removeEntityFromViewLayers(e Entity) {
 func (w *World) entitiesWithin(tx *Tx, box cube.BBox) iter.Seq[Entity] {
 	return func(yield func(Entity) bool) {
 		minPos, maxPos := chunkPosFromVec3(box.Min()), chunkPosFromVec3(box.Max())
+		var buf []*EntityHandle
+		if n := len(w.handleBufs); n > 0 {
+			buf, w.handleBufs = w.handleBufs[n-1], w.handleBufs[:n-1]
+		}
+		defer func() {
+			clear(buf)
+			w.handleBufs = append(w.handleBufs, buf[:0])
+		}()
 
 		for x := minPos[0]; x <= maxPos[0]; x++ {
 			for z := minPos[1]; z <= maxPos[1]; z++ {
@@ -1087,7 +1110,10 @@ func (w *World) entitiesWithin(tx *Tx, box cube.BBox) iter.Seq[Entity] {
 					// The chunk wasn't loaded, so there are no entities here.
 					continue
 				}
-				for _, handle := range slices.Clone(c.Entities) {
+				// A copy: the entities yielded may move or remove
+				// entities of the chunk.
+				buf = append(buf[:0], c.Entities...)
+				for _, handle := range buf {
 					if !box.Vec3Within(handle.data.Pos) {
 						continue
 					}
@@ -1115,11 +1141,9 @@ func (w *World) allEntities(tx *Tx) iter.Seq[Entity] {
 // allPlayers returns an iterator that yields all player entities in the World.
 func (w *World) allPlayers(tx *Tx) iter.Seq[Entity] {
 	return func(yield func(Entity) bool) {
-		for e := range w.entities {
-			if e.t.EncodeEntity() == "minecraft:player" {
-				if ent := e.mustEntity(tx); !yield(ent) {
-					return
-				}
+		for _, e := range w.players {
+			if ent := e.mustEntity(tx); !yield(ent) {
+				return
 			}
 		}
 	}
@@ -1383,6 +1407,7 @@ func (w *World) saveChunk(_ *Tx, pos ChunkPos, c *Column) {
 // Afterwards, scheduled updates from that chunk are removed and all entities
 // in it are closed.
 func (w *World) closeChunk(tx *Tx, pos ChunkPos, c *Column) {
+	w.lastCol = nil
 	w.saveChunk(tx, pos, c)
 	w.scheduledUpdates.removeChunk(pos)
 	w.redstone.removeChunk(pos)
@@ -1558,8 +1583,12 @@ func (w *World) loadedChunk(pos ChunkPos) (*Column, bool) {
 // calculated before they are returned.
 func (tx *Tx) chunk(pos ChunkPos) *Column {
 	w := tx.World()
+	if w.lastCol != nil && w.lastColPos == pos {
+		return w.lastCol
+	}
 	c, ok := w.chunks[pos]
 	if ok {
+		w.lastCol, w.lastColPos = c, pos
 		return c
 	}
 	c, ok = w.chunkFromAsyncPool(tx, pos)
@@ -1627,10 +1656,12 @@ func (w *World) loadChunkAsync(tx *Tx, pos ChunkPos, callback chunkCallback) boo
 // already have its own light calculated.
 func (w *World) addChunk(pos ChunkPos, c *chunk.Column) *Column {
 	column := w.columnFrom(c, pos)
+	w.lastCol = nil
 	w.chunks[pos] = column
 	w.everyBlockChanged()
 	for _, e := range column.Entities {
 		w.entities[e] = pos
+		w.trackPlayer(e)
 		e.setAndUnlockWorld(w)
 		e.markWorldReady(w)
 	}
@@ -1829,4 +1860,22 @@ type FreshBlockEntity interface {
 // blockEntityTickOrder returns when the block entity at pos was created, 0 if unknown (loaded from disk).
 func (c *Column) blockEntityTickOrder(pos cube.Pos) uint64 {
 	return c.blockEntityOrder[pos]
+}
+
+// isPlayerHandle reports whether h is a player.
+func isPlayerHandle(h *EntityHandle) bool { return h.t.EncodeEntity() == "minecraft:player" }
+
+// trackPlayer adds h to the players of w if it is one.
+func (w *World) trackPlayer(h *EntityHandle) {
+	if isPlayerHandle(h) && !slices.Contains(w.players, h) {
+		w.players = append(w.players, h)
+	}
+}
+
+// untrackPlayer removes h from the players of w, into a new slice so that
+// a running iteration over the old one is not disturbed.
+func (w *World) untrackPlayer(h *EntityHandle) {
+	if i := slices.Index(w.players, h); i >= 0 {
+		w.players = slices.Delete(slices.Clone(w.players), i, i+1)
+	}
 }

@@ -7,7 +7,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"math"
-	"slices"
 	"strings"
 
 	"github.com/df-mc/dragonfly/server/block/cube"
@@ -31,6 +30,16 @@ type nearestAttackableTarget struct {
 	selected    *world.EntityHandle // +136
 	selectedFor *descriptor         // +144
 	cooldowns   map[*descriptor]int64
+
+	cands []cand
+}
+
+// cand is an entity found by a target search, with its squared distance
+// and the order it was found in.
+type cand struct {
+	e    world.Entity
+	dist float64
+	i    int
 }
 
 func newNearestAttackableTarget(spec mob.GoalSpec) (mob.Goal, error) {
@@ -138,19 +147,39 @@ func (g *nearestAttackableTarget) findTarget(m *mob.Mob) (world.Entity, *descrip
 	}
 	pos := m.Pos()
 	box := cube.Box(pos[0]-radius, pos[1]-h, pos[2]-radius, pos[0]+radius, pos[1]+h, pos[2]+radius)
-	type cand struct {
-		e    world.Entity
-		dist float64
+	// Entities that fail the checks canAttack makes before it changes
+	// anything (dead, no type family) are dropped before the sort, as are
+	// entities further than every entry's max_dist (they fail
+	// matchesTargetTypes without changes, unless they are the current
+	// target). The rest are visited in the same order as before.
+	far := -1.0
+	for _, d := range g.descriptors {
+		far = math.Max(far, d.maxDist*d.maxDist)
 	}
-	var cands []cand
+	var cur *world.EntityHandle
+	if t, ok := m.Target(); ok {
+		cur = t.H()
+	}
+	cands := g.cands[:0]
 	for e := range m.Tx().EntitiesWithin(box) {
-		if e.H() == m.H() {
+		if e.H() == m.H() || !sense.Alive(e) || !hasFamilies(e) {
 			continue
 		}
-		cands = append(cands, cand{e, e.Position().Sub(pos).LenSqr()})
+		dist := e.Position().Sub(pos).LenSqr()
+		if far >= 0 && dist >= far && e.H() != cur {
+			continue
+		}
+		cands = append(cands, cand{e: e, dist: dist, i: len(cands)})
 	}
-	slices.SortStableFunc(cands, func(a, b cand) int { return compareFloat(a.dist, b.dist) })
-	for _, c := range cands {
+	g.cands = cands
+	defer clear(cands)
+	// Visited nearest first (ties in the order found, as the stable sort
+	// did), taken from a heap: the search mostly ends at one of the first.
+	heap := candHeap(cands)
+	heap.init()
+	for len(heap) > 0 {
+		var c cand
+		c, heap = heap.pop()
 		var d *descriptor
 		if !g.canAttack(m, c.e, false, g.mustSee, &d) {
 			continue

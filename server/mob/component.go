@@ -34,6 +34,12 @@ type (
 	// Ticker components are ticked once per tick in the stage TickStage
 	// returns (StagedTicker), or in StageSensors when they don't say.
 	Ticker interface{ Tick(m *Mob) }
+	// FrozenTicker components keep doing something while their mob is
+	// beyond the simulation distance of every player and does not tick (a
+	// boss bar hidden from players that moved away). TickFrozen runs
+	// instead of the mob's tick; it must not move the mob or change what it
+	// does.
+	FrozenTicker interface{ TickFrozen(m *Mob) }
 	// StagedTicker is a Ticker that picks its stage.
 	StagedTicker interface {
 		Ticker

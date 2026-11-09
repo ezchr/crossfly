@@ -3,6 +3,8 @@
 package mob
 
 import (
+	"math"
+
 	"github.com/df-mc/dragonfly/server/block"
 	"github.com/df-mc/dragonfly/server/block/cube"
 	"github.com/df-mc/dragonfly/server/entity"
@@ -59,8 +61,26 @@ const deathTicks = 20
 // (and one that died earlier in this tick) only runs travel, despawn and send:
 // it still falls and is still shown until it is removed.
 func (s *state) Tick(e *entity.Ent, tx *world.Tx) *entity.Movement {
-	m := &Mob{Ent: e, data: s.data, s: s}
-	s.cur = m
+	simulated := tx.Simulated(e.Position())
+	if !simulated && (!s.initialised || len(s.frozen) == 0) {
+		// Beyond the simulation distance of every player: frozen, as in
+		// Bedrock Edition (no AI, physics, despawning or sending).
+		return nil
+	}
+	m := s.cur
+	if m == nil || m.Ent != e {
+		m = &Mob{Ent: e, data: s.data, s: s}
+		s.cur = m
+	}
+	if !simulated {
+		for _, f := range s.frozen {
+			f.TickFrozen(m)
+			if m.closed() {
+				return nil
+			}
+		}
+		return nil
+	}
 	m.ensureInit()
 	s.ticks++
 	if s.immune > 0 {
@@ -202,9 +222,9 @@ func (m *Mob) defaultEnvironment() {
 func (m *Mob) SendMovement() {
 	s := m.s
 	pos, rot, vel := m.Position(), m.Rotation(), m.Velocity()
-	moved := !pos.ApproxEqualThreshold(s.sent.pos, 0.001) || rot != s.sent.rot ||
-		s.headYaw != s.sent.headYaw || s.bodyYaw != s.sent.bodyYaw || s.physics.OnGround != s.sent.onGround
-	velChanged := !vel.ApproxEqualThreshold(s.sent.vel, 0.001)
+	moved := posChanged(pos, s.sent.pos) || angleChanged(rot[0], s.sent.rot[0]) || angleChanged(rot[1], s.sent.rot[1]) ||
+		angleChanged(s.headYaw, s.sent.headYaw) || angleChanged(s.bodyYaw, s.sent.bodyYaw) || s.physics.OnGround != s.sent.onGround
+	velChanged := velocityChanged(vel, s.sent.vel)
 	if !moved && !velChanged {
 		return
 	}
@@ -216,8 +236,41 @@ func (m *Mob) SendMovement() {
 			v.ViewEntityMovement(m, pos, rot, s.physics.OnGround)
 		}
 	}
-	s.MarkSent(pos, vel, rot)
+	// Only what was sent: changes too small to send add up until they are.
+	if moved {
+		s.sent.pos, s.sent.rot = pos, rot
+		s.sent.headYaw, s.sent.bodyYaw, s.sent.onGround = s.headYaw, s.bodyYaw, s.physics.OnGround
+	}
+	if velChanged {
+		s.sent.vel = vel
+	}
 }
+
+// posChanged reports whether a mob moved from the position last sent: more
+// than 1/1024 of a block on an axis. (mgl64's ApproxEqualThreshold, used
+// before, compares relative to the size of the values: near the origin it
+// sent every speck of movement, 1000 blocks out it held moves back until
+// they were a block long.)
+func posChanged(pos, sent mgl64.Vec3) bool {
+	const d = 1.0 / 1024
+	return math.Abs(pos[0]-sent[0]) > d || math.Abs(pos[1]-sent[1]) > d || math.Abs(pos[2]-sent[2]) > d
+}
+
+// velocityChanged is Java's ServerEntity rule for sending entity motion: the
+// velocity moved by more than sqrt(1e-7) from the one last sent, or it became
+// zero. Bedrock clients only predict with it between position updates.
+func velocityChanged(vel, sent mgl64.Vec3) bool {
+	d := vel.Sub(sent).LenSqr()
+	return d > 1e-7 || d > 0 && vel.LenSqr() == 0
+}
+
+// angleChanged reports whether an angle (degrees) changed by enough to show:
+// both editions send entity angles as one byte (360/256 degrees a step).
+func angleChanged(a, sent float64) bool {
+	return angleStep(a) != angleStep(sent)
+}
+
+func angleStep(a float64) int64 { return int64(math.Floor(a*256/360)) & 255 }
 
 // MarkSent records what viewers were last shown, for custom movement
 // senders.

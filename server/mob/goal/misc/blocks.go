@@ -120,7 +120,7 @@ func (g *moveToBlock) CanUse(m *mob.Mob) bool {
 	if g.chance < 1 && m.Rand().Float64() >= g.chance {
 		return false
 	}
-	p, ok := kit.FindBlock(m, g.rangeXZ, g.rangeY, g.method, func(p cube.Pos, b world.Block) bool { return g.matches(m, p, b) })
+	p, ok := kit.FindBlockIn(m, g.rangeXZ, g.rangeY, g.method, g.blocks, func(p cube.Pos, b world.Block) bool { return g.matches(m, p, b) })
 	if !ok {
 		return false
 	}
@@ -294,7 +294,7 @@ func (g *avoidBlock) CanUse(m *mob.Mob) bool {
 		return false
 	}
 	g.nextScan = m.Ticks() + int64(max(g.interval, 1))
-	p, ok := kit.FindBlock(m, g.rangeXZ, g.rangeY, g.method, func(_ cube.Pos, b world.Block) bool { return g.blocks.Has(b) })
+	p, ok := kit.FindBlockIn(m, g.rangeXZ, g.rangeY, g.method, g.blocks, func(_ cube.Pos, b world.Block) bool { return g.blocks.Has(b) })
 	if !ok {
 		return false
 	}
