@@ -50,6 +50,8 @@ func checkParams(t *testing.T, key string, got map[string]float64, want map[stri
 // (LegacyGoalDefinition::parse, <Goal>::Definition constructors).
 func TestBDSDefaults(t *testing.T) {
 	want := map[string]map[string]float64{
+		"minecraft:behavior.ocelotattack": {"cooldown": 20, "x_max_rotation": 30, "y_max_head_rotation": 30, "max_distance": 15, "max_sneak_range": 15,
+			"max_sprint_range": 4, "reach_multiplier": 2, "sneak_speed": 0.6, "sprint_speed": 1.33, "walk_speed": 0.8, "flags": float64(mob.FlagMove | mob.FlagLook)},
 		"minecraft:behavior.stalk_and_pounce_on_target": {"stalk_speed": 1.2, "max_stalk_dist": 10, "leap_height": 0.9, "leap_dist": 0.8, "pounce_max_dist": 5, "strike_dist": 2, "interest_ticks": 40, "stuck_ticks": 40},
 		"minecraft:behavior.nap":                        {"cooldown_min": 0, "cooldown_max": 0, "mob_detect_dist": 6, "mob_detect_height": 6},
 		"minecraft:behavior.find_cover":                 {"speed_multiplier": 1, "cooldown_ticks": 0},
@@ -109,6 +111,8 @@ func TestVanillaJSON(t *testing.T) {
 		{"goat.json", "", "minecraft:behavior.jump_to_block", map[string]float64{"search_width": 10, "minimum_path_length": 8, "cooldown_min": 30, "cooldown_max": 60}},
 		{"frog.json", "pregnant", "minecraft:behavior.lay_egg", map[string]float64{"lay_ticks": 40, "allow_laying_from_below": 1, "use_default_animation": 0, "search_range": 10, "goal_radius": 1.7}},
 		{"turtle.json", "minecraft:wants_to_lay_egg", "minecraft:behavior.lay_egg", map[string]float64{"search_range": 16, "search_height": 4, "goal_radius": 1.5, "lay_ticks": 200}},
+		{"cat.json", "", "minecraft:behavior.ocelotattack", map[string]float64{"cooldown": 20, "max_sprint_range": 4, "walk_speed": 0.8}},
+		{"ocelot.json", "", "minecraft:behavior.ocelotattack", map[string]float64{"cooldown": 20, "max_sneak_range": 15, "sneak_speed": 0.6}},
 		{"sniffer.json", "sniffer_search_and_dig", "minecraft:behavior.random_search_and_dig", map[string]float64{"speed_multiplier": 1.25, "retries": 5, "goal_radius": 2, "dig_min": 8, "dig_max": 10, "item_after_ticks": 120, "item_offset": 2.25}},
 	}
 	for _, c := range cases {
@@ -480,4 +484,62 @@ func TestSilverfishWakeUpFriends(t *testing.T) {
 	if _, ok := w.TickUntil(40, func(tx *world.Tx) bool { return count(tx) > 1 }); !ok {
 		t.Fatal("no silverfish came out of the infested stone")
 	}
+}
+
+// TestOcelotHunts: a wild ocelot targets a chicken 12 blocks away
+// (nearest_attackable_target) and ocelotattack stalks it: sneaking from afar,
+// sprinting within 4 blocks, then biting it to death.
+func TestOcelotHunts(t *testing.T) {
+	mobtest.RequireDefinitions(t)
+	mobtest.RequireFilters(t)
+	w := mobtest.New(t, mobtest.Options{})
+	w.Do(func(tx *world.Tx) { w.Arena(tx, 16, 3) })
+	o := w.Spawn("minecraft:ocelot", mgl64.Vec3{0.5, 1, 0.5}, mob.SpawnOptions{Event: "minecraft:entity_spawned"})
+	c := w.Spawn("minecraft:chicken", mgl64.Vec3{7.5, 1, 0.5})
+	c.With(func(m *mob.Mob) { m.Goals().ClearAll() })
+	var sneaked, sprinted, both bool
+	_, ok := w.TickUntil(600, func(tx *world.Tx) bool {
+		if m, ok := o.Mob(tx); ok {
+			sneaked = sneaked || m.Sneaking()
+			sprinted = sprinted || m.Sprinting()
+			both = both || m.Sneaking() && m.Sprinting()
+		}
+		_, alive := c.Entity(tx)
+		return !alive || c.Gone()
+	})
+	if !ok {
+		t.Fatalf("chicken still alive: %v\n%v", w.Dump(o), w.Dump(c))
+	}
+	if !sneaked || !sprinted || both {
+		t.Errorf("gait: sneaked %v sprinted %v both at once %v", sneaked, sprinted, both)
+	}
+	w.Tick(3)
+	o.With(func(m *mob.Mob) {
+		if m.Sneaking() || m.Sprinting() {
+			t.Error("still sneaking/sprinting after the hunt")
+		}
+	})
+}
+
+// TestOcelotAttackGait: the gait thresholds of OcelotAttackGoal::tick, with
+// a still target.
+func TestOcelotAttackGait(t *testing.T) {
+	w, o := arena(t, mobtest.Options{}, "minecraft:ocelot", "minecraft:behavior.ocelotattack", `{}`)
+	p := w.AddPlayer("p", mgl64.Vec3{10.5, 1, 0.5})
+	p.SetMaxHealth(1000)
+	w.Do(func(tx *world.Tx) {
+		m, _ := o.Mob(tx)
+		for e := range tx.Players() {
+			m.SetTarget(e)
+		}
+	})
+	w.Tick(2)
+	if g := meta(w, o); !g.Sneaking || g.Sprinting {
+		t.Errorf("10 blocks away: sneaking %v sprinting %v, want sneaking", g.Sneaking, g.Sprinting)
+	}
+	until(t, w, o, 200, "sprint within 4 blocks", func(m *mob.Mob) bool { return m.Sprinting() })
+	if d := w.Dist(o, p); d > 4.6 {
+		t.Errorf("sprints %.1f blocks away", d)
+	}
+	until(t, w, o, 100, "bite", func(m *mob.Mob) bool { return p.HealthTx(m.Tx()) < 1000 })
 }

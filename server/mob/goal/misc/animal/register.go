@@ -1,6 +1,6 @@
 //go:build crossfly_full
 
-// Package animal holds the fox, panda, frog, sniffer and silverfish goals
+// Package animal holds the fox, panda, frog, sniffer, ocelot and silverfish goals
 // of server/mob/goal/misc (see its README.md).
 package animal
 
@@ -31,4 +31,6 @@ func init() {
 	mob.RegisterGoal("minecraft:behavior.random_search_and_dig", newRandomSearchAndDig)
 	mob.RegisterGoal("minecraft:behavior.silverfish_merge_with_stone", newMergeWithStone)
 	mob.RegisterGoal("minecraft:behavior.silverfish_wake_up_friends", newWakeUpFriends)
+	// Cat, ocelot.
+	mob.RegisterGoal("minecraft:behavior.ocelotattack", newOcelotAttack)
 }

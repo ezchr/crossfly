@@ -26,4 +26,5 @@ var Factories = map[string]mob.GoalFactory{
 	"minecraft:behavior.random_search_and_dig":       newRandomSearchAndDig,
 	"minecraft:behavior.silverfish_merge_with_stone": newMergeWithStone,
 	"minecraft:behavior.silverfish_wake_up_friends":  newWakeUpFriends,
+	"minecraft:behavior.ocelotattack":                newOcelotAttack,
 }

@@ -52,6 +52,9 @@ type Meta struct {
 	// raised / bow drawn).
 	Aggressive bool
 	Sneaking   bool
+	// Sprinting: a mob running (an ocelot or cat closing in on its prey);
+	// Bedrock actor flag sprinting, Java shared flag 0x08.
+	Sprinting bool
 	// UsingItem: using the held item (bow drawn, potion drunk).
 	UsingItem bool
 	// TradeTier: villager trade tier 0..4.
@@ -128,6 +131,7 @@ func (s *state) InLove() bool                      { return s.meta.InLove }
 func (s *state) Angry() bool                       { return s.meta.Angry }
 func (s *state) Aggressive() bool                  { return s.meta.Aggressive }
 func (s *state) Sneaking() bool                    { return s.meta.Sneaking }
+func (s *state) Sprinting() bool                   { return s.meta.Sprinting }
 func (s *state) UsingItem() bool                   { return s.meta.UsingItem }
 func (s *state) TradeTier() int32                  { return s.meta.TradeTier }
 func (s *state) TradeExperience() int32            { return s.meta.TradeExperience }
@@ -169,6 +173,7 @@ func (m *Mob) InLove() bool                      { return m.s.InLove() }
 func (m *Mob) Angry() bool                       { return m.s.Angry() }
 func (m *Mob) Aggressive() bool                  { return m.s.Aggressive() }
 func (m *Mob) Sneaking() bool                    { return m.s.Sneaking() }
+func (m *Mob) Sprinting() bool                   { return m.s.Sprinting() }
 func (m *Mob) UsingItem() bool                   { return m.s.UsingItem() }
 func (m *Mob) TradeTier() int32                  { return m.s.TradeTier() }
 func (m *Mob) TradeExperience() int32            { return m.s.TradeExperience() }
