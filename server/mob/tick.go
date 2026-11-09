@@ -83,6 +83,11 @@ func (s *state) Tick(e *entity.Ent, tx *world.Tx) *entity.Movement {
 		return nil
 	}
 	m.ensureInit()
+	if s.t.removeInPeaceful && s.dying == 0 && tx.World().Difficulty() == world.DifficultyPeaceful {
+		// Monster::normalTick, Slime::preNormalTick.
+		_ = m.Close()
+		return nil
+	}
 	s.ticks++
 	if s.immune > 0 {
 		s.immune--

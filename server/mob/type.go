@@ -17,6 +17,9 @@ import (
 type Type struct {
 	id  string
 	def Definition
+	// removeInPeaceful: the mob is removed while the difficulty is peaceful
+	// (removeInPeacefulTypes).
+	removeInPeaceful bool
 }
 
 var (
@@ -30,7 +33,7 @@ var (
 // pack overriding a vanilla mob). Add Types() to the server's entity
 // registry.
 func RegisterType(def Definition) *Type {
-	t := &Type{id: def.Identifier(), def: def}
+	t := &Type{id: def.Identifier(), def: def, removeInPeaceful: removeInPeacefulTypes[def.Identifier()]}
 	typesMu.Lock()
 	defer typesMu.Unlock()
 	if _, ok := types[t.id]; !ok {
