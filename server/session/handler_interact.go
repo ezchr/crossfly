@@ -2,6 +2,8 @@ package session
 
 import (
 	"fmt"
+
+	"github.com/df-mc/dragonfly/server/entity"
 	"github.com/df-mc/dragonfly/server/world"
 	"github.com/sandertv/gophertunnel/minecraft/protocol"
 	"github.com/sandertv/gophertunnel/minecraft/protocol/packet"
@@ -47,7 +49,17 @@ func (h *InteractHandler) Handle(p packet.Packet, s *Session, tx *world.Tx, c Co
 			},
 		})
 	case packet.InteractActionLeaveVehicle:
-		c.DismountEntity(tx)
+		if !entity.LocksRiders(tx, c) {
+			c.DismountEntity(tx)
+			break
+		}
+		// The client gets off by itself before asking (the sneak key, the touch dismount button):
+		// refused, it is put back on, which sends it the seat again.
+		if rideable, ok := c.RidingEntity(tx); ok {
+			seat := c.SeatIndex()
+			c.DismountEntity(tx)
+			c.MountEntity(tx, rideable, seat)
+		}
 	default:
 		return fmt.Errorf("unexpected interact packet action %v", pk.ActionType)
 	}

@@ -269,7 +269,7 @@ func (s *Session) handleInput(id int32, body []byte) (bool, error) {
 					}
 				}
 			}
-			if sneak && !s.input.sneaking && c.RidingEntityHandle() != nil {
+			if sneak && !s.input.sneaking && c.RidingEntityHandle() != nil && !entity.LocksRiders(tx, c) {
 				// Java gets off a seat with the sneak key (Bedrock sends a leave-vehicle interact).
 				c.DismountEntity(tx)
 			}

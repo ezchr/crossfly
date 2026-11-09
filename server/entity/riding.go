@@ -72,6 +72,33 @@ type SeatRotation struct {
 	LockDegrees  float32
 }
 
+// RiderLocker may be implemented by a Rideable whose riders cannot get off by themselves: only the
+// server takes them off.
+type RiderLocker interface {
+	LocksRiders() bool
+}
+
+// LocksRiders reports whether the entity r rides keeps it from getting off by itself.
+func LocksRiders(tx *world.Tx, r Rider) bool {
+	h := r.RidingEntityHandle()
+	if h == nil {
+		return false
+	}
+	e, ok := h.Entity(tx)
+	if !ok {
+		return false
+	}
+	if l, ok := e.(RiderLocker); ok {
+		return l.LocksRiders()
+	}
+	if rb, ok := RideableOf(e); ok {
+		if l, ok := rb.(RiderLocker); ok {
+			return l.LocksRiders()
+		}
+	}
+	return false
+}
+
 // SeatRotator may be implemented by a Rideable with seats that turn their riders.
 type SeatRotator interface {
 	SeatRotation(seatIndex int) SeatRotation
