@@ -2979,7 +2979,8 @@ func (p *Player) Teleport(pos mgl64.Vec3) {
 		return
 	}
 	p.dismountEntity(p.tx, false)
-	p.StopGliding()
+	// A glide goes on through a teleport in the same world, as in vanilla (an ender pearl thrown
+	// while gliding): the glide ends on landing or without an elytra, not here.
 	p.forceTeleport(pos)
 }
 

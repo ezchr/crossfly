@@ -48,14 +48,14 @@ func TestGlideEndsWithoutElytra(t *testing.T) {
 	}
 }
 
-// TestGlideEndsOnDeathAndTeleport: dying and being teleported end a glide (a player who died while
-// stuck gliding glided on after the respawn).
+// TestGlideEndsOnDeathAndTeleport: dying ends a glide (a player who died while stuck gliding glided on
+// after the respawn), a teleport in the same world does not, as in vanilla.
 func TestGlideEndsOnDeathAndTeleport(t *testing.T) {
 	spearWorld(t, world.GameModeSurvival, func(tx *world.Tx, p *Player) {
 		gliding(t, p)
 		p.Teleport(mgl64.Vec3{0.5, 10, 0.5})
-		if p.Gliding() {
-			t.Fatal("still gliding after a teleport")
+		if !p.Gliding() {
+			t.Fatal("a teleport ended the glide")
 		}
 	})
 	spearWorld(t, world.GameModeSurvival, func(tx *world.Tx, p *Player) {
