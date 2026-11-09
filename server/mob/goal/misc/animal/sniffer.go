@@ -12,6 +12,7 @@ import (
 	"github.com/df-mc/dragonfly/server/mob/component/combat"
 	"github.com/df-mc/dragonfly/server/mob/goal/misc/kit"
 	"github.com/df-mc/dragonfly/server/world"
+	"github.com/df-mc/dragonfly/server/world/particle"
 	"github.com/go-gl/mathgl/mgl64"
 	"github.com/sandertv/gophertunnel/minecraft/protocol"
 	"github.com/sandertv/gophertunnel/minecraft/protocol/packet"
@@ -235,58 +236,105 @@ func uninfested(b world.Block) (world.Block, bool) {
 }
 
 // mergeWithStone is minecraft:behavior.silverfish_merge_with_stone (BDS
-// SilverfishMergeWithStoneGoal; source: java/paper
-// SilverfishMergeWithStoneGoal): a silverfish without a target that stands
-// still, with a 1 in 10 chance per tick and mob griefing on, hides in the
-// host block (stone, cobblestone, stone bricks, deepslate) next to it in a
-// random direction: the block becomes infested and the silverfish is
-// removed. Control flag move.
+// SilverfishMergeWithStoneGoal, a RandomStrollGoal with speed 1, xz 10,
+// y 7, interval 120; control flags move|look): a silverfish without a
+// target whose navigation is done, with mob griefing on and a 1 in 10
+// chance, looks at the block in a random direction next to it (from
+// floor(y + 0.5)): a host block (stone, cobblestone, stone bricks,
+// deepslate) becomes infested and the silverfish goes into it (actor event
+// silverfish merge animation, then removed). Otherwise it strolls like
+// behavior.random_stroll.
 type mergeWithStone struct {
 	mob.GoalBase
 	debugName
-	pos cube.Pos
+	face   cube.Face
+	merge  bool
+	wanted mgl64.Vec3
+	done   bool
 }
 
 func newMergeWithStone(spec mob.GoalSpec) (mob.Goal, error) {
-	return &mergeWithStone{GoalBase: mob.GoalBase{Control: spec.FlagsOr(mob.FlagMove)}, debugName: "SilverfishMergeWithStoneGoal"}, nil
+	return &mergeWithStone{GoalBase: mob.GoalBase{Control: spec.FlagsOr(mob.FlagMove | mob.FlagLook)}, debugName: "SilverfishMergeWithStoneGoal"}, nil
 }
 
 func (g *mergeWithStone) params() map[string]float64 { return map[string]float64{"chance": 10} }
 
+// mergePos is the block the silverfish would hide in.
+func (g *mergeWithStone) mergePos(m *mob.Mob) cube.Pos {
+	return cube.PosFromVec3(m.Position().Add(mgl64.Vec3{0, 0.5, 0})).Side(g.face)
+}
+
 // CanUse ...
 func (g *mergeWithStone) CanUse(m *mob.Mob) bool {
-	if _, ok := m.Target(); ok || !m.Navigation().Done() || !combat.MobGriefing(m.Tx()) {
+	if _, ok := m.Target(); ok || !m.HasNavigation() || !m.Navigation().Done() {
 		return false
 	}
-	if m.Rand().IntN(10) != 0 {
+	if combat.MobGriefing(m.Tx()) && m.Rand().IntN(10) == 0 {
+		// Facing::getRandomFace: down, up, north, south, west, east.
+		g.face = cube.Faces()[m.Rand().IntN(6)]
+		if _, ok := infested(m.Tx().Block(g.mergePos(m))); ok {
+			g.merge = true
+			return true
+		}
+	}
+	g.merge = false
+	// RandomStrollGoal::canUse.
+	if m.Rand().IntN(120) != 0 {
 		return false
 	}
-	g.pos = cube.PosFromVec3(m.Position().Add(mgl64.Vec3{0, 0.5, 0})).Side(cube.Faces()[m.Rand().IntN(6)])
-	_, ok := infested(m.Tx().Block(g.pos))
-	return ok
+	pos, ok := kit.RandomPos(m, 10, 7)
+	if !ok {
+		return false
+	}
+	g.wanted = pos
+	return true
 }
 
 // CanContinueToUse ...
-func (*mergeWithStone) CanContinueToUse(*mob.Mob) bool { return false }
+func (g *mergeWithStone) CanContinueToUse(*mob.Mob) bool { return !g.merge && !g.done }
 
-// Start merges.
+// Start merges, or starts strolling.
 func (g *mergeWithStone) Start(m *mob.Mob) {
+	if !g.merge {
+		if !m.Navigation().MoveTo(m, g.wanted.Add(mgl64.Vec3{0.5, 0, 0.5}), 1) {
+			g.done = true
+		}
+		return
+	}
 	tx := m.Tx()
-	b, ok := infested(tx.Block(g.pos))
+	pos := g.mergePos(m)
+	b, ok := infested(tx.Block(pos))
 	if !ok {
 		return
 	}
-	tx.SetBlock(g.pos, b, nil)
+	tx.SetBlock(pos, b, nil)
 	kit.Show(m, kit.ActorEvent(packet.ActorEventSilverfishMergeAnimation))
 	_ = m.Close()
+}
+
+// Tick ...
+func (g *mergeWithStone) Tick(m *mob.Mob) {
+	if !g.merge {
+		g.done = m.Navigation().Done()
+	}
+}
+
+// Stop ...
+func (g *mergeWithStone) Stop(m *mob.Mob) {
+	if !g.merge {
+		m.Navigation().Stop(m)
+	}
+	g.done = false
 }
 
 // wakeUpFriends is minecraft:behavior.silverfish_wake_up_friends (BDS
 // SilverfishWakeUpFriendsGoal): when hurt by a mob or player (within the
 // last 100 ticks) the silverfish waits 20 ticks, then scans 5 blocks up and
-// down and 10 around for infested blocks: each turns back into its host
-// block, or with mob griefing breaks and releases a silverfish; after each one the
-// scan stops with a 50 % chance.
+// down and 10 around (y outermost, each axis 0, 1, -1, 2, -2, ...) for
+// infested blocks: with mob griefing each breaks like Level::destroyBlock
+// (destroy particles, the silverfish of InfestedBlock::spawnAfterBreak),
+// else it turns back into its host block; after each one the scan stops
+// with a 50 % chance.
 type wakeUpFriends struct {
 	mob.GoalBase
 	debugName
@@ -317,26 +365,33 @@ func (g *wakeUpFriends) Tick(m *mob.Mob) {
 	tx := m.Tx()
 	base := cube.PosFromVec3(m.Position())
 	grief := combat.MobGriefing(tx)
-	// Java order: 0, -1, 1, -2, 2, ...
+	// BDS order of each axis: 0, 1, -1, 2, -2, ...
 	alt := func(i int) int {
 		if i%2 == 1 {
-			return -(i + 1) / 2
+			return (i + 1) / 2
 		}
-		return i / 2
+		return -i / 2
 	}
 	for yi := 0; yi <= 10; yi++ {
 		for xi := 0; xi <= 20; xi++ {
 			for zi := 0; zi <= 20; zi++ {
 				p := base.Add(cube.Pos{alt(xi), alt(yi), alt(zi)})
-				host, ok := uninfested(tx.Block(p))
+				b := tx.Block(p)
+				host, ok := uninfested(b)
 				if !ok {
 					continue
 				}
 				if grief {
-					// destroyBlock: the infested block breaks and lets its
-					// silverfish out.
-					tx.SetBlock(p, block.Air{}, nil)
-					_, _ = mob.Spawn(tx, "minecraft:silverfish", mgl64.Vec3{float64(p[0]) + 0.5, float64(p[1]), float64(p[2]) + 0.5}, mob.SpawnOptions{})
+					// Level::destroyBlock with drops: break particles and
+					// sound, then the block's spawnAfterBreak lets its
+					// silverfish out (no silk touch: no user).
+					tx.SetBlock(p, nil, nil)
+					tx.AddParticle(p.Vec3Centre(), particle.BlockBreak{Block: b})
+					if br, ok := b.(block.Breakable); ok {
+						if h := br.BreakInfo().BreakHandler; h != nil {
+							h(p, tx, nil)
+						}
+					}
 				} else {
 					tx.SetBlock(p, host, nil)
 				}
