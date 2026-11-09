@@ -37,7 +37,6 @@ func init() {
 	mob.RegisterComponent("minecraft:color2", newIntValue(setColor2))
 
 	// Nothing to do server-side, or stubs.
-	mob.RegisterComponent("minecraft:nameable", newNop)                 // read by the core (NameTaggable)
 	mob.RegisterComponent("minecraft:is_hidden_when_invisible", newNop) // client-side
 	mob.RegisterComponent("minecraft:leashable_to", newNop)             // stub
 	mob.RegisterComponent("minecraft:balloonable", newNop)              // stub: balloons are education edition
