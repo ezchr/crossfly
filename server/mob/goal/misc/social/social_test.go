@@ -12,6 +12,7 @@ import (
 	"github.com/df-mc/dragonfly/server/item"
 	"github.com/df-mc/dragonfly/server/mob"
 	"github.com/df-mc/dragonfly/server/mob/component/boss"
+	"github.com/df-mc/dragonfly/server/mob/component/village"
 	"github.com/df-mc/dragonfly/server/mob/goal/misc/social"
 	"github.com/df-mc/dragonfly/server/mob/internal/mobtest"
 	_ "github.com/df-mc/dragonfly/server/mob/vanilla"
@@ -189,6 +190,8 @@ func TestVillagersMakeBaby(t *testing.T) {
 			if !m.HasComponent("minecraft:behavior.make_love") {
 				t.Skipf("villager has no make_love group:\n%v", w.Dump(r))
 			}
+			// The love food (VillagerBase::isWillingToBreed).
+			_ = village.Inventory(m).SetItem(0, item.NewStack(item.Bread{}, 3))
 		}
 	})
 	sawLove := false
@@ -209,6 +212,49 @@ func TestVillagersMakeBaby(t *testing.T) {
 	}
 	if !sawLove {
 		t.Error("baby born without the parents being in love")
+	}
+	// Both parents used their 3 bread (VillagerBase::consumeLoveFood).
+	w.Do(func(tx *world.Tx) {
+		for _, r := range []*mobtest.Ref{a, b} {
+			bread := 0
+			for _, st := range village.Inventory(mobOf(t, tx, r)).Slots() {
+				if _, ok := st.Item().(item.Bread); ok {
+					bread += st.Count()
+				}
+			}
+			if bread != 0 {
+				t.Errorf("parent still has %d bread", bread)
+			}
+		}
+	})
+}
+
+// TestVillagersNoBabyWithoutFood: a villager without 3 bread or 12 crops is
+// not willing to breed (VillagerBase::isWillingToBreed), so no baby comes
+// even with free beds.
+func TestVillagersNoBabyWithoutFood(t *testing.T) {
+	w := setup(t, mobtest.Options{Time: mobtest.Noon}, "minecraft:behavior.make_love", "minecraft:behavior.receive_love", "minecraft:navigation.walk")
+	w.Do(func(tx *world.Tx) {
+		for x := 0; x < 4; x++ {
+			tx.SetBlock(cube.Pos{x, 1, 5}, block.Bed{Facing: cube.North, Head: true}, nil)
+			tx.SetBlock(cube.Pos{x, 1, 6}, block.Bed{Facing: cube.North}, nil)
+		}
+	})
+	opts := mob.SpawnOptions{Event: "minecraft:spawn_farmer"}
+	a := w.Spawn("minecraft:villager_v2", mgl64.Vec3{0.5, 1, 0.5}, opts)
+	b := w.Spawn("minecraft:villager_v2", mgl64.Vec3{2.5, 1, 0.5}, opts)
+	w.Do(func(tx *world.Tx) {
+		// Two bread are not enough.
+		_ = village.Inventory(mobOf(t, tx, a)).SetItem(0, item.NewStack(item.Bread{}, 2))
+		_ = village.Inventory(mobOf(t, tx, b)).SetItem(0, item.NewStack(item.Bread{}, 2))
+	})
+	for i := 0; i < 1500; i++ {
+		w.Tick(1)
+		love := false
+		w.Do(func(tx *world.Tx) { love = mobOf(t, tx, a).InLove() || mobOf(t, tx, b).InLove() })
+		if love {
+			t.Fatal("villager without its love food fell in love")
+		}
 	}
 }
 

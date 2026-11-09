@@ -9,6 +9,7 @@ import (
 
 	"github.com/df-mc/dragonfly/server/block"
 	"github.com/df-mc/dragonfly/server/block/cube"
+	"github.com/df-mc/dragonfly/server/item"
 	"github.com/df-mc/dragonfly/server/mob"
 	"github.com/df-mc/dragonfly/server/mob/component/core"
 	"github.com/df-mc/dragonfly/server/mob/component/village"
@@ -93,8 +94,10 @@ func needMoreVillagers(m *mob.Mob) bool {
 // (entity_born, persistent).
 //
 // The village check uses component/village (beds near the mob stand in for
-// a village when the mob has none). Not modelled: the food a villager needs
-// to be willing (every villager is willing).
+// a village when the mob has none). The partner must be willing
+// (VillagerBase::isWillingToBreed: 3 bread or 12 carrots, potatoes or
+// beetroots in its inventory), and both use that food up when the baby is
+// born (consumeLoveFood).
 type makeLove struct {
 	mob.GoalBase
 	timer  int
@@ -137,7 +140,7 @@ func findMate(m *mob.Mob) *mob.Mob {
 		if !ok || om.H() == m.H() || om.Dead() || om.Baby() || !isVillager(om) {
 			continue
 		}
-		if _, ok := loveOf(om); ok {
+		if _, ok := loveOf(om); ok || !willingToBreed(om) {
 			continue
 		}
 		d := kit.DistSq(om.Position(), m.Position())
@@ -163,7 +166,54 @@ func (g *makeLove) CanContinueToUse(m *mob.Mob) bool {
 	if _, ok := loveOf(m); !ok {
 		return false
 	}
+	if p, ok := partnerOf(m); !ok || !willingToBreed(p) {
+		return false
+	}
 	return needMoreVillagers(m)
+}
+
+// breedingStackIndex is VillagerBase::getBreedingStackIndex: the first
+// inventory slot holding at least 3 bread or 12 carrots, potatoes or
+// beetroots, -1 without one.
+func breedingStackIndex(m *mob.Mob) int {
+	inv := village.Inventory(m)
+	for i, s := range inv.Slots() {
+		if loveFoodCost(s) > 0 && s.Count() >= loveFoodCost(s) {
+			return i
+		}
+	}
+	return -1
+}
+
+// loveFoodCost is how much of s a villager uses up to breed: 3 bread or 12
+// carrots, potatoes or beetroots (VillagerBase::consumeLoveFood), 0 for
+// anything else.
+func loveFoodCost(s item.Stack) int {
+	if s.Empty() {
+		return 0
+	}
+	switch s.Item().(type) {
+	case item.Bread:
+		return 3
+	case block.Carrot, block.Potato, item.Beetroot:
+		return 12
+	}
+	return 0
+}
+
+// willingToBreed is VillagerBase::isWillingToBreed(true): the villager has
+// its breeding food.
+func willingToBreed(m *mob.Mob) bool { return breedingStackIndex(m) >= 0 }
+
+// consumeLoveFood is VillagerBase::consumeLoveFood.
+func consumeLoveFood(m *mob.Mob) {
+	i := breedingStackIndex(m)
+	if i < 0 {
+		return
+	}
+	inv := village.Inventory(m)
+	s, _ := inv.Item(i)
+	_ = inv.SetItem(i, s.Grow(-loveFoodCost(s)))
 }
 
 // Start ...
@@ -209,6 +259,8 @@ func breed(m, p *mob.Mob) {
 	if err == nil {
 		baby.SetPersistent(true)
 	}
+	consumeLoveFood(m)
+	consumeLoveFood(p)
 	setInLove(p, nil, false)
 	setInLove(m, nil, false)
 }
