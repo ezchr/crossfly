@@ -2809,6 +2809,7 @@ func (p *Player) BreakBlock(pos cube.Pos) {
 		b = p.tx.Block(pos)
 	}
 	p.tx.SetBlock(pos, nil, nil)
+	world.BlockBroken(p.tx, pos, b, p)
 	p.tx.AddParticle(pos.Vec3Centre(), particle.BlockBreak{Block: b})
 
 	if breakable, ok := b.(block.Breakable); ok {

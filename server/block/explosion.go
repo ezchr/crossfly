@@ -261,9 +261,13 @@ func (c ExplosionConfig) Explode(tx *world.Tx, src world.ExplosionSource) {
 		bl := tx.Block(pos)
 		if explodable, ok := bl.(Explodable); ok {
 			explodable.Explode(src, pos, tx)
+			if world.BlockBreakHooks() > 0 && blockTypeChanged(bl, tx.Block(pos)) {
+				world.BlockBroken(tx, pos, bl, explosionBreaker(src, c.Source))
+			}
 		} else if breakable, ok := bl.(Breakable); ok {
 			// Clear the block first so break handlers see the post-break world, this is required by things such as redstone updates.
 			tx.SetBlock(pos, nil, nil)
+			world.BlockBroken(tx, pos, bl, explosionBreaker(src, c.Source))
 			breakHandler := breakable.BreakInfo().BreakHandler
 			if breakHandler != nil {
 				breakHandler(pos, tx, nil)

@@ -172,8 +172,8 @@ func (c *EntitySensor) tick(m *mob.Mob) {
 // block_list is broken within sensor_radius (16) by a source passing
 // "sources" (the breaker as "other"), on_block_broken fires.
 //
-// Dragonfly has no world-wide block break event, so the server (or a player
-// handler) must report breaks with BlockBroken.
+// Player breaking and explosions report breaks through world.BlockBroken,
+// which calls BlockBroken (block_break.go).
 type BlockSensor struct {
 	radius  float64
 	sources mob.Filter
@@ -216,30 +216,44 @@ func newBlockSensor(key string, raw json.RawMessage) (mob.Component, error) {
 	return c, nil
 }
 
-// Attach ...
-func (*BlockSensor) Attach(*mob.Mob) {}
+// Attach registers the mob as a block break listener of its world
+// (BlockBreakSensorComponent::initialize -> BlockEventDispatcher::registerListener).
+func (*BlockSensor) Attach(m *mob.Mob) { blockSensors.add(m) }
 
 // Detach ...
-func (*BlockSensor) Detach(*mob.Mob) {}
-
-// maxBlockSensorRadius bounds the mob search of BlockBroken.
-const maxBlockSensorRadius = 32
+func (*BlockSensor) Detach(m *mob.Mob) { blockSensors.remove(m) }
 
 // BlockBroken tells the mobs with minecraft:block_sensor around pos that b
-// was broken there by breaker (nil when nothing broke it). Call it from the
-// block break handling (player handler, explosions).
+// was broken there by breaker (nil when nothing broke it). The world calls
+// it through world.BlockBroken (player breaking, explosions; see
+// block_break.go). Like BDS BlockEventDispatcher::dispatchEvent it only
+// visits the registered sensors of the world, each within its radius of
+// its box centre.
 func BlockBroken(tx *world.Tx, pos cube.Pos, b world.Block, breaker world.Entity) {
+	if blockSensors.n.Load() == 0 {
+		return
+	}
+	hs := blockSensors.handles(tx.World())
+	if len(hs) == 0 {
+		return
+	}
 	name, _ := b.EncodeBlock()
 	name = NormaliseBlockName(name)
 	c := pos.Vec3Centre()
-	r := float64(maxBlockSensorRadius)
-	for e := range tx.EntitiesWithin(boxOf(c[0]-r, c[1]-r, c[2]-r, c[0]+r, c[1]+r, c[2]+r)) {
-		m, ok := mob.Of(e)
-		if !ok || m.Dead() {
+	for _, h := range hs {
+		m, ok := (*mob.Mob)(nil), false
+		if !h.Closed() {
+			m, ok = mob.OfHandle(tx, h)
+		}
+		if !ok {
+			blockSensors.drop(tx.World(), h)
+			continue
+		}
+		if m.Dead() {
 			continue
 		}
 		s, ok := mob.ComponentOf[*BlockSensor](m)
-		if !ok || m.Position().Sub(c).Len() > s.radius {
+		if !ok || boxCentre(m.BBox()).Sub(c).Len() > s.radius {
 			continue
 		}
 		ctx := m.Ctx()
