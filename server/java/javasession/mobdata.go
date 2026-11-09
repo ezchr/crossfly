@@ -91,7 +91,7 @@ var mobKinds = map[string]*mobKind{}
 func init() {
 	plain := []string{
 		"allay", "bat", "breeze", "cod", "copper_golem", "creaking", "elder_guardian",
-		"endermite", "ender_dragon", "evoker", "giant", "guardian", "illusioner", "iron_golem",
+		"endermite", "ender_dragon", "giant", "guardian", "illusioner", "iron_golem",
 		"parched", "phantom", "piglin_brute", "pufferfish", "ravager", "silverfish",
 		"stray", "tadpole", "vex", "vindicator", "warden", "wither", "wither_skeleton",
 	}
@@ -265,6 +265,7 @@ func init() {
 	}})
 	set("enderman", mobKind{extra: endermanData})
 	set("pillager", mobKind{extra: pillagerData})
+	set("evoker", mobKind{extra: spellData})
 	set("bee", mobKind{ageable: true, extra: func(_ *Session, d *mobData, e world.Entity, _ string) {
 		d.long(19, angerEndTime(e))
 	}})

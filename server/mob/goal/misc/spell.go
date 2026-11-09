@@ -127,6 +127,10 @@ func inRange(m *mob.Mob, e world.Entity, c *spellChoice) bool {
 func (g *spellBase) start(m *mob.Mob) {
 	g.t = 0
 	kit.Stop(m)
+	if g.cur.hasColour {
+		// SendEventGoal::start shows the spell colour, as summons do.
+		m.SetActorData(protocol.EntityDataKeyDataSpellCastingColor, g.cur.colour)
+	}
 	if g.cur.casting {
 		kit.Flag(m, protocol.EntityDataFlagCasting, true)
 	}

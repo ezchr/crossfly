@@ -244,3 +244,25 @@ func TestSummonCap(t *testing.T) {
 		t.Errorf("%d vexes, want the 2 there were", n)
 	}
 }
+
+// TestSendEventColour: the wololo spell shows its colour while cast
+// (SendEventGoal::start).
+func TestSendEventColour(t *testing.T) {
+	w := arena(t, 12)
+	s := w.Spawn("minecraft:sheep", mgl64.Vec3{5.5, 1, 0.5})
+	s.With(func(m *mob.Mob) {
+		for _, k := range m.Goals().Keys() {
+			m.Goals().Remove(k)
+		}
+		m.UpdateMeta(func(meta *mob.Meta) { meta.Color = 11 })
+	})
+	e := w.Spawn("minecraft:evocation_illager", mgl64.Vec3{0.5, 1, 0.5})
+	if _, ok := flagSeen(w, e, 100, protocol.EntityDataFlagCasting); !ok {
+		t.Fatalf("evoker never cast: %v", w.Dump(e))
+	}
+	e.With(func(m *mob.Mob) {
+		if v, _ := m.ActorData(protocol.EntityDataKeyDataSpellCastingColor); v != int32(-0x4c7fcd) {
+			t.Errorf("spell colour %v, want #FFB38033", v)
+		}
+	})
+}
