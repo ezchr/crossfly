@@ -14,6 +14,7 @@ import (
 	"github.com/df-mc/dragonfly/server/item"
 	"github.com/df-mc/dragonfly/server/mob"
 	"github.com/df-mc/dragonfly/server/mob/component/combat/sense"
+	vc "github.com/df-mc/dragonfly/server/mob/component/village"
 	"github.com/df-mc/dragonfly/server/player"
 	"github.com/df-mc/dragonfly/server/world"
 	"github.com/go-gl/mathgl/mgl64"
@@ -29,21 +30,36 @@ import (
 //	steering rider's player_ride_tamed keeps a happy ghast from wandering).
 //
 // Every tick the mob's velocity gets (target - pos)/max(dist, 0.1) x its
-// movement speed. A new target (pos + random in +-xz, +-y, + y_offset) is
-// picked when the current one is closer than 1 block, beyond the follow range,
-// not air, (must_reach) not reachable in a straight line, or (random_reselect)
-// every float_duration seconds. The 1.26 keys navigate_around_surface,
-// surface_xz_dist, surface_y_dist and use_home_position_restriction (happy
-// ghast) are not modelled.
+// movement speed. A new target is picked when the current one is closer than
+// 1 block, beyond the follow range, not air, (must_reach) not reachable in a
+// straight line, or (random_reselect) every float_duration seconds. As the
+// 26.60 FloatWanderGoal::tick picks it:
+//
+//   - use_home_position_restriction (default true): one RandomPos::getPos
+//     candidate (block offsets in +-xz, +-y, no y_offset), pulled towards
+//     the home and kept within its restriction radius (minecraft:home; the
+//     happy ghast's 32 or 64); the mob's own position when the candidate is
+//     outside. Without it: pos + random in +-xz, +-y, + y_offset.
+//   - navigate_around_surface: up to 64 more picks until the target is air
+//     with a block within surface_y_dist above or below or surface_xz_dist
+//     along x or z (8, 8); failing that, a target above the highest block of
+//     its column is mirrored below the mob.
+//   - canReach steps the box along the line; additional_collision_buffer
+//     grows it by 1 at the last step, and liquids block the way unless
+//     allow_navigating_through_liquids.
 type floatWander struct {
 	mob.GoalBase
-	xz, y, yOff    float64
-	mustReach      bool
-	randomReselect bool
-	duration       floatRange
-	target         mgl64.Vec3
-	timer          int
-	init           bool
+	xz, y, yOff     float64
+	mustReach       bool
+	randomReselect  bool
+	duration        floatRange
+	useHome         bool
+	aroundSurface   bool
+	surfXZ, surfY   int
+	buffer, liquids bool
+	target          mgl64.Vec3
+	timer           int
+	init            bool
 }
 
 func newFloatWander(spec mob.GoalSpec) (mob.Goal, error) {
@@ -55,11 +71,19 @@ func newFloatWander(spec mob.GoalSpec) (mob.Goal, error) {
 		RandomReselect bool       `json:"random_reselect"`
 		Duration       floatRange `json:"float_duration"`
 		MoveControl    *bool      `json:"float_wander_has_move_control"`
+		UseHome        *bool      `json:"use_home_position_restriction"`
+		AroundSurface  bool       `json:"navigate_around_surface"`
+		SurfaceXZ      *int       `json:"surface_xz_dist"`
+		SurfaceY       *int       `json:"surface_y_dist"`
+		Buffer         bool       `json:"additional_collision_buffer"`
+		Liquids        bool       `json:"allow_navigating_through_liquids"`
 	}{}
 	if err := decodeGoal(spec, &j); err != nil {
 		return nil, err
 	}
-	g := &floatWander{GoalBase: mob.GoalBase{Control: spec.FlagsOr(0)}, xz: 10, y: 7, yOff: j.YOffset, mustReach: j.MustReach, randomReselect: j.RandomReselect, duration: j.Duration}
+	g := &floatWander{GoalBase: mob.GoalBase{Control: spec.FlagsOr(0)}, xz: 10, y: 7, yOff: j.YOffset, mustReach: j.MustReach,
+		randomReselect: j.RandomReselect, duration: j.Duration, useHome: j.UseHome == nil || *j.UseHome,
+		aroundSurface: j.AroundSurface, surfXZ: 8, surfY: 8, buffer: j.Buffer, liquids: j.Liquids}
 	if j.MoveControl == nil || *j.MoveControl {
 		g.Control = mob.FlagMove
 	}
@@ -68,6 +92,12 @@ func newFloatWander(spec mob.GoalSpec) (mob.Goal, error) {
 	}
 	if j.Y != nil {
 		g.y = float64(max(*j.Y, 1))
+	}
+	if j.SurfaceXZ != nil {
+		g.surfXZ = *j.SurfaceXZ
+	}
+	if j.SurfaceY != nil {
+		g.surfY = *j.SurfaceY
 	}
 	return g, nil
 }
@@ -102,11 +132,9 @@ func (g *floatWander) Tick(m *mob.Mob) {
 		g.apply(m, d, dist)
 		return
 	}
-	r := m.Rand()
-	g.target = mgl64.Vec3{
-		pos[0] + (r.Float64()*2-1)*g.xz,
-		pos[1] + (r.Float64()*2-1)*g.y + g.yOff,
-		pos[2] + (r.Float64()*2-1)*g.xz,
+	g.target = g.pick(m, pos)
+	if g.aroundSurface {
+		g.target = g.pickNearSurface(m, pos, g.target)
 	}
 	d = g.target.Sub(pos)
 	dist = d.Len()
@@ -120,13 +148,118 @@ func (g *floatWander) Tick(m *mob.Mob) {
 	}
 }
 
+// pick is FloatWanderGoal's target pick: with use_home_position_restriction one RandomPos::getPos candidate
+// (or the mob's position when there is none), else a random offset within xz, y and y_offset.
+func (g *floatWander) pick(m *mob.Mob, pos mgl64.Vec3) mgl64.Vec3 {
+	if g.useHome {
+		if c, ok := homeRandomPos(m, int(g.xz), int(g.y)); ok {
+			return vec(c)
+		}
+		return pos
+	}
+	r := m.Rand()
+	return mgl64.Vec3{
+		pos[0] + (r.Float64()*2-1)*g.xz,
+		pos[1] + (r.Float64()*2-1)*g.y + g.yOff,
+		pos[2] + (r.Float64()*2-1)*g.xz,
+	}
+}
+
+// pickNearSurface is navigate_around_surface: picks again, up to 64 times, until the target is air near a
+// block (surfaceNear); the last pick is then taken, mirrored below the mob if it is above the highest block
+// of its column.
+func (g *floatWander) pickNearSurface(m *mob.Mob, pos, target mgl64.Vec3) mgl64.Vec3 {
+	if g.surfXZ <= 0 || g.surfY <= 0 {
+		return target
+	}
+	tx := m.Tx()
+	for i := 0; i < 64; i++ {
+		t := cube.PosFromVec3(target)
+		if airAt(tx, t) && g.surfaceNear(tx, t) {
+			return target
+		}
+		target = g.pick(m, pos)
+	}
+	t := cube.PosFromVec3(target)
+	if h := tx.HighestBlock(t[0], t[2]); h > tx.Range()[0] && target[1] > float64(h) {
+		target[1] = pos[1] - math.Abs(pos[1]-target[1])
+	}
+	return target
+}
+
+// surfaceNear reports whether a block other than air lies within surface_y_dist - 1 above or below t or
+// within surface_xz_dist - 1 along x or z.
+func (g *floatWander) surfaceNear(tx *world.Tx, t cube.Pos) bool {
+	solid := func(p cube.Pos) bool { return !airAt(tx, p) }
+	for i := 1; i < g.surfY; i++ {
+		if solid(t.Add(cube.Pos{0, i, 0})) || solid(t.Add(cube.Pos{0, -i, 0})) {
+			return true
+		}
+	}
+	for i := 1; i < g.surfXZ; i++ {
+		if solid(t.Add(cube.Pos{0, 0, -i})) || solid(t.Add(cube.Pos{i, 0, 0})) ||
+			solid(t.Add(cube.Pos{0, 0, i})) || solid(t.Add(cube.Pos{-i, 0, 0})) {
+			return true
+		}
+	}
+	return false
+}
+
+// homeRandomPos is RandomPos::getPos with one try (generateRandomPos): a block offset in +-xz, +-y from the
+// mob's block, moved up to xz/2 - 1 more towards the home, snapped to the ground unless the mob flies, swims
+// or is in a liquid, and refused outside the home restriction when the restriction reaches that far
+// ((xz + radius)^2 > home distance^2 + 4).
+func homeRandomPos(m *mob.Mob, xz, y int) (cube.Pos, bool) {
+	if xz < 1 {
+		return cube.Pos{}, false
+	}
+	pos := m.Position()
+	base := cube.PosFromVec3(pos)
+	home, radius, hasHome := vc.HomeRestriction(m)
+	restrict := false
+	if hasHome && radius >= 0 {
+		d := home.Sub(base)
+		restrict = float64((xz+radius)*(xz+radius)) > float64(d[0]*d[0]+d[1]*d[1]+d[2]*d[2])+4
+	}
+	r := m.Rand()
+	dx := r.IntN(2*xz+1) - xz
+	dz := r.IntN(2*xz+1) - xz
+	dy := r.IntN(2*y+1) - y
+	if hasHome && xz > 1 {
+		k := xz/2 - 1
+		if float64(home[0]) >= pos[0] {
+			dx += r.IntN(k + 1)
+		} else {
+			dx -= r.IntN(k + 1)
+		}
+		if float64(home[2]) >= pos[2] {
+			dz += r.IntN(k + 1)
+		} else {
+			dz -= r.IntN(k + 1)
+		}
+	}
+	c := base.Add(cube.Pos{dx, dy, dz})
+	if !(canFlyFlag(m) || isSwimmer(m) || m.Physics().InWater || m.Physics().InLava) {
+		var ok bool
+		if c, ok = snapToGround(m, c, base[1]-y, base[1]+y); !ok {
+			return cube.Pos{}, false
+		}
+	}
+	if restrict && !vc.WithinHomeRestriction(m, c.Vec3Centre()) {
+		return cube.Pos{}, false
+	}
+	return c, true
+}
+
 func (g *floatWander) apply(m *mob.Mob, d mgl64.Vec3, dist float64) {
 	s := m.Speed()
 	m.SetVelocity(m.Vel().Add(d.Mul(s / math.Max(dist, 0.1))))
 }
 
 // canReach is FloatWanderGoal::canReach: the box moved along the line in
-// unit steps never collides.
+// unit steps never collides, nor (unless allow_navigating_through_liquids)
+// touches a liquid; with additional_collision_buffer the box of the step
+// dist - 1 is 1 block larger on every side.
 func (g *floatWander) canReach(m *mob.Mob, target mgl64.Vec3, dist float64) bool {
 	if dist <= 1 {
 		return true
@@ -136,7 +269,11 @@ func (g *floatWander) canReach(m *mob.Mob, target mgl64.Vec3, dist float64) bool
 	tx := m.Tx()
 	for i := 1.0; i < dist; i++ {
 		box = box.Translate(step)
-		if boxCollides(tx, box) {
+		check := box
+		if g.buffer && i == dist-1 {
+			check = box.Grow(1)
+		}
+		if boxBlocked(tx, check, !g.liquids) {
 			return false
 		}
 	}
@@ -144,7 +281,11 @@ func (g *floatWander) canReach(m *mob.Mob, target mgl64.Vec3, dist float64) bool
 }
 
 // boxCollides reports whether any block box intersects box.
-func boxCollides(tx *world.Tx, box cube.BBox) bool {
+func boxCollides(tx *world.Tx, box cube.BBox) bool { return boxBlocked(tx, box, false) }
+
+// boxBlocked reports whether any block box intersects box, or, if liquids, any liquid lies in the blocks
+// the box touches.
+func boxBlocked(tx *world.Tx, box cube.BBox, liquids bool) bool {
 	min, max := box.Min(), box.Max()
 	for x := int(math.Floor(min[0])); x <= int(math.Floor(max[0])); x++ {
 		for y := int(math.Floor(min[1])); y <= int(math.Floor(max[1])); y++ {
@@ -152,6 +293,11 @@ func boxCollides(tx *world.Tx, box cube.BBox) bool {
 				p := cube.Pos{x, y, z}
 				if !inRange(tx, p) {
 					continue
+				}
+				if liquids {
+					if _, ok := tx.Liquid(p); ok {
+						return true
+					}
 				}
 				b := tx.Block(p)
 				if _, ok := b.(block.Air); ok {

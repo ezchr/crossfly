@@ -177,13 +177,17 @@ func TestGhastFloatsAround(t *testing.T) {
 	w.Do(func(tx *world.Tx) { w.Floor(tx, 0, 30, block.Stone{}) })
 	g := w.Spawn("minecraft:ghast", mgl64.Vec3{0.5, 12, 0.5})
 	start := g.Pos()
-	minY := 100.0
-	w.Each(400, func(tx *world.Tx, _ int) bool {
-		minY = math.Min(minY, g.PosTx(tx)[1])
+	// A ghast that does not fly lies on the floor (y 1) from about tick 20; one that flies wanders up and
+	// down (float_wander may pick targets just over the floor, as 26.60 RandomPos::getPos does).
+	maxY := 0.0
+	w.Each(400, func(tx *world.Tx, i int) bool {
+		if i >= 100 {
+			maxY = math.Max(maxY, g.PosTx(tx)[1])
+		}
 		return true
 	})
-	if minY < 3 {
-		t.Errorf("ghast sank to y %.2f: it does not fly", minY)
+	if maxY < 3 {
+		t.Errorf("ghast stayed below y %.2f: it does not fly", maxY)
 	}
 	if d := g.Pos().Sub(start).Len(); d < 1 {
 		t.Errorf("ghast drifted %.2f blocks in 400 ticks:\n%v", d, w.Dump(g))
