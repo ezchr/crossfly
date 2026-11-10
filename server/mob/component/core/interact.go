@@ -151,8 +151,17 @@ func (in *interaction) run(m *mob.Mob, user item.User, held item.Stack, ctx *mob
 	if in.HealthAmount > 0 {
 		m.Heal(in.HealthAmount, nil)
 	}
-	if in.EquipItemSlot != "" && !held.Empty() && m.EquipSlot(in.EquipItemSlot, held) && !creative {
-		held = held.Grow(-1)
+	if in.EquipItemSlot != "" {
+		// InteractComponent::_tryEquipItem equips the item as it was before use_item used it up
+		// (the happy ghast's harness); otherwise equipping takes one item.
+		eq := held
+		used := in.UseItem && !creative && in.TransformToItem == ""
+		if used {
+			eq = before
+		}
+		if !eq.Empty() && m.EquipSlot(in.EquipItemSlot, eq) && !creative && !used {
+			held = held.Grow(-1)
+		}
 	}
 	if in.DropItemSlot != "" {
 		if s, ok := m.DropSlot(in.DropItemSlot); ok {

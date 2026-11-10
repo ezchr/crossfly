@@ -92,9 +92,6 @@ func TestHappyGhastHarnessSurvival(t *testing.T) {
 		t.Errorf("survival player kept %v", left)
 	}
 	g.With(func(m *mob.Mob) {
-		if m.BodyArmour().Empty() && m.HasComponent("minecraft:rideable") {
-			t.Skip("component/core interact uses the item up before equip_item_slot equips it (passive-shared's interact.go)")
-		}
 		if b := m.BodyArmour(); b.Item() != (item.Harness{Colour: item.ColourLime()}) {
 			t.Errorf("body slot holds %v, want the lime harness", b)
 		}
