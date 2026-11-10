@@ -407,7 +407,7 @@ func breakBlock(b world.Block, pos cube.Pos, tx *world.Tx) {
 	breakBlockNoDrops(b, pos, tx)
 	if breakable, ok := b.(Breakable); ok {
 		for _, drop := range breakable.BreakInfo().Drops(item.ToolNone{}, nil) {
-			dropItem(tx, drop, pos.Vec3Centre())
+			dropItem(tx, drop, popResourcePos(pos))
 		}
 	}
 }
