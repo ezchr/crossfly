@@ -90,6 +90,10 @@ func (s *Session) ViewParticle(pos mgl64.Vec3, p world.Particle) {
 			w.VarInt(id)
 			s.particleAt(w, false, pos, 0, 0, 0, 0, 0)
 		}
+	case particle.Vibration:
+		s.viewVibration(pos, pa)
+	case particle.Shriek:
+		s.levelEvent(levelEventSculkShriek, cube.PosFromVec3(pos), 0, false)
 	case particle.Named:
 		if id, ok := s.namedParticleID(pa.Java); ok {
 			w := s.packet()

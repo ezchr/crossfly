@@ -50,6 +50,13 @@ func javaMobSoundName(event, typ string) (string, bool) {
 		// Parrot imitations and the allay duplication chime (mob_dance_sound.go).
 		return n, n != ""
 	}
+	switch event {
+	case "power.on.sculk_sensor":
+		// The sculk sensor's clicks (SculkSensorBlock::setActivePhase and ::tick).
+		return "minecraft:block.sculk_sensor.clicking", true
+	case "power.off.sculk_sensor":
+		return "minecraft:block.sculk_sensor.clicking_stop", true
+	}
 	if strings.HasPrefix(event, "block.") {
 		// Block sound events (block.beehive.enter) have the same name on Java.
 		name := "minecraft:" + event

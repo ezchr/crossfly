@@ -574,6 +574,10 @@ func (s *Session) ViewParticle(pos mgl64.Vec3, p world.Particle) {
 			Position:       vec64To32(pos),
 			ParticleName:   "minecraft:heart_particle",
 		})
+	case particle.Vibration:
+		s.viewVibration(pos, pa)
+	case particle.Shriek:
+		s.viewShriek(pos)
 	case particle.Named:
 		if pa.Bedrock == "" {
 			return
