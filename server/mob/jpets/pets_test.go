@@ -431,3 +431,36 @@ func TestFoxSleepsInShade(t *testing.T) {
 		t.Fatal("fox did not sleep in the shade by day")
 	}
 }
+
+// TestPandaBamboo: the first bamboo puts an adult panda in love, the next
+// one makes it sit down and eat with the bamboo in its paws.
+func TestPandaBamboo(t *testing.T) {
+	w := mobtest.New(t, mobtest.Options{})
+	arena(w)
+	r := spawnJava(t, w, "minecraft:panda", mgl64.Vec3{0.5, 1, 0.5})
+	p := w.AddPlayer("tester", mgl64.Vec3{2.5, 1, 0.5})
+	withMob(t, w, r, func(m *javamob.Mob) {
+		pd := m.Behaviour().(*Panda)
+		if m.Meta().Variant != int32(pd.personality()) {
+			t.Fatal("personality not shown")
+		}
+		if pd.personality() == GeneWorried {
+			t.Skip("a worried panda in this seed")
+		}
+		m.SetBaby(false)
+		pd.Animal.SetAge(0)
+	})
+	p.Interact(r, stackOf(t, "minecraft:bamboo", 1))
+	withMob(t, w, r, func(m *javamob.Mob) {
+		if !m.Behaviour().(*Panda).Animal.InLove() {
+			t.Fatal("bamboo did not make the panda fall in love")
+		}
+	})
+	p.Interact(r, stackOf(t, "minecraft:bamboo", 1))
+	withMob(t, w, r, func(m *javamob.Mob) {
+		pd := m.Behaviour().(*Panda)
+		if !pd.flag(flagSit) || !pd.eating() || itemName(m.ItemBySlot(javamob.SlotMainHand)) != "minecraft:bamboo" {
+			t.Fatalf("panda not sitting and eating: flags %v eat %v held %v", pd.flags, pd.eatCounter, itemName(m.ItemBySlot(javamob.SlotMainHand)))
+		}
+	})
+}
