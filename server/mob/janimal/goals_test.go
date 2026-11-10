@@ -1,6 +1,6 @@
 //go:build crossfly_full
 
-package animal
+package janimal
 
 import (
 	"math/rand/v2"

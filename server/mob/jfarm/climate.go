@@ -1,6 +1,6 @@
 //go:build crossfly_full
 
-package farm
+package jfarm
 
 import "github.com/df-mc/dragonfly/server/world"
 

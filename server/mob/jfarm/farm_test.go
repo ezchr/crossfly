@@ -1,6 +1,6 @@
 //go:build crossfly_full
 
-package farm
+package jfarm
 
 import (
 	"math/rand/v2"

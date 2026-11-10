@@ -1,6 +1,6 @@
 //go:build crossfly_full
 
-package animal
+package janimal
 
 // Ageable is the server state of a Java AgeableMob (net.minecraft.world.entity.AgeableMob): the age that
 // makes a mob a baby (below 0) or keeps an adult from breeding again (above 0), the forced growth from

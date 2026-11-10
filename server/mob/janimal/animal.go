@@ -1,6 +1,6 @@
 //go:build crossfly_full
 
-package animal
+package janimal
 
 import (
 	"math/rand/v2"
@@ -124,10 +124,16 @@ func (r FeedResult) Used() bool { return r == FeedLove || r == FeedGrow }
 // the item (Mob.usePlayerItem: not in creative), plays the eating sound, broadcasts EventLoveHearts for
 // FeedLove and refreshes the entity data on a boundary.
 func (a *Animal) Feed(food bool, player uuid.UUID) (FeedResult, bool) {
+	return a.FeedIf(food, player, a.CanFallInLove())
+}
+
+// FeedIf is Feed for classes that override Animal.canFallInLove: canFallInLove is their answer (a turtle
+// carrying an egg cannot; it usually starts with CanFallInLove()).
+func (a *Animal) FeedIf(food bool, player uuid.UUID, canFallInLove bool) (FeedResult, bool) {
 	if !food {
 		return FeedPass, false
 	}
-	if a.age == 0 && a.CanFallInLove() {
+	if a.age == 0 && canFallInLove {
 		a.SetInLove(player)
 		return FeedLove, false
 	}

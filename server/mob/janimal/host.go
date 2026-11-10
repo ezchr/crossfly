@@ -1,6 +1,6 @@
 //go:build crossfly_full
 
-package animal
+package janimal
 
 import (
 	"math/rand/v2"
@@ -60,7 +60,7 @@ type Host[H any] interface {
 	// TemptRange is the TEMPT_RANGE attribute (10 for animals).
 	TemptRange() float64
 
-	// BroadcastEvent is Level.broadcastEntityEvent(mob, id).
+	// BroadcastEvent is Level.broadcastEntityEvent(mob, id): the viewers get Event(id).
 	BroadcastEvent(id byte)
 	// MobGriefing and MobDrops are the game rules.
 	MobGriefing() bool
