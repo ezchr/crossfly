@@ -287,8 +287,17 @@ func TestZombifiedPiglinTramplesTurtleEggs(t *testing.T) {
 	w.Do(func(tx *world.Tx) {
 		w.Floor(tx, 0, 16, block.Stone{})
 		tx.SetBlock(cube.Pos{6, 1, 0}, block.TurtleEgg{}, nil)
+		if _, ok := tx.Block(cube.Pos{6, 1, 0}).(block.TurtleEgg); !ok {
+			t.Fatalf("no turtle egg placed: %#v", tx.Block(cube.Pos{6, 1, 0}))
+		}
 	})
 	spawnJ(t, w, ZombifiedPiglinID, mgl64.Vec3{0.5, 1, 0.5})
+	w.Tick(1)
+	w.Do(func(tx *world.Tx) {
+		if _, ok := tx.Block(cube.Pos{6, 1, 0}).(block.TurtleEgg); !ok {
+			t.Fatal("the turtle egg vanished at once")
+		}
+	})
 	gone := false
 	for i := 0; i < 1600 && !gone; i += 20 {
 		w.Tick(20)
@@ -300,4 +309,8 @@ func TestZombifiedPiglinTramplesTurtleEggs(t *testing.T) {
 	if !gone {
 		t.Error("the turtle egg survived 80 seconds next to a zombified piglin")
 	}
+	if w.Ticks() < 61 {
+		t.Errorf("egg gone after %d ticks: stomping takes 60", w.Ticks())
+	}
+	t.Logf("egg destroyed after %d ticks", w.Ticks())
 }
