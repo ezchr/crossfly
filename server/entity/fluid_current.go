@@ -14,8 +14,9 @@ import (
 // EntityFluidInteraction.update and CurrentAccumulator.applyTo (26.3) do: the flow of every liquid block the
 // entity's box (shrunk by 0.001) reaches is summed per liquid, scaled down while the entity is less than 0.4 deep,
 // and the normalised sum times 0.014 (water) or 0.0023333 (lava; 0.007 in the Nether) is added to the velocity,
-// raised to 0.0045 when the entity barely moves.
-func applyFluidCurrents(e *Ent, tx *world.Tx) {
+// raised to 0.0045 when the entity barely moves. It returns how high water and lava reach over the entity's bottom
+// (EntityFluidInteraction.getFluidHeight; 0 when it is not in them).
+func applyFluidCurrents(e *Ent, tx *world.Tx) (water, lava float64) {
 	full := e.H().Type().BBox(e).Translate(e.data.Pos)
 	box := full.Grow(-0.001)
 	x0, y0, z0 := int(math.Floor(box.Min()[0])), int(math.Floor(box.Min()[1])), int(math.Floor(box.Min()[2]))
@@ -27,7 +28,7 @@ func applyFluidCurrents(e *Ent, tx *world.Tx) {
 		sum             mgl64.Vec3
 		count           int
 	}
-	var water, lava acc
+	var waterAcc, lavaAcc acc
 	for x := x0; x <= x1; x++ {
 		for y := y0; y <= y1; y++ {
 			for z := z0; z <= z1; z++ {
@@ -40,9 +41,9 @@ func applyFluidCurrents(e *Ent, tx *world.Tx) {
 				if top < box.Min()[1] {
 					continue
 				}
-				a := &water
+				a := &waterAcc
 				if l.LiquidType() == "lava" {
-					a = &lava
+					a = &lavaAcc
 				} else if l.LiquidType() != "water" {
 					continue
 				}
@@ -64,7 +65,7 @@ func applyFluidCurrents(e *Ent, tx *world.Tx) {
 	for _, c := range []struct {
 		a     acc
 		scale float64
-	}{{water, 0.014}, {lava, lavaScale}} {
+	}{{waterAcc, 0.014}, {lavaAcc, lavaScale}} {
 		if c.a.tracker <= 0 || c.a.count == 0 || c.a.sum.LenSqr() < float64(float32(1.0e-5)) {
 			continue
 		}
@@ -75,6 +76,7 @@ func applyFluidCurrents(e *Ent, tx *world.Tx) {
 		}
 		e.data.Vel = old.Add(impulse)
 	}
+	return waterAcc.tracker, lavaAcc.tracker
 }
 
 // liquidOwnHeight is Java's FlowingFluid.getOwnHeight: amount/9 (a source or falling liquid is 8/9).

@@ -13,6 +13,9 @@ import (
 func (m *Movement) checkSteppers(*world.Tx)                     {}
 func checkRedstoneInsiders(*world.Tx, world.Entity, mgl64.Vec3) {}
 func (b *tntBehaviour) javaTick(*Ent, *world.Tx) *Movement      { return nil }
+func (i *ItemBehaviour) javaTick(*Ent, *world.Tx) *Movement     { return nil }
+
+type javaItem struct{}
 
 // Mobs reports whether Crossfly Full's mobs are on: never in Crossfly Core.
 func Mobs() bool { return false }

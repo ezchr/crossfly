@@ -63,6 +63,8 @@ type ItemBehaviour struct {
 	i       item.Stack
 
 	pickupDelay time.Duration
+	// java is the state of Java's item entity tick (Crossfly Full, item_java.go).
+	java javaItem
 }
 
 // PortalTravelComputer returns the interdimensional travel state for the behaviour.
@@ -78,28 +80,38 @@ func (i *ItemBehaviour) Item() item.Stack {
 // Tick moves the entity, checks if it should be picked up by a nearby collector
 // or if it should merge with nearby item entities.
 func (i *ItemBehaviour) Tick(e *Ent, tx *world.Tx) *Movement {
+	if world.JavaRedstone() {
+		return i.javaTick(e, tx)
+	}
+	if i.intoHopperBelow(e, tx) {
+		return nil
+	}
+	return i.passive.Tick(e, tx)
+}
+
+// intoHopperBelow drops the item into a hopper right under it, if the hopper takes items now. It reports whether the
+// item entity is gone.
+func (i *ItemBehaviour) intoHopperBelow(e *Ent, tx *world.Tx) bool {
 	pos := cube.PosFromVec3(e.Position())
 	blockPos := pos.Side(cube.FaceDown)
 
 	bl, ok := tx.Block(blockPos).(block.Hopper)
-	if ok && !bl.Powered && bl.CollectCooldown <= 0 {
-		addedCount, err := bl.Inventory(tx, blockPos).AddItem(i.i)
-		if err != nil {
-			if addedCount == 0 {
-				return i.passive.Tick(e, tx)
-			}
-
-			// This is only reached if part of the item stack was collected into the hopper.
-			opts := world.EntitySpawnOpts{Position: pos.Vec3Centre()}
-			tx.AddEntity(NewItem(opts, i.Item().Grow(-addedCount)))
-		}
-
-		_ = e.Close()
-		bl.CollectCooldown = 8
-		tx.SetBlock(blockPos, bl, nil)
-		return nil
+	if !ok || bl.Powered || bl.CollectCooldown > 0 {
+		return false
 	}
-	return i.passive.Tick(e, tx)
+	addedCount, err := bl.Inventory(tx, blockPos).AddItem(i.i)
+	if err != nil {
+		if addedCount == 0 {
+			return false
+		}
+		// This is only reached if part of the item stack was collected into the hopper.
+		opts := world.EntitySpawnOpts{Position: pos.Vec3Centre()}
+		tx.AddEntity(NewItem(opts, i.Item().Grow(-addedCount)))
+	}
+	_ = e.Close()
+	bl.CollectCooldown = 8
+	tx.SetBlock(blockPos, bl, nil)
+	return true
 }
 
 // Explode reacts to explosions. The item entity is destroyed, unless the item
