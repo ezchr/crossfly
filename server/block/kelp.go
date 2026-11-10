@@ -108,18 +108,32 @@ func (k Kelp) NeighbourUpdateTick(pos, changedNeighbour cube.Pos, tx *world.Tx) 
 		breakBlock(k, pos, tx)
 		return
 	}
+	if !k.supported(pos, tx) {
+		breakOrScheduleBreak(k, pos, tx)
+		return
+	}
 	if changedNeighbour[1]-1 == pos.Y() {
 		// When a kelp block is broken above, the kelp block underneath it gets a new random age.
 		tx.SetBlock(pos, k.withRandomAge(), nil)
 	}
+}
 
+// ScheduledTick breaks the kelp if it lost its support (Java redstone: a tick after the block below changed, as
+// Java's GrowingPlantBlock).
+func (k Kelp) ScheduledTick(pos cube.Pos, tx *world.Tx, _ *rand.Rand) {
+	if !k.supported(pos, tx) {
+		breakBlock(k, pos, tx)
+	}
+}
+
+// supported reports whether the kelp stands on kelp or on a block with a solid top face.
+func (k Kelp) supported(pos cube.Pos, tx *world.Tx) bool {
 	below := pos.Side(cube.FaceDown)
 	belowBlock := tx.Block(below)
-	if _, kelp := belowBlock.(Kelp); !kelp {
-		if !belowBlock.Model().FaceSolid(below, cube.FaceUp, tx) {
-			breakBlock(k, pos, tx)
-		}
+	if _, kelp := belowBlock.(Kelp); kelp {
+		return true
 	}
+	return belowBlock.Model().FaceSolid(below, cube.FaceUp, tx)
 }
 
 // RandomTick ...

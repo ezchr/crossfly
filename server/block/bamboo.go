@@ -83,15 +83,26 @@ func (b Bamboo) RandomTick(pos cube.Pos, tx *world.Tx, r *rand.Rand) {
 
 // NeighbourUpdateTick ...
 func (b Bamboo) NeighbourUpdateTick(pos, _ cube.Pos, tx *world.Tx) {
+	if !b.canStay(pos, tx) {
+		breakOrScheduleBreak(b, pos, tx)
+	}
+}
+
+// ScheduledTick breaks the bamboo if it can no longer stay (Java redstone: a tick after a neighbour changed).
+func (b Bamboo) ScheduledTick(pos cube.Pos, tx *world.Tx, _ *rand.Rand) {
+	if !b.canStay(pos, tx) {
+		breakBlock(b, pos, tx)
+	}
+}
+
+// canStay reports whether the bamboo stands on bamboo, a bamboo sapling or ground it grows on.
+func (b Bamboo) canStay(pos cube.Pos, tx *world.Tx) bool {
 	down := tx.Block(pos.Side(cube.FaceDown))
 	switch down.(type) {
 	case BambooSapling, Bamboo:
-		return
+		return true
 	}
-	if supportsVegetation(b, down) {
-		return
-	}
-	breakBlock(b, pos, tx)
+	return supportsVegetation(b, down)
 }
 
 // UseOnBlock ...

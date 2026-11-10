@@ -35,6 +35,13 @@ func (c SugarCane) UseOnBlock(pos cube.Pos, face cube.Face, _ mgl64.Vec3, tx *wo
 // NeighbourUpdateTick ...
 func (c SugarCane) NeighbourUpdateTick(pos, _ cube.Pos, tx *world.Tx) {
 	if !c.canGrowHere(pos, tx, true) {
+		breakOrScheduleBreak(c, pos, tx)
+	}
+}
+
+// ScheduledTick breaks the sugar cane if it can no longer stay (Java redstone: a tick after a neighbour changed).
+func (c SugarCane) ScheduledTick(pos cube.Pos, tx *world.Tx, _ *rand.Rand) {
+	if !c.canGrowHere(pos, tx, true) {
 		breakBlock(c, pos, tx)
 	}
 }
