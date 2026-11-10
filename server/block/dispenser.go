@@ -115,7 +115,9 @@ func (d Dispenser) NeighbourUpdateTick(pos, changed cube.Pos, tx *world.Tx) {
 	if changed == pos {
 		return // the update a block gets when it is placed: a Java dispenser doesn't look at its power then
 	}
-	d.check(pos, tx, tx.RedstoneInputPower(pos) > 0)
+	// The signal now, as Java reads it in neighborChanged: the power the redstone engine keeps for pos is from its
+	// last pass and misses what changed in this run of updates (a torch just placed under the block beside it).
+	d.check(pos, tx, dispenserQuasiPower(pos, tx))
 }
 
 // check sets the dispenser triggered while it is powered, or the block above it is, and schedules a dispense when it
