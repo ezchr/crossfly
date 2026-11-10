@@ -49,8 +49,8 @@ func (w *World) pending() pendingWork {
 
 // settle reacts to the changes a transaction run between ticks made (a player, a command, a plugin): their neighbour
 // updates and the redstone they affect are handled now, in the current tick, as Java Edition handles them at once,
-// instead of in the next tick. Work queued before the transaction, and what the reaction itself changes, waits for
-// the next tick, as it does in a tick.
+// instead of in the next tick, including the updates the reaction itself causes. Work queued before the transaction
+// waits for the next tick.
 func (w *World) settle(before pendingWork) {
 	// A world nobody is in does not tick (ticker.tick): it does not react between ticks either.
 	if !w.reacts() {
@@ -82,12 +82,15 @@ func (w *World) settle(before pendingWork) {
 	}
 
 	tx := newTx(w)
-	ticker{}.performNeighbourUpdates(tx)
-	if w.redstone != nil {
+	if w.redstone == nil {
+		ticker{}.performNeighbourUpdates(tx)
+	} else {
+		// All of it, as flushUpdates does in a tick: dust whose power changed updates the neighbours of its
+		// neighbours, and a repeater at the end of a line must hear of it now, not in the next tick.
 		w.set.Lock()
 		tick := w.set.CurrentTick
 		w.set.Unlock()
-		w.redstone.tick(tx, tick)
+		ticker{}.flushUpdates(tx, tick)
 	}
 	w.checkAnalogWatchers(tx)
 	tx.close()
