@@ -99,7 +99,10 @@ func TestInfestedBlockReleasesSilverfish(t *testing.T) {
 
 // TestSilverfishWakeUpFriendsBreaksBlocks: with mob griefing the woken
 // blocks break (Level::destroyBlock) and release persistent silverfish;
-// without it they turn back into their host blocks.
+// without it they turn back into their host blocks. The floor is dirt: the
+// released silverfish has all its goals, and on stone its
+// silverfish_merge_with_stone may hide it in the block below it (a 1 in 10
+// chance a tick, then a random face) before the count.
 func TestSilverfishWakeUpFriendsBreaksBlocks(t *testing.T) {
 	for _, grief := range []bool{true, false} {
 		if !grief {
@@ -108,7 +111,7 @@ func TestSilverfishWakeUpFriendsBreaksBlocks(t *testing.T) {
 		w := mobtest.New(t, mobtest.Options{})
 		pos := cube.Pos{0, 1, 3}
 		w.Do(func(tx *world.Tx) {
-			w.Arena(tx, 12, 0)
+			w.Floor(tx, 0, 13, block.Dirt{})
 			tx.SetBlock(pos, block.InfestedStone{}, nil)
 		})
 		s := w.Spawn("minecraft:silverfish", mgl64.Vec3{0.5, 1, 0.5})
