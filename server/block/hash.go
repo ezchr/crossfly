@@ -57,6 +57,7 @@ const (
 	hashCopperChain
 	hashCopperDoor
 	hashDriedGhast
+	hashFrogSpawn
 	hashIronDoor
 	hashCopperGolemStatue
 	hashCopperGrate
@@ -1196,4 +1197,8 @@ func (d DriedGhast) Hash() (uint64, uint64) {
 
 func (t TurtleEgg) Hash() (uint64, uint64) {
 	return hashTurtleEgg, uint64(t.AdditionalCount) | uint64(t.Cracks)<<2
+}
+
+func (FrogSpawn) Hash() (uint64, uint64) {
+	return hashFrogSpawn, 0
 }
