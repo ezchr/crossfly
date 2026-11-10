@@ -91,7 +91,7 @@ var mobKinds = map[string]*mobKind{}
 
 func init() {
 	plain := []string{
-		"allay", "bat", "breeze", "cod", "copper_golem", "creaking", "elder_guardian",
+		"allay", "bat", "breeze", "cod", "creaking", "elder_guardian",
 		"endermite", "ender_dragon", "giant", "guardian", "illusioner", "iron_golem",
 		"parched", "phantom", "piglin_brute", "pufferfish", "ravager", "silverfish",
 		"stray", "tadpole", "vex", "vindicator", "warden", "wither", "wither_skeleton",
@@ -141,6 +141,19 @@ func init() {
 		// Sheep.DATA_WOOL_ID: the dye id in the low 4 bits (the same ids on both editions), 0x10 sheared.
 		wool := byte(mobInt(e, mobColour.Colour, 0)) & 0x0f
 		d.byteVal(18, wool|bit(mobBool(e, mobSheared.Sheared), 0x10))
+	}})
+	set("copper_golem", mobKind{extra: func(_ *Session, d *mobData, e world.Entity, _ string) {
+		// CopperGolem.DATA_WEATHER_STATE (WeatherState ids: unaffected, exposed, weathered, oxidized) and
+		// COPPER_GOLEM_STATE (idle, getting_item, getting_no_item, dropping_item, dropping_no_item), from the
+		// minecraft:oxidation_level and minecraft:chest_interaction properties: the Java client animates the golem
+		// taking from and putting into chests from the latter.
+		weather := map[string]int32{"exposed": 1, "weathered": 2, "oxidized": 3}
+		state := map[string]int32{"take": 1, "take_fail": 2, "put": 3, "put_fail": 4}
+		const dataTypeCopperGolemState, dataTypeWeatheringCopperState = 37, 38 // EntityDataSerializers ids
+		d.entry(16, dataTypeWeatheringCopperState)
+		d.w.VarInt(weather[mobProperty(e, "minecraft:oxidation_level")])
+		d.entry(17, dataTypeCopperGolemState)
+		d.w.VarInt(state[mobProperty(e, "minecraft:chest_interaction")])
 	}})
 	set("frog", mobKind{ageable: true, extra: func(s *Session, d *mobData, e world.Entity, _ string) {
 		if v, ok := mobAs[mobVariant](e); ok {

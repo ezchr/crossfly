@@ -601,7 +601,38 @@ type transportItems struct {
 	toDest            bool
 	visited           []cube.Pos
 	timer             int
+	// interact counts the ticks since the golem reached its container (Java ticksSinceReachingTarget), 0 while it
+	// walks; user is the golem as a viewer of the container it has open.
+	interact int
+	user     *transportUser
 }
+
+// transportInteractTicks is how long a copper golem stands at a container, its lid open, before it takes or puts
+// the items. Java fallback: no Bedrock data (TransportItemsBetweenContainers.TARGET_INTERACTION_TIME; CopperGolemAi
+// opens the container on the first tick).
+const transportInteractTicks = 60
+
+// Events of minecraft:behavior.transport_items, fired when the golem starts taking from or putting into a container
+// (succeeding or not) and when it is done: the copper golem sets minecraft:chest_interaction from them, which
+// Bedrock clients animate.
+const (
+	transportTakeSucceed  = "minecraft:transport_items.start_take_succeed"
+	transportTakeFail     = "minecraft:transport_items.start_take_fail"
+	transportPlaceSucceed = "minecraft:transport_items.start_place_succeed"
+	transportPlaceFail    = "minecraft:transport_items.start_place_fail"
+	transportStop         = "minecraft:transport_items.stop_interaction"
+)
+
+// transportUser is a copper golem using a container (Java ContainerUser): added as a viewer of the container, a
+// chest opens its lid for Bedrock and Java viewers and plays its sound, and closes it once the golem is done, as for
+// a player.
+type transportUser struct {
+	world.NopViewer
+	pos cube.Pos
+}
+
+// ViewSlotChange ...
+func (*transportUser) ViewSlotChange(int, item.Stack) {}
 
 type carriedItemKey struct{}
 
@@ -761,12 +792,23 @@ func (g *transportItems) CanContinueToUse(*mob.Mob) bool { return g.timer < 600 
 func (g *transportItems) Tick(m *mob.Mob) {
 	g.timer++
 	lookAtPos(m, g.target.Vec3Centre(), 30, maxHeadXRot)
-	if distSq(m.Position(), g.target.Vec3Centre()) > 4 {
-		if m.Navigation().Done() && g.timer%20 == 0 {
-			m.Navigation().MoveTo(m, g.target.Vec3Middle(), 1)
+	if g.interact == 0 {
+		if distSq(m.Position(), g.target.Vec3Centre()) > 4 {
+			if m.Navigation().Done() && g.timer%20 == 0 {
+				m.Navigation().MoveTo(m, g.target.Vec3Middle(), 1)
+			}
+			return
+		}
+		m.Navigation().Stop(m)
+		if !g.startInteraction(m) {
+			g.timer = 600
 		}
 		return
 	}
+	if g.interact++; g.interact < transportInteractTicks {
+		return
+	}
+	defer g.endInteraction(m)
 	inv, _, ok := containerInv(m.Tx(), g.target)
 	if !ok {
 		g.timer = 600
@@ -774,12 +816,9 @@ func (g *transportItems) Tick(m *mob.Mob) {
 	}
 	held := carriedItem(m)
 	if g.toDest {
-		left, _ := inv.AddItem(held)
-		if left > 0 {
-			m.SetHeldItems(held.Grow(left-held.Count()), item.Stack{})
-		} else {
-			m.SetHeldItems(item.Stack{}, item.Stack{})
-		}
+		// AddItem reports how many it added: the golem keeps the rest.
+		added, _ := inv.AddItem(held)
+		m.SetHeldItems(held.Grow(-added), item.Stack{})
 	} else {
 		for i, s := range inv.Slots() {
 			if s.Empty() {
@@ -798,8 +837,56 @@ func (g *transportItems) Tick(m *mob.Mob) {
 }
 
 func (g *transportItems) Stop(m *mob.Mob) {
+	g.endInteraction(m)
 	m.Navigation().Stop(m)
 	g.cooldown = 20
+}
+
+// startInteraction starts taking from or putting into the container the golem reached: it fires the start event of
+// what it will do, succeeding or failing (the source holds nothing, the destination has no room), and opens the
+// container. It reports false if the container is gone.
+func (g *transportItems) startInteraction(m *mob.Mob) bool {
+	tx := m.Tx()
+	inv, _, ok := containerInv(tx, g.target)
+	if !ok {
+		return false
+	}
+	event := transportTakeFail
+	if g.toDest {
+		event = transportPlaceFail
+		if hasRoomFor(inv, carriedItem(m)) {
+			event = transportPlaceSucceed
+		}
+	} else if !inv.Empty() {
+		event = transportTakeSucceed
+	}
+	g.interact = 1
+	m.Fire(event, nil)
+	if c, ok := tx.Block(g.target).(block.Container); ok {
+		g.user = &transportUser{pos: g.target}
+		c.AddViewer(g.user, tx, g.target)
+	}
+	return true
+}
+
+// endInteraction closes the container the golem had open and fires the stop event, if it was using one.
+func (g *transportItems) endInteraction(m *mob.Mob) {
+	if g.interact == 0 {
+		return
+	}
+	g.interact = 0
+	tx := m.Tx()
+	if tx == nil || tx.Closed() {
+		g.user = nil
+		return
+	}
+	if g.user != nil {
+		if c, ok := tx.Block(g.user.pos).(block.Container); ok {
+			c.RemoveViewer(g.user, tx, g.user.pos)
+		}
+		g.user = nil
+	}
+	m.Fire(transportStop, nil)
 }
 
 var _ = time.Second
