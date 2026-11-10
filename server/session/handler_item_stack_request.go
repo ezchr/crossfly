@@ -118,6 +118,14 @@ func (h *ItemStackRequestHandler) handleRequest(req protocol.ItemStackRequest, s
 				err = h.handleTrade(a.RecipeNetworkID, int(a.NumberOfCrafts), req, s, tx)
 				break
 			}
+			if s.containerOpened.Load() {
+				if _, ok := tx.Block(*s.openedPos.Load()).(block.Stonecutter); ok {
+					// Crafting several at once in a stonecutter may come as an auto craft action. Its
+					// recipes are stonecutter recipes, which the crafting grid code turns down.
+					err = h.handleStonecutting(&protocol.CraftRecipeStackRequestAction{RecipeNetworkID: a.RecipeNetworkID, NumberOfCrafts: a.NumberOfCrafts}, s, tx)
+					break
+				}
+			}
 			err = h.handleAutoCraft(a, s, tx)
 		case *protocol.CraftRecipeOptionalStackRequestAction:
 			err = h.handleCraftRecipeOptional(a, s, req.FilterStrings, c, tx)

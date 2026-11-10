@@ -104,13 +104,14 @@ func fireworksComponent(f item.Firework, js *jitem.Stack) {
 	w.VarInt(int32(n))
 	for _, ex := range f.Explosions[:n] {
 		w.VarInt(int32(ex.Shape.Uint8())) // the shapes are numbered alike
-		w.VarInt(1)
-		w.Int32(javaFireworkColour(ex.Colour))
-		if ex.Fades {
-			w.VarInt(1)
-			w.Int32(javaFireworkColour(ex.Fade))
-		} else {
-			w.VarInt(0)
+		colours, fades := ex.AllColours(), ex.AllFades()
+		w.VarInt(int32(len(colours)))
+		for _, c := range colours {
+			w.Int32(javaFireworkColour(c))
+		}
+		w.VarInt(int32(len(fades)))
+		for _, c := range fades {
+			w.Int32(javaFireworkColour(c))
 		}
 		w.Bool(ex.Trail)
 		w.Bool(ex.Twinkle)
