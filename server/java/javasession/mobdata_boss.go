@@ -137,7 +137,7 @@ func mobFlagPose(e world.Entity) (int32, bool) {
 	case mobFlag(e, protocol.EntityDataFlagJumpGoal) && bedrockName(e) == "minecraft:breeze":
 		return poseLongJumping, true
 	}
-	return 0, false
+	return camelSittingPose(e)
 }
 
 // handleJavaID is the Java entity id of a handle this client sees, or 0.

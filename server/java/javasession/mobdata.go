@@ -422,7 +422,7 @@ func (s *Session) writeMobData(d *mobData, k *mobKind, e world.Entity, bedrock s
 		d.byteVal(18, bit(mobBool(e, mobSitting.Sitting), 0x01)|bit(mobBool(e, mobTamed.Tamed), 0x04))
 	}
 	if k.horse {
-		d.byteVal(18, bit(mobBool(e, mobTamed.Tamed), 0x02))
+		d.byteVal(18, horseFlags(e))
 	}
 	if k.chested {
 		d.boolean(19, mobBool(e, mobChested.Chested))

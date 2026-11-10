@@ -43,11 +43,11 @@ func init() {
 		}
 		d.byteVal(16, bit(mobFlag(e, protocol.EntityDataFlagCharging), 0x01))
 	}
-	// PolarBear.DATA_STANDING_ID 17.
+	// PolarBear.DATA_STANDING_ID 18 (AgeableMob has 16 baby and 17 AGE_LOCKED).
 	mobKinds["minecraft:polar_bear"].extra = func(_ *Session, d *mobData, e world.Entity, _ string) {
 		if _, ok := mobAs[mobExtraFlags](e); !ok {
 			return
 		}
-		d.boolean(17, mobFlag(e, protocol.EntityDataFlagStanding))
+		d.boolean(18, mobFlag(e, protocol.EntityDataFlagStanding))
 	}
 }
