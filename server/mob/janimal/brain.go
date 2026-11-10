@@ -78,7 +78,7 @@ func (t *makeLove[E]) partner(c *jbrain.Ctx, e E) (E, bool) {
 	if !ok {
 		return zero, false
 	}
-	h, ok := v.FindClosest(func(h *world.EntityHandle) bool {
+	h, ok := v.FindClosest(c.Tx, func(h *world.EntityHandle) bool {
 		if h.Type().EncodeEntity() != t.partnerType {
 			return false
 		}
@@ -125,7 +125,7 @@ func (t *makeLove[E]) CanStillUse(c *jbrain.Ctx, e E) bool {
 		return false
 	}
 	v, _ := jbrain.Get(e.Mem(), jbrain.MemNearestVisibleLivingEntities)
-	return p.Alive() && e.CanMate(p) && v.Contains(p.H()) && c.Time <= t.childAt &&
+	return p.Alive() && e.CanMate(p) && v.Contains(c.Tx, p.H()) && c.Time <= t.childAt &&
 		!panicking(e.Mem()) && !panicking(p.Mem())
 }
 
@@ -356,7 +356,7 @@ func (adultSensor[E]) Sense(c *jbrain.Ctx, e E) {
 		return
 	}
 	id := e.TypeID()
-	h, found := v.FindClosest(func(h *world.EntityHandle) bool {
+	h, found := v.FindClosest(c.Tx, func(h *world.EntityHandle) bool {
 		if h.Type().EncodeEntity() != id || c.Tx == nil {
 			return false
 		}
