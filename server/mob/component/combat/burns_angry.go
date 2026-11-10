@@ -102,7 +102,7 @@ func newAngry(_ string, raw json.RawMessage) (mob.Component, error) {
 		Filters             json.RawMessage `json:"filters"`
 		CalmEvent           json.RawMessage `json:"calm_event"`
 	}
-	if err := json.Unmarshal(raw, &v); err != nil {
+	if err := json.Unmarshal(angryAliases(raw), &v); err != nil {
 		return nil, fmt.Errorf("minecraft:angry: %w", err)
 	}
 	a := &Angry{duration: 25, delta: int(v.DurationDelta), broadcast: v.BroadcastAnger, broadcastOnAttack: v.BroadcastOnAttack,
@@ -129,6 +129,48 @@ func newAngry(_ string, raw json.RawMessage) (mob.Component, error) {
 		return nil, err
 	}
 	return a, nil
+}
+
+// angryKeyAliases are the camelCase spellings AngryDefinition::buildSchema accepts next to the snake_case keys
+// ("broadcast_anger|broadcastAnger", ...). bee.json and wandering_trader.json use broadcastAnger and broadcastRange.
+var angryKeyAliases = map[string]string{
+	"durationDelta":    "duration_delta",
+	"broadcastAnger":   "broadcast_anger",
+	"broadcastRange":   "broadcast_range",
+	"broadcastFilters": "broadcast_filters",
+	"broadcastTargets": "broadcast_targets",
+	"calmEvent":        "calm_event",
+	"angrySound":       "angry_sound",
+	"soundInterval":    "sound_interval",
+}
+
+// angryAliases rewrites the camelCase keys of a minecraft:angry object to their snake_case names (a snake_case key
+// present as well wins). Anything that is not an object is returned as it is.
+func angryAliases(raw json.RawMessage) json.RawMessage {
+	var obj map[string]json.RawMessage
+	if json.Unmarshal(raw, &obj) != nil {
+		return raw
+	}
+	changed := false
+	for camel, snake := range angryKeyAliases {
+		v, ok := obj[camel]
+		if !ok {
+			continue
+		}
+		delete(obj, camel)
+		if _, has := obj[snake]; !has {
+			obj[snake] = v
+		}
+		changed = true
+	}
+	if !changed {
+		return raw
+	}
+	out, err := json.Marshal(obj)
+	if err != nil {
+		return raw
+	}
+	return out
 }
 
 // Attach starts the timer.
