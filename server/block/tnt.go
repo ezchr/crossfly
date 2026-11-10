@@ -8,6 +8,7 @@ import (
 	"github.com/df-mc/dragonfly/server/item"
 	"github.com/df-mc/dragonfly/server/item/enchantment"
 	"github.com/df-mc/dragonfly/server/world"
+	"github.com/df-mc/dragonfly/server/world/gameevent"
 	"github.com/df-mc/dragonfly/server/world/sound"
 )
 
@@ -31,6 +32,7 @@ func (t TNT) RedstonePowerAction(pos cube.Pos, tx *world.Tx, oldPower, newPower 
 		return
 	}
 	spawnTnt(pos, tx, world.TNTSpawnConfig{Fuse: time.Second * 4, UnblockableByShield: true})
+	postBlockEvent(tx, gameevent.PrimeFuse, pos, nil)
 }
 
 // ProjectileHit ...
@@ -54,6 +56,8 @@ func (t TNT) Activate(pos cube.Pos, _ cube.Face, tx *world.Tx, u item.User, ctx 
 // Ignite primes the TNT with source credited for the resulting explosion.
 func (t TNT) Ignite(pos cube.Pos, tx *world.Tx, source world.Entity) bool {
 	spawnTnt(pos, tx, world.TNTSpawnConfig{Fuse: time.Second * 4, Source: tntIgnitionSourceHandle(source)})
+	// TntBlock::destroy: prime_fuse, made by who lit it.
+	postBlockEvent(tx, gameevent.PrimeFuse, pos, source)
 	return true
 }
 

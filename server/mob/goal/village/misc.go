@@ -16,6 +16,7 @@ import (
 	ccore "github.com/df-mc/dragonfly/server/mob/component/core"
 	vc "github.com/df-mc/dragonfly/server/mob/component/village"
 	"github.com/df-mc/dragonfly/server/world"
+	"github.com/df-mc/dragonfly/server/world/gameevent"
 	"github.com/go-gl/mathgl/mgl64"
 )
 
@@ -483,6 +484,10 @@ func (g *takeBlock) Start(m *mob.Mob) {
 		if n == name {
 			SetCarried(m, b)
 			m.Tx().SetBlock(p, nil, nil)
+			// EndermanTakeBlockGoal: block_destroy, made by the enderman.
+			if gameevent.Active(m.Tx()) {
+				gameevent.Post(m.Tx(), gameevent.BlockDestroy, p.Vec3Centre(), m)
+			}
 			g.onTake.Fire(m, nil)
 			return
 		}
@@ -580,6 +585,10 @@ func (g *placeBlock) Start(m *mob.Mob) {
 	tx.SetBlock(p, b, nil)
 	if carried {
 		SetCarried(m, nil)
+	}
+	// EndermanLeaveBlockGoal: block_place, made by the enderman.
+	if gameevent.Active(tx) {
+		gameevent.Post(tx, gameevent.BlockPlace, p.Vec3Centre(), m)
 	}
 	g.onPlace.Fire(m, nil)
 }

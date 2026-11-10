@@ -42,6 +42,7 @@ func (d WoodDoor) RedstonePowerActionUpdate(pos cube.Pos, tx *world.Tx, u world.
 	} else {
 		tx.PlaySound(pos.Vec3Centre(), sound.DoorClose{Block: d})
 	}
+	postToggle(tx, pos, powered, nil)
 }
 
 // RedstonePowerActionUpdate opens or closes the door when its power switches on or off, as Java Edition's DoorBlock:
@@ -69,6 +70,7 @@ func (d CopperDoor) RedstonePowerActionUpdate(pos cube.Pos, tx *world.Tx, u worl
 	} else {
 		tx.PlaySound(pos.Vec3Centre(), sound.DoorClose{Block: d})
 	}
+	postToggle(tx, pos, powered, nil)
 }
 
 // RedstonePowerActionUpdate opens or closes the trapdoor when its power switches on or off, as Java Edition's TrapDoorBlock:
@@ -88,6 +90,7 @@ func (t CopperTrapdoor) RedstonePowerActionUpdate(pos cube.Pos, tx *world.Tx, u 
 	} else {
 		tx.PlaySound(pos.Vec3Centre(), sound.TrapdoorClose{Block: t})
 	}
+	postToggle(tx, pos, powered, nil)
 }
 
 // RedstonePowerActionUpdate opens or closes the trapdoor when its power switches on or off, as Java Edition's TrapDoorBlock:
@@ -107,6 +110,7 @@ func (t WoodTrapdoor) RedstonePowerActionUpdate(pos cube.Pos, tx *world.Tx, u wo
 	} else {
 		tx.PlaySound(pos.Vec3Centre(), sound.TrapdoorClose{Block: t})
 	}
+	postToggle(tx, pos, powered, nil)
 }
 
 // RedstonePowerActionUpdate opens or closes the fence gate when its power switches on or off, as Java Edition's FenceGateBlock:
@@ -126,4 +130,5 @@ func (f WoodFenceGate) RedstonePowerActionUpdate(pos cube.Pos, tx *world.Tx, u w
 	} else {
 		tx.PlaySound(pos.Vec3Centre(), sound.FenceGateClose{Block: f})
 	}
+	postToggle(tx, pos, powered, nil)
 }

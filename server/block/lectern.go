@@ -7,6 +7,7 @@ import (
 	"github.com/df-mc/dragonfly/server/internal/nbtconv"
 	"github.com/df-mc/dragonfly/server/item"
 	"github.com/df-mc/dragonfly/server/world"
+	"github.com/df-mc/dragonfly/server/world/gameevent"
 	"github.com/df-mc/dragonfly/server/world/sound"
 	"github.com/go-gl/mathgl/mgl64"
 	"time"
@@ -95,6 +96,8 @@ func (l Lectern) Activate(pos cube.Pos, _ cube.Face, tx *world.Tx, u item.User, 
 	tx.SetBlock(pos, l, nil)
 
 	tx.PlaySound(pos.Vec3Centre(), sound.LecternBookPlace{})
+	// LecternBlock::use: block_change, made by the player.
+	postBlockEvent(tx, gameevent.BlockChange, pos, u)
 	ctx.SubtractFromCount(1)
 	return true
 }
@@ -111,6 +114,8 @@ func (l Lectern) Punch(pos cube.Pos, _ cube.Face, tx *world.Tx, _ item.User) {
 	l.Book = item.Stack{}
 	tx.SetBlock(pos, l, nil)
 	tx.PlaySound(pos.Vec3Centre(), sound.Attack{})
+	// LecternBlockActor::dropBook: block_change.
+	postBlockEvent(tx, gameevent.BlockChange, pos, nil)
 }
 
 // TurnPage updates the page the lectern is currently on to the page given.

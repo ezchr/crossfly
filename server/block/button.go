@@ -40,8 +40,8 @@ func (b Button) UseOnBlock(pos cube.Pos, face cube.Face, _ mgl64.Vec3, tx *world
 }
 
 // Activate presses the button.
-func (b Button) Activate(pos cube.Pos, _ cube.Face, tx *world.Tx, _ item.User, _ *item.UseContext) bool {
-	b.press(pos, tx)
+func (b Button) Activate(pos cube.Pos, _ cube.Face, tx *world.Tx, u item.User, _ *item.UseContext) bool {
+	b.pressBy(pos, tx, u)
 	return true
 }
 
@@ -53,11 +53,15 @@ func (b Button) ProjectileHit(pos cube.Pos, tx *world.Tx, e world.Entity, _ cube
 // EntityInside presses a wooden button touched by an arrow or thrown trident.
 func (b Button) EntityInside(pos cube.Pos, tx *world.Tx, e world.Entity) {
 	if b.Type.Wood() && b.activatingProjectileIntersects(e, buttonActivationBox(b.Facing).Translate(pos.Vec3())) {
-		b.press(pos, tx)
+		b.pressBy(pos, tx, e)
 	}
 }
 
-func (b Button) press(pos cube.Pos, tx *world.Tx) {
+func (b Button) press(pos cube.Pos, tx *world.Tx) { b.pressBy(pos, tx, nil) }
+
+// pressBy presses the button for src (a player, an arrow), which posts block_activate
+// (ButtonBlock::buttonPressed).
+func (b Button) pressBy(pos cube.Pos, tx *world.Tx, src any) {
 	if b.Pressed {
 		return
 	}
@@ -65,6 +69,7 @@ func (b Button) press(pos cube.Pos, tx *world.Tx) {
 	tx.SetBlock(pos, b, nil)
 	tx.ScheduleBlockUpdate(pos, b, b.pressDuration())
 	tx.PlaySound(pos.Vec3Centre(), sound.ButtonClickOn{Block: b})
+	postActivate(tx, pos, true, src)
 }
 
 // NeighbourUpdateTick breaks an unsupported button.
@@ -104,6 +109,7 @@ func (b Button) ScheduledTick(pos cube.Pos, tx *world.Tx, _ *rand.Rand) {
 	b.Pressed = false
 	tx.SetBlock(pos, b, nil)
 	tx.PlaySound(pos.Vec3Centre(), sound.ButtonClickOff{Block: b})
+	postActivate(tx, pos, false, nil)
 }
 
 // activatingProjectileWithin reports whether an activating projectile intersects the button.

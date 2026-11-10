@@ -8,6 +8,7 @@ import (
 	"github.com/df-mc/dragonfly/server/block/cube"
 	"github.com/df-mc/dragonfly/server/item"
 	"github.com/df-mc/dragonfly/server/world"
+	"github.com/df-mc/dragonfly/server/world/gameevent"
 )
 
 // Dispense primes TNT at the block in front of a dispenser.
@@ -25,6 +26,8 @@ func (TNT) Dispense(pos cube.Pos, face cube.Face, tx *world.Tx, ctx *item.Dispen
 	}
 	ctx.SubtractFromCount(1)
 	spawnTnt(front, tx, world.TNTSpawnConfig{Fuse: time.Second * 4})
+	// TntBlock::dispense: entity_place where the primed TNT appears.
+	postBlockEvent(tx, gameevent.EntityPlace, front, nil)
 	return item.DispenseSuccess
 }
 
@@ -52,4 +55,5 @@ func (t TNT) primeByRedstone(pos cube.Pos, tx *world.Tx) {
 		return
 	}
 	spawnTnt(pos, tx, world.TNTSpawnConfig{Fuse: time.Second * 4, UnblockableByShield: true})
+	postBlockEvent(tx, gameevent.PrimeFuse, pos, nil)
 }

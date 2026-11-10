@@ -6,6 +6,7 @@ import (
 	"github.com/df-mc/dragonfly/server/block/cube"
 	"github.com/df-mc/dragonfly/server/item"
 	"github.com/df-mc/dragonfly/server/world"
+	"github.com/df-mc/dragonfly/server/world/gameevent"
 	"math"
 	"sync"
 )
@@ -45,6 +46,8 @@ func (d DaylightDetector) Activate(pos cube.Pos, _ cube.Face, tx *world.Tx, user
 	}
 	d.Inverted = !d.Inverted
 	tx.SetBlock(pos, d, &world.SetOpts{DisableBlockUpdates: true})
+	// DaylightDetectorBlock::use: block_change, made by the player.
+	postBlockEvent(tx, gameevent.BlockChange, pos, user)
 	d.update(pos, tx)
 	return true
 }

@@ -68,7 +68,7 @@ func (l Lever) UseOnBlock(pos cube.Pos, face cube.Face, _ mgl64.Vec3, tx *world.
 	return placed(ctx)
 }
 
-func (l Lever) Activate(pos cube.Pos, _ cube.Face, tx *world.Tx, _ item.User, _ *item.UseContext) bool {
+func (l Lever) Activate(pos cube.Pos, _ cube.Face, tx *world.Tx, u item.User, _ *item.UseContext) bool {
 	l.Powered = !l.Powered
 	tx.SetBlock(pos, l, nil)
 	if l.Powered {
@@ -76,6 +76,8 @@ func (l Lever) Activate(pos cube.Pos, _ cube.Face, tx *world.Tx, _ item.User, _ 
 	} else {
 		tx.PlaySound(pos.Vec3Centre(), sound.PowerOff{})
 	}
+	// LeverBlock::toggle: block_activate or block_deactivate, made by the player.
+	postActivate(tx, pos, l.Powered, u)
 	return true
 }
 

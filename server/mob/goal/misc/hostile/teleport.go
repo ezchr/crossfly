@@ -15,6 +15,7 @@ import (
 	"github.com/df-mc/dragonfly/server/mob/goal/misc/kit"
 	"github.com/df-mc/dragonfly/server/mob/goal/village"
 	"github.com/df-mc/dragonfly/server/world"
+	"github.com/df-mc/dragonfly/server/world/gameevent"
 	"github.com/df-mc/dragonfly/server/world/particle"
 	"github.com/go-gl/mathgl/mgl64"
 )
@@ -207,6 +208,10 @@ func TeleportTo(m *mob.Mob, dest mgl64.Vec3) bool {
 	}
 	from := m.Position()
 	tx.AddParticle(from, particle.EndermanTeleport{})
+	// TeleportComponent::teleport: teleport where it left, made by the mob.
+	if gameevent.Active(tx) {
+		gameevent.Post(tx, gameevent.Teleport, from, m)
+	}
 	m.Teleport(pos)
 	m.Navigation().Stop(m)
 	tx.AddParticle(pos, particle.EndermanTeleport{})

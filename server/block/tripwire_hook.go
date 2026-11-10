@@ -9,6 +9,7 @@ import (
 	"github.com/df-mc/dragonfly/server/block/cube"
 	"github.com/df-mc/dragonfly/server/item"
 	"github.com/df-mc/dragonfly/server/world"
+	"github.com/df-mc/dragonfly/server/world/gameevent"
 	"github.com/df-mc/dragonfly/server/world/sound"
 	"github.com/go-gl/mathgl/mgl64"
 )
@@ -212,6 +213,16 @@ func tripwireHookSound(pos cube.Pos, tx *world.Tx, attached, powered, wasAttache
 		tx.PlaySound(pos.Vec3Centre(), sound.PowerOn{})
 	case !powered && wasPowered:
 		tx.PlaySound(pos.Vec3Centre(), sound.PowerOff{})
+	}
+	// TripWireHookBlock::_emitState: block_activate or block_deactivate when it switches on or off, else
+	// block_attach or block_detach when the wire is hooked up or cut.
+	switch {
+	case powered != wasPowered:
+		postActivate(tx, pos, powered, nil)
+	case attached && !wasAttached:
+		postBlockEvent(tx, gameevent.BlockAttach, pos, nil)
+	case !attached && wasAttached:
+		postBlockEvent(tx, gameevent.BlockDetach, pos, nil)
 	}
 }
 

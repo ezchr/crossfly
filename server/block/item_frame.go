@@ -6,6 +6,7 @@ import (
 	"github.com/df-mc/dragonfly/server/internal/nbtconv"
 	"github.com/df-mc/dragonfly/server/item"
 	"github.com/df-mc/dragonfly/server/world"
+	"github.com/df-mc/dragonfly/server/world/gameevent"
 	"github.com/df-mc/dragonfly/server/world/sound"
 	"github.com/go-gl/mathgl/mgl64"
 	"math/rand/v2"
@@ -46,6 +47,8 @@ func (i ItemFrame) Activate(pos cube.Pos, _ cube.Face, tx *world.Tx, u item.User
 	}
 
 	tx.SetBlock(pos, i, nil)
+	// ItemFrameBlockActor::rotateFramedItem and ::setItem: block_change, made by the player.
+	postBlockEvent(tx, gameevent.BlockChange, pos, u)
 	return true
 }
 
@@ -65,6 +68,8 @@ func (i ItemFrame) Punch(pos cube.Pos, _ cube.Face, tx *world.Tx, u item.User) {
 	i.Item, i.Rotations = item.Stack{}, 0
 	tx.PlaySound(pos.Vec3Centre(), sound.ItemFrameRemove{})
 	tx.SetBlock(pos, i, nil)
+	// ItemFrameBlockActor::actuallyDropItem: block_change, made by the player.
+	postBlockEvent(tx, gameevent.BlockChange, pos, u)
 }
 
 // UseOnBlock ...

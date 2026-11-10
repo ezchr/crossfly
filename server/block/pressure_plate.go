@@ -56,6 +56,8 @@ func (p PressurePlate) EntityInside(pos cube.Pos, tx *world.Tx, e world.Entity) 
 	}
 	tx.ScheduleBlockUpdate(pos, p, p.releaseDelay())
 	tx.PlaySound(pos.Vec3Centre(), sound.PressurePlateClickOn{Block: p})
+	// BasePressurePlateBlock::checkPressed: block_activate with the click, made by the entity on it.
+	postActivate(tx, pos, true, e)
 }
 
 // NeighbourUpdateTick breaks an unsupported pressure plate.
@@ -95,6 +97,7 @@ func (p PressurePlate) ScheduledTick(pos cube.Pos, tx *world.Tx, _ *rand.Rand) {
 	p.Power = 0
 	tx.SetBlock(pos, p, nil)
 	tx.PlaySound(pos.Vec3Centre(), sound.PressurePlateClickOff{Block: p})
+	postActivate(tx, pos, false, nil)
 }
 
 // RedstonePower returns the plate's signal strength.

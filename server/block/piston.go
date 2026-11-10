@@ -7,6 +7,7 @@ import (
 	"github.com/df-mc/dragonfly/server/internal/nbtconv"
 	"github.com/df-mc/dragonfly/server/item"
 	"github.com/df-mc/dragonfly/server/world"
+	"github.com/df-mc/dragonfly/server/world/gameevent"
 	"github.com/df-mc/dragonfly/server/world/sound"
 	"github.com/go-gl/mathgl/mgl64"
 )
@@ -165,6 +166,8 @@ func (p Piston) BlockEvent(pos cube.Pos, tx *world.Tx, event int) {
 			tx.NotifyNeighbour(pos.Side(f), pos)
 		}
 		tx.PlaySound(pos.Vec3Centre(), sound.Custom{Name: "tile.piston.out", Volume: .5, Pitch: .7})
+		// PistonBlockActor::tick: piston_extend as it starts moving out.
+		postBlockEvent(tx, gameevent.PistonExtend, pos, nil)
 		return
 	}
 	if on || !p.Extended {
@@ -196,6 +199,7 @@ func (p Piston) BlockEvent(pos cube.Pos, tx *world.Tx, event int) {
 	}
 	tx.SetBlock(pos, p, nil)
 	tx.PlaySound(pos.Vec3Centre(), sound.Custom{Name: "tile.piston.in", Volume: .5, Pitch: .7})
+	postBlockEvent(tx, gameevent.PistonContract, pos, nil)
 }
 
 func (p Piston) move(pos cube.Pos, tx *world.Tx, r *pistonResolver, extending bool) {

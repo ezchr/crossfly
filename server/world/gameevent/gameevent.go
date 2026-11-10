@@ -11,6 +11,7 @@ package gameevent
 
 import (
 	"math"
+	"strconv"
 	"sync"
 	"sync/atomic"
 
@@ -31,7 +32,7 @@ type Event struct {
 }
 
 // The game events, with their BDS ids and frequencies. The ids 40 to 54 are
-// resonate_1 to resonate_15 (amethyst), which nothing here posts.
+// resonate_1 to resonate_15 (Resonate).
 var (
 	BlockActivate               = Event{Name: "block_activate", ID: 1, Frequency: 10}
 	BlockAttach                 = Event{Name: "block_attach", ID: 2, Frequency: 10}
@@ -81,6 +82,25 @@ var (
 	Teleport                    = Event{Name: "teleport", ID: 61, Frequency: 14}
 	Unequip                     = Event{Name: "unequip", ID: 62, Frequency: 4}
 )
+
+// resonances are resonate_1 to resonate_15 (GameEventRegistry::resonate1 to resonate15, ids 40 to 54):
+// an amethyst block next to a sculk sensor that receives a vibration of frequency n re-emits it as
+// resonate_n, whose frequency is n.
+var resonances = func() (r [15]Event) {
+	for i := range r {
+		n := i + 1
+		r[i] = Event{Name: "resonate_" + strconv.Itoa(n), ID: int32(39 + n), Frequency: n}
+	}
+	return r
+}()
+
+// Resonate returns resonate_n for a vibration frequency n (1 to 15), and false for any other.
+func Resonate(n int) (Event, bool) {
+	if n < 1 || n > len(resonances) {
+		return Event{}, false
+	}
+	return resonances[n-1], true
+}
 
 // Context is who made a game event (BDS GameEventContext).
 type Context struct {
@@ -149,6 +169,34 @@ func PostContext(tx *world.Tx, ev Event, pos mgl64.Vec3, ctx Context) {
 	for _, h := range hooks {
 		h(tx, ev, pos, ctx)
 	}
+}
+
+// projectileOwner is set by package entity: it reports whether e is a projectile and returns its shooter
+// (nil if it has none or the shooter is gone).
+var projectileOwner func(tx *world.Tx, e world.Entity) (world.Entity, bool)
+
+// SetProjectileOwner sets the function that tells projectiles and their shooters apart (package entity
+// calls it from an init function).
+func SetProjectileOwner(f func(tx *world.Tx, e world.Entity) (world.Entity, bool)) {
+	projectileOwner = f
+}
+
+// ProjectileOwner returns the shooter of e if e is a projectile with one (ok false otherwise).
+func ProjectileOwner(tx *world.Tx, e world.Entity) (world.Entity, bool) {
+	if e == nil || projectileOwner == nil {
+		return nil, false
+	}
+	o, projectile := projectileOwner(tx, e)
+	return o, projectile && o != nil
+}
+
+// IsProjectile reports whether e is a projectile (BDS ActorType Projectile).
+func IsProjectile(tx *world.Tx, e world.Entity) bool {
+	if e == nil || projectileOwner == nil {
+		return false
+	}
+	_, projectile := projectileOwner(tx, e)
+	return projectile
 }
 
 // Sneaking reports whether e sneaks, the shooter for a projectile (owner):

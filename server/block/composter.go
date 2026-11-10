@@ -5,6 +5,7 @@ import (
 	"github.com/df-mc/dragonfly/server/block/model"
 	"github.com/df-mc/dragonfly/server/item"
 	"github.com/df-mc/dragonfly/server/world"
+	"github.com/df-mc/dragonfly/server/world/gameevent"
 	"github.com/df-mc/dragonfly/server/world/particle"
 	"github.com/df-mc/dragonfly/server/world/sound"
 	"math/rand/v2"
@@ -33,7 +34,7 @@ func (c Composter) InsertItem(h Hopper, pos cube.Pos, tx *world.Tx) bool {
 			continue
 		}
 
-		if c.fill(sourceStack, pos, tx) {
+		if c.fill(sourceStack, pos, tx, nil) {
 			_ = h.inventory.SetItem(sourceSlot, sourceStack.Grow(-1))
 			return true
 		}
@@ -54,6 +55,8 @@ func (c Composter) ExtractItem(h Hopper, pos cube.Pos, tx *world.Tx) bool {
 		c.Level = 0
 		tx.SetBlock(pos, c, nil)
 		tx.PlaySound(pos.Vec3(), sound.ComposterEmpty{})
+		// ComposterBlock::empty: block_change.
+		postBlockEvent(tx, gameevent.BlockChange, pos, nil)
 		return true
 	}
 
@@ -95,6 +98,7 @@ func (c Composter) Activate(pos cube.Pos, _ cube.Face, tx *world.Tx, u item.User
 		if c.Level == 8 {
 			c.Level = 0
 			tx.SetBlock(pos, c, nil)
+			postBlockEvent(tx, gameevent.BlockChange, pos, nil)
 			dropItem(tx, item.NewStack(item.BoneMeal{}, 1), pos.Side(cube.FaceUp).Vec3Middle())
 			tx.PlaySound(pos.Vec3(), sound.ComposterEmpty{})
 			// The bone meal was collected, so the item held must not also be used on the composter.
@@ -103,15 +107,15 @@ func (c Composter) Activate(pos cube.Pos, _ cube.Face, tx *world.Tx, u item.User
 		return false
 	}
 	it, _ := u.HeldItems()
-	if c.fill(it, pos, tx) {
+	if c.fill(it, pos, tx, u) {
 		ctx.SubtractFromCount(1)
 		return true
 	}
 	return false
 }
 
-// Fill fills up the composter.
-func (c Composter) fill(it item.Stack, pos cube.Pos, tx *world.Tx) bool {
+// fill fills up the composter with it, put in by src (a player, or nil for a hopper).
+func (c Composter) fill(it item.Stack, pos cube.Pos, tx *world.Tx, src any) bool {
 	compostable, ok := it.Item().(item.Compostable)
 	if !ok {
 		return false
@@ -124,6 +128,8 @@ func (c Composter) fill(it item.Stack, pos cube.Pos, tx *world.Tx) bool {
 	c.Level++
 	tx.SetBlock(pos, c, nil)
 	tx.PlaySound(pos.Vec3(), sound.ComposterFillLayer{})
+	// ComposterBlock::addItems: block_change when the compost rises.
+	postBlockEvent(tx, gameevent.BlockChange, pos, src)
 	if c.Level == 7 {
 		tx.ScheduleBlockUpdate(pos, c, time.Second)
 	}

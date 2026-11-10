@@ -10,6 +10,7 @@ import (
 	"github.com/df-mc/dragonfly/server/item"
 	"github.com/df-mc/dragonfly/server/item/enchantment"
 	"github.com/df-mc/dragonfly/server/world"
+	"github.com/df-mc/dragonfly/server/world/gameevent"
 	"github.com/df-mc/dragonfly/server/world/particle"
 )
 
@@ -422,4 +423,6 @@ func breakBlockNoDrops(b world.Block, pos cube.Pos, tx *world.Tx) {
 		}
 	}
 	tx.AddParticle(pos.Vec3Centre(), particle.BlockBreak{Block: b})
+	// LevelBlockDestroyerProxy::sendEvents: block_destroy with the destroy particles, made by nobody.
+	postBlockEvent(tx, gameevent.BlockDestroy, pos, nil)
 }

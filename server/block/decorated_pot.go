@@ -7,6 +7,7 @@ import (
 	"github.com/df-mc/dragonfly/server/internal/nbtconv"
 	"github.com/df-mc/dragonfly/server/item"
 	"github.com/df-mc/dragonfly/server/world"
+	"github.com/df-mc/dragonfly/server/world/gameevent"
 	"github.com/df-mc/dragonfly/server/world/particle"
 	"github.com/df-mc/dragonfly/server/world/sound"
 	"github.com/go-gl/mathgl/mgl64"
@@ -116,6 +117,8 @@ func (p DecoratedPot) Activate(pos cube.Pos, _ cube.Face, tx *world.Tx, u item.U
 	}
 	tx.SetBlock(pos, p, nil)
 	p.wobble(pos, tx, true)
+	// DecoratedPotBlockActor::tryAddItem: block_change, made by the player.
+	postBlockEvent(tx, gameevent.BlockChange, pos, u)
 	ctx.SubtractFromCount(1)
 	return true
 }

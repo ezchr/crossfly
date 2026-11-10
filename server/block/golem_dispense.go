@@ -6,6 +6,7 @@ import (
 	"github.com/df-mc/dragonfly/server/block/cube"
 	"github.com/df-mc/dragonfly/server/item"
 	"github.com/df-mc/dragonfly/server/world"
+	"github.com/df-mc/dragonfly/server/world/gameevent"
 	"github.com/df-mc/dragonfly/server/world/sound"
 )
 
@@ -35,6 +36,8 @@ func dispenseGolemHead(head world.Block, front cube.Pos, tx *world.Tx, ctx *item
 	}
 	ctx.SubtractFromCount(1)
 	tx.SetBlock(front, head, nil)
+	// PumpkinBlock::dispense: block_place, made by nobody.
+	postBlockEvent(tx, gameevent.BlockPlace, front, nil)
 	tx.PlaySound(front.Vec3Centre(), sound.Click{})
 	spawnGolem(tx, front)
 	return item.DispenseSuccess

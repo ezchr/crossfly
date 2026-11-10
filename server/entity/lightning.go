@@ -7,6 +7,7 @@ import (
 	"github.com/df-mc/dragonfly/server/block"
 	"github.com/df-mc/dragonfly/server/block/cube"
 	"github.com/df-mc/dragonfly/server/world"
+	"github.com/df-mc/dragonfly/server/world/gameevent"
 	"github.com/df-mc/dragonfly/server/world/sound"
 	"github.com/go-gl/mathgl/mgl64"
 )
@@ -41,12 +42,22 @@ type lightningState struct {
 	EntityFireDuration time.Duration
 	BlockFire          bool
 	state, lifetime    int
+	// struck is set once the strike was posted as a game event.
+	struck bool
 }
 
 // tick carries out lightning logic, dealing damage and setting blocks/entities
 // on fire when appropriate.
 func (s *lightningState) tick(e *Ent, tx *world.Tx) {
 	pos := e.Position()
+	if !s.struck {
+		// LightningBolt::normalTick: lightning_strike at the block it strikes (the one below it).
+		s.struck = true
+		if gameevent.Active(tx) {
+			at := cube.PosFromVec3(pos.Sub(mgl64.Vec3{0, 1e-6, 0}))
+			gameevent.Post(tx, gameevent.LightningStrike, at.Vec3Centre(), e)
+		}
+	}
 
 	if s.state--; s.state < 0 {
 		if s.lifetime == 0 {

@@ -86,6 +86,8 @@ func (d IronDoor) RedstonePowerPostUpdate(pos cube.Pos, tx *world.Tx, _, after w
 	} else {
 		tx.PlaySound(pos.Vec3Centre(), sound.DoorClose{Block: a})
 	}
+	// DoorBlock::setToggled: block_open or block_close, made by nobody.
+	postToggle(tx, pos, a.Open, nil)
 }
 
 // UseOnBlock handles the directional placing of doors

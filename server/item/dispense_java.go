@@ -7,6 +7,7 @@ import (
 
 	"github.com/df-mc/dragonfly/server/block/cube"
 	"github.com/df-mc/dragonfly/server/world"
+	"github.com/df-mc/dragonfly/server/world/gameevent"
 	"github.com/df-mc/dragonfly/server/world/particle"
 	"github.com/df-mc/dragonfly/server/world/sound"
 	"github.com/go-gl/mathgl/mgl64"
@@ -116,6 +117,8 @@ func (b Bucket) Dispense(pos cube.Pos, face cube.Face, tx *world.Tx, ctx *Dispen
 		ctx.SubtractFromCount(1)
 		tx.SetLiquid(front, nil)
 		tx.PlaySound(front.Vec3Centre(), sound.BucketFill{Liquid: liquid})
+		// BucketItem::dispense: fluid_pickup, made by nobody.
+		postDispenseEvent(tx, gameevent.FluidPickup, front)
 		return DispenseSuccess
 	}
 
@@ -131,6 +134,7 @@ func (b Bucket) Dispense(pos cube.Pos, face cube.Face, tx *world.Tx, ctx *Dispen
 	ctx.SubtractFromCount(1)
 	tx.SetLiquid(front, liquid)
 	tx.PlaySound(front.Vec3Centre(), sound.BucketEmpty{Liquid: liquid})
+	postDispenseEvent(tx, gameevent.FluidPlace, front)
 	return DispenseSuccess
 }
 
@@ -262,6 +266,8 @@ func (s Shears) Dispense(pos cube.Pos, face cube.Face, tx *world.Tx, ctx *Dispen
 		if dispenserShear(tx, e) {
 			ctx.DamageItem(1)
 			tx.PlaySound(front.Vec3Centre(), sound.Click{})
+			// ShearsItem::dispense: shear, made by nobody.
+			postDispenseEvent(tx, gameevent.Shear, front)
 			return DispenseSuccess
 		}
 	}
@@ -303,4 +309,12 @@ func waxBlock(pos cube.Pos, source mgl64.Vec3, tx *world.Tx) bool {
 	tx.SetBlock(pos, res, nil)
 	tx.PlaySound(pos.Vec3(), sound.SignWaxed{})
 	return true
+}
+
+// postDispenseEvent posts ev at the centre of pos for a dispenser's doing, made by nobody. Nothing happens in a
+// world without vibration listeners.
+func postDispenseEvent(tx *world.Tx, ev gameevent.Event, pos cube.Pos) {
+	if gameevent.Active(tx) {
+		gameevent.Post(tx, ev, pos.Vec3Centre(), nil)
+	}
 }

@@ -7,6 +7,7 @@ import (
 	"github.com/df-mc/dragonfly/server/internal/nbtconv"
 	"github.com/df-mc/dragonfly/server/item"
 	"github.com/df-mc/dragonfly/server/world"
+	"github.com/df-mc/dragonfly/server/world/gameevent"
 	"github.com/df-mc/dragonfly/server/world/particle"
 	"github.com/df-mc/dragonfly/server/world/sound"
 )
@@ -38,6 +39,8 @@ type NoteListener interface {
 func (n Note) playNote(pos cube.Pos, tx *world.Tx) {
 	tx.PlaySound(pos.Vec3(), sound.Note{Instrument: n.instrument(pos, tx), Pitch: n.Pitch})
 	tx.AddParticle(pos.Vec3(), particle.Note{Instrument: n.Instrument(), Pitch: n.Pitch})
+	// MusicBlockActor::playNote: note_block_play, made by nobody (a player or redstone alike).
+	postBlockEvent(tx, gameevent.NoteBlockPlay, pos, nil)
 	if l, ok := Mobs().(NoteListener); ok {
 		l.NotePlayed(tx, pos)
 	}

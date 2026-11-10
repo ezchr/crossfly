@@ -14,6 +14,7 @@ import (
 	"github.com/df-mc/dragonfly/server/item"
 	"github.com/df-mc/dragonfly/server/item/inventory"
 	"github.com/df-mc/dragonfly/server/world"
+	"github.com/df-mc/dragonfly/server/world/gameevent"
 	"github.com/df-mc/dragonfly/server/world/sound"
 	"github.com/go-gl/mathgl/mgl64"
 )
@@ -144,6 +145,10 @@ func (d Dispenser) check(pos cube.Pos, tx *world.Tx, powered bool) {
 func (d Dispenser) ScheduledTick(pos cube.Pos, tx *world.Tx, r *rand.Rand) {
 	if !d.dispense(pos, tx, r) {
 		tx.PlaySound(pos.Vec3Centre(), sound.ClickFail{})
+		if !d.Dropper {
+			// DispenserBlock::dispenseFrom: dispense_fail when nothing came out (not for droppers).
+			postBlockEvent(tx, gameevent.DispenseFail, pos, nil)
+		}
 	}
 }
 

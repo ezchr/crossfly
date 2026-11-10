@@ -11,9 +11,11 @@ import (
 	"github.com/df-mc/dragonfly/server/block/cube"
 	"github.com/df-mc/dragonfly/server/block/model"
 	"github.com/df-mc/dragonfly/server/entity/effect"
+	"github.com/df-mc/dragonfly/server/item"
 	"github.com/df-mc/dragonfly/server/world"
 	"github.com/df-mc/dragonfly/server/world/gameevent"
 	"github.com/df-mc/dragonfly/server/world/particle"
+	"github.com/df-mc/dragonfly/server/world/sound"
 	"github.com/go-gl/mathgl/mgl64"
 )
 
@@ -24,27 +26,36 @@ func init() {
 	mobBlocks = append(mobBlocks, func() {
 		for phase := 0; phase <= 2; phase++ {
 			world.RegisterBlock(SculkSensor{Phase: phase})
+			for _, d := range cube.Directions() {
+				world.RegisterBlock(CalibratedSculkSensor{Facing: d, Phase: phase})
+			}
 		}
 		for _, active := range []bool{false, true} {
 			world.RegisterBlock(SculkShrieker{Active: active})
 			world.RegisterBlock(SculkShrieker{Active: active, CanSummon: true})
 		}
 		world.RegisterItem(SculkSensor{})
+		world.RegisterItem(CalibratedSculkSensor{})
 		world.RegisterItem(SculkShrieker{})
 		gameevent.Register(sculkHear)
 		world.RegisterTickHook(wardenThreatTick)
 	})
 }
 
-var hashSculkSensor, hashSculkShrieker = NextHash(), NextHash()
+var hashSculkSensor, hashSculkShrieker, hashCalibratedSculkSensor = NextHash(), NextHash(), NextHash()
 
-// Sculk sensor values (SculkSensorBlock, SculkSensorVibrationConfig).
+// Sculk sensor values (SculkSensorBlock, SculkSensorVibrationConfig). The calibrated sensor is a
+// SculkSensorBlock built with an active time of 10 (CalibratedSculkSensorBlock::CalibratedSculkSensorBlock)
+// whose block actor listens 16 blocks far (std::make_shared<CalibratedSculkSensorBlockActor> passes 16 to
+// SculkSensorBlockActor, where the plain one passes 8).
 const (
-	sculkSensorRange       = 8
-	sculkSensorActiveTicks = 30 // the constructor's active time (10 for the calibrated sensor)
-	sculkSensorCooldown    = 10
-	sculkShriekerRange     = 8
-	sculkShriekerTicks     = 90
+	sculkSensorRange                 = 8
+	calibratedSculkSensorRange       = 16
+	sculkSensorActiveTicks           = 30
+	calibratedSculkSensorActiveTicks = 10
+	sculkSensorCooldown              = 10
+	sculkShriekerRange               = 8
+	sculkShriekerTicks               = 90
 )
 
 // SculkSensor is a sculk sensor (SculkSensorBlock): it hears the vibrations within 8 blocks, and one that
@@ -120,51 +131,285 @@ func (s SculkSensor) DecodeNBT(data map[string]any) any {
 
 // RedstonePower is the signal while active.
 func (s SculkSensor) RedstonePower(cube.Pos, *world.Tx, cube.Face) int {
+	return s.sensor().signal()
+}
+
+// RedstoneStrongPower strongly powers the block below while active (Java fallback: no Bedrock data. Java's
+// SculkSensorBlock.getDirectSignal gives its signal upwards only, so to the block beneath).
+func (s SculkSensor) RedstoneStrongPower(_ cube.Pos, _ *world.Tx, face cube.Face) int {
+	if face != cube.FaceDown {
+		return 0
+	}
+	return s.sensor().signal()
+}
+
+// Tick runs the sensor's vibration listener (SculkSensorBlockActor::tick).
+func (s SculkSensor) Tick(currentTick int64, pos cube.Pos, tx *world.Tx) {
+	sculkListenerTick(tx, pos, currentTick, sculkKindSensor)
+}
+
+// EntityStepOn posts sculk_touch for an entity standing on the sensor (SculkSensorBlock::onStandOn).
+func (SculkSensor) EntityStepOn(pos cube.Pos, tx *world.Tx, e world.Entity) { sculkTouch(tx, pos, e) }
+
+// SculkStepper ...
+func (SculkSensor) SculkStepper() {}
+
+// ScheduledTick ends the active phase and then the cooldown (SculkSensorBlock::tick).
+func (s SculkSensor) ScheduledTick(pos cube.Pos, tx *world.Tx, _ *rand.Rand) {
+	sculkSensorScheduledTick(s, pos, tx)
+}
+
+func (s SculkSensor) sensor() sculkSensorState {
+	return sculkSensorState{s.Phase, s.Power, s.Frequency}
+}
+
+func (s SculkSensor) withSensor(st sculkSensorState) sculkSensorBlock {
+	s.Phase, s.Power, s.Frequency = st.Phase, st.Power, st.Frequency
+	return s
+}
+
+func (SculkSensor) sensorRange() float64 { return sculkSensorRange }
+func (SculkSensor) activeTicks() int     { return sculkSensorActiveTicks }
+
+// CalibratedSculkSensor is a calibrated sculk sensor (CalibratedSculkSensorBlock): a sculk sensor that hears
+// vibrations within 16 blocks and stays active for 10 ticks. A redstone signal into its back makes it hear
+// only the vibrations whose frequency equals that signal (CalibratedSculkSensorVibrationConfig::shouldListen).
+// It gives its signal to every side but its back.
+type CalibratedSculkSensor struct {
+	transparent
+	sourceWaterDisplacer
+
+	// Facing is minecraft:cardinal_direction, the direction the player who placed it was looking in. Its back,
+	// where it takes its input from, is on the opposite side.
+	Facing cube.Direction
+	// Phase is sculk_sensor_phase: 0 inactive, 1 active, 2 cooldown.
+	Phase int
+	// Power is the redstone signal while active.
+	Power int
+	// Frequency is the frequency of the last vibration received (the comparator output).
+	Frequency int
+}
+
+// EncodeBlock ...
+func (s CalibratedSculkSensor) EncodeBlock() (string, map[string]any) {
+	return "minecraft:calibrated_sculk_sensor", map[string]any{
+		"minecraft:cardinal_direction": s.Facing.String(),
+		"sculk_sensor_phase":           int32(s.Phase),
+	}
+}
+
+// EncodeItem ...
+func (CalibratedSculkSensor) EncodeItem() (string, int16) {
+	return "minecraft:calibrated_sculk_sensor", 0
+}
+
+// Hash ...
+func (s CalibratedSculkSensor) Hash() (uint64, uint64) {
+	return hashCalibratedSculkSensor, uint64(s.Phase) | uint64(s.Facing)<<2
+}
+
+// Model ...
+func (CalibratedSculkSensor) Model() world.BlockModel { return model.Slab{} }
+
+// BreakInfo ...
+func (s CalibratedSculkSensor) BreakInfo() BreakInfo {
+	return newBreakInfo(1.5, alwaysHarvestable, hoeEffective, oneOf(CalibratedSculkSensor{})).withXPDropRange(5, 5)
+}
+
+// LightEmissionLevel ...
+func (CalibratedSculkSensor) LightEmissionLevel() uint8 { return 1 }
+
+// UseOnBlock places the sensor facing the way the player looks (Java fallback: no Bedrock data, the BDS
+// dump has no placement code for it; Java's CalibratedSculkSensorBlock.getStateForPlacement takes the
+// player's horizontal direction).
+func (s CalibratedSculkSensor) UseOnBlock(pos cube.Pos, face cube.Face, _ mgl64.Vec3, tx *world.Tx, user item.User, ctx *item.UseContext) bool {
+	pos, _, used := firstReplaceable(tx, pos, face, s)
+	if !used {
+		return false
+	}
+	s = CalibratedSculkSensor{Facing: user.Rotation().Direction()}
+	place(tx, pos, s, user, ctx)
+	return placed(ctx)
+}
+
+// EncodeNBT ...
+func (s CalibratedSculkSensor) EncodeNBT() map[string]any {
+	return map[string]any{"id": "CalibratedSculkSensor", "power": int32(s.Power), "last_vibration_frequency": int32(s.Frequency)}
+}
+
+// DecodeNBT ...
+func (s CalibratedSculkSensor) DecodeNBT(data map[string]any) any {
+	if v, ok := data["power"].(int32); ok {
+		s.Power = int(v)
+	}
+	if v, ok := data["last_vibration_frequency"].(int32); ok {
+		s.Frequency = int(v)
+	}
+	return s
+}
+
+// back is the face it takes its input from.
+func (s CalibratedSculkSensor) back() cube.Face { return s.Facing.Opposite().Face() }
+
+// RedstonePower is the signal while active, to every side but the back (CalibratedSculkSensorBlock::
+// setupRedstoneComponent leaves the back out of its allowed connections).
+func (s CalibratedSculkSensor) RedstonePower(_ cube.Pos, _ *world.Tx, face cube.Face) int {
+	if face == s.back() {
+		return 0
+	}
+	return s.sensor().signal()
+}
+
+// RedstoneStrongPower strongly powers the block below while active (Java fallback, as SculkSensor).
+func (s CalibratedSculkSensor) RedstoneStrongPower(_ cube.Pos, _ *world.Tx, face cube.Face) int {
+	if face != cube.FaceDown {
+		return 0
+	}
+	return s.sensor().signal()
+}
+
+// InputStrength is the redstone signal into the sensor's back (CalibratedSculkSensorBlock::getInputStrength),
+// read as a repeater reads its input.
+func (s CalibratedSculkSensor) InputStrength(pos cube.Pos, tx *world.Tx) int {
+	return RedstoneRepeater{Facing: s.Facing.Opposite()}.input(pos, tx)
+}
+
+// Tick runs the sensor's vibration listener (SculkSensorBlockActor::tick).
+func (s CalibratedSculkSensor) Tick(currentTick int64, pos cube.Pos, tx *world.Tx) {
+	sculkListenerTick(tx, pos, currentTick, sculkKindCalibrated)
+}
+
+// EntityStepOn posts sculk_touch for an entity standing on the sensor (SculkSensorBlock::onStandOn).
+func (CalibratedSculkSensor) EntityStepOn(pos cube.Pos, tx *world.Tx, e world.Entity) {
+	sculkTouch(tx, pos, e)
+}
+
+// SculkStepper ...
+func (CalibratedSculkSensor) SculkStepper() {}
+
+// ScheduledTick ends the active phase and then the cooldown (SculkSensorBlock::tick).
+func (s CalibratedSculkSensor) ScheduledTick(pos cube.Pos, tx *world.Tx, _ *rand.Rand) {
+	sculkSensorScheduledTick(s, pos, tx)
+}
+
+func (s CalibratedSculkSensor) sensor() sculkSensorState {
+	return sculkSensorState{s.Phase, s.Power, s.Frequency}
+}
+
+func (s CalibratedSculkSensor) withSensor(st sculkSensorState) sculkSensorBlock {
+	s.Phase, s.Power, s.Frequency = st.Phase, st.Power, st.Frequency
+	return s
+}
+
+func (CalibratedSculkSensor) sensorRange() float64 { return calibratedSculkSensorRange }
+func (CalibratedSculkSensor) activeTicks() int     { return calibratedSculkSensorActiveTicks }
+
+// SculkStepper is a sculk block that reacts to the entities standing on it: sculk sensors post sculk_touch
+// (SculkSensorBlock::onStandOn) and shriekers shriek for the player behind the entity
+// (SculkShriekerBlock::onStandOn). Mobs call it, besides players.
+type SculkStepper interface {
+	EntityStepper
+	SculkStepper()
+}
+
+// sculkSensorState is what plain and calibrated sculk sensors share.
+type sculkSensorState struct{ Phase, Power, Frequency int }
+
+// signal is the sensor's redstone signal: its power while active.
+func (s sculkSensorState) signal() int {
 	if s.Phase != 1 {
 		return 0
 	}
 	return s.Power
 }
 
-// Tick runs the sensor's vibration listener (SculkSensorBlockActor::tick).
-func (s SculkSensor) Tick(currentTick int64, pos cube.Pos, tx *world.Tx) {
-	sculkListenerTick(tx, pos, currentTick, false)
+// sculkSensorBlock is a sculk sensor or a calibrated sculk sensor.
+type sculkSensorBlock interface {
+	world.Block
+	sensor() sculkSensorState
+	withSensor(sculkSensorState) sculkSensorBlock
+	sensorRange() float64
+	activeTicks() int
 }
 
-// EntityStepOn posts sculk_touch for an entity standing on the sensor (SculkSensorBlock::onStandOn), but a
-// warden's.
-func (SculkSensor) EntityStepOn(pos cube.Pos, tx *world.Tx, e world.Entity) {
-	if gameevent.Active(tx) && !isWarden(e) {
-		gameevent.Post(tx, gameevent.SculkTouch, pos.Vec3Centre(), e)
+// sculkSensorComparatorOutput is a sensor's comparator reading: the frequency of the vibration it received
+// while it is active, 0 otherwise (SculkSensorBlock::getComparatorSignal).
+func sculkSensorComparatorOutput(b sculkSensorBlock) int {
+	if st := b.sensor(); st.Phase == 1 {
+		return st.Frequency
 	}
+	return 0
 }
 
-// ScheduledTick ends the active phase and then the cooldown (SculkSensorBlock::tick).
-func (s SculkSensor) ScheduledTick(pos cube.Pos, tx *world.Tx, _ *rand.Rand) {
-	switch s.Phase {
+// sculkTouch is SculkSensorBlock::onStandOn: the entity standing on a sensor posts sculk_touch there, unless
+// it is a warden or a projectile.
+func sculkTouch(tx *world.Tx, pos cube.Pos, e world.Entity) {
+	if !gameevent.Active(tx) || isWarden(e) || gameevent.IsProjectile(tx, e) {
+		return
+	}
+	gameevent.Post(tx, gameevent.SculkTouch, pos.Vec3Centre(), e)
+}
+
+// sculkSensorScheduledTick ends the active phase and then the cooldown (SculkSensorBlock::tick).
+func sculkSensorScheduledTick(b sculkSensorBlock, pos cube.Pos, tx *world.Tx) {
+	st := b.sensor()
+	switch st.Phase {
 	case 1:
-		s.Phase, s.Power = 2, 0
-		tx.SetBlock(pos, s, nil)
-		tx.ScheduleBlockUpdate(pos, s, sculkSensorCooldown*time.Second/20)
+		st.Phase, st.Power = 2, 0
+		nb := b.withSensor(st)
+		tx.SetBlock(pos, nb, nil)
+		tx.ScheduleBlockUpdate(pos, nb, sculkSensorCooldown*time.Second/20)
 	case 2:
 		if !waterlogged(tx, pos) {
 			tx.PlaySound(pos.Vec3(), sculkSound{event: "power.off.sculk_sensor"})
 		}
-		s.Phase = 0
-		tx.SetBlock(pos, s, nil)
+		st.Phase = 0
+		tx.SetBlock(pos, b.withSensor(st), nil)
 	}
 }
 
-// activate is SculkSensorBlock::setActivePhase: active with power, a click and the tendrils event.
-func (s SculkSensor) activate(tx *world.Tx, pos cube.Pos, power, frequency int, src, owner world.Entity) {
-	s.Phase, s.Power, s.Frequency = 1, power, frequency
-	tx.SetBlock(pos, s, nil)
+// sculkSensorActivate is SculkSensorBlock::setActivePhase: active with power, a click, the amethyst blocks
+// next to it resonating, and the tendrils event.
+func sculkSensorActivate(b sculkSensorBlock, tx *world.Tx, pos cube.Pos, power, frequency int, src, owner world.Entity) {
+	nb := b.withSensor(sculkSensorState{Phase: 1, Power: power, Frequency: frequency})
+	tx.SetBlock(pos, nb, nil)
 	if !waterlogged(tx, pos) {
 		tx.PlaySound(pos.Vec3(), sculkSound{event: "power.on.sculk_sensor"})
 	}
+	resonate(tx, pos, frequency, src)
 	gameevent.PostContext(tx, gameevent.SculkSensorTendrilsClicking, pos.Vec3Centre(), gameevent.Context{Source: src, Owner: owner})
-	tx.ScheduleBlockUpdate(pos, s, sculkSensorActiveTicks*time.Second/20)
+	tx.ScheduleBlockUpdate(pos, nb, time.Duration(b.activeTicks())*time.Second/20)
 }
+
+// resonate is the part of SculkSensorBlock::setActivePhase that calls AmethystBlockUtils::resonateVibration
+// for each amethyst block next to the sensor: the block re-emits the vibration as resonate_n at its own
+// position, n being the frequency the sensor received, so that sensors further away hear it. BDS has no
+// body for resonateVibration in the dump: the event and the resonate sound, pitched by the frequency, follow
+// Java's SculkSensorBlock.tryResonateVibration (Java fallback: no Bedrock data).
+func resonate(tx *world.Tx, pos cube.Pos, frequency int, src world.Entity) {
+	ev, ok := gameevent.Resonate(frequency)
+	if !ok {
+		return
+	}
+	for _, f := range cube.Faces() {
+		at := pos.Side(f)
+		if _, ok := tx.Block(at).(Amethyst); !ok {
+			continue
+		}
+		gameevent.Post(tx, ev, at.Vec3Centre(), src)
+		tx.PlaySound(at.Vec3Centre(), sound.Custom{Name: "resonate.amethyst_block", Volume: 1, Pitch: resonancePitch[frequency]})
+	}
+}
+
+// resonancePitch is Java's SculkSensorBlock.RESONANCE_PITCH_BEND: the note block pitch of a tone for each
+// frequency.
+var resonancePitch = func() (p [16]float64) {
+	tones := [16]int{0, 0, 2, 4, 6, 7, 9, 10, 12, 14, 15, 18, 19, 21, 22, 24}
+	for i, n := range tones {
+		p[i] = math.Pow(2, float64(n-12)/12)
+	}
+	return p
+}()
 
 // EncodeBlock ...
 func (s SculkShrieker) EncodeBlock() (string, map[string]any) {
@@ -206,15 +451,23 @@ func (s SculkShrieker) DecodeNBT(data map[string]any) any {
 
 // Tick runs the shrieker's vibration listener.
 func (s SculkShrieker) Tick(currentTick int64, pos cube.Pos, tx *world.Tx) {
-	sculkListenerTick(tx, pos, currentTick, true)
+	sculkListenerTick(tx, pos, currentTick, sculkKindShrieker)
 }
 
-// EntityStepOn makes the shrieker shriek for a player standing on it (SculkShriekerBlock::onStandOn).
+// EntityStepOn makes the shrieker shriek for the player behind an entity standing on it: the player itself,
+// or the player riding the mob on it (SculkShriekerBlock::onStandOn with SculkShriekerBlockActor::
+// tryGetPlayerInHierarchy). Projectiles do nothing.
 func (s SculkShrieker) EntityStepOn(pos cube.Pos, tx *world.Tx, e world.Entity) {
-	if p, ok := e.(wardenThreatened); ok {
+	if gameevent.IsProjectile(tx, e) {
+		return
+	}
+	if p := playerInHierarchy(tx, e); p != nil {
 		s.tryShriek(tx, pos, p)
 	}
 }
+
+// SculkStepper ...
+func (SculkShrieker) SculkStepper() {}
 
 // ScheduledTick ends the shriek and answers it (SculkShriekerBlock::tick, SculkShriekerBlockActor::
 // tryRespond): a warning level of 4 summons a warden, a lower one plays the warden's warning sound for
@@ -446,9 +699,29 @@ type sculkVibration struct {
 	tick       int64
 }
 
+// sculkKind is the kind of sculk block a listener belongs to.
+type sculkKind uint8
+
+const (
+	sculkKindSensor sculkKind = iota
+	sculkKindCalibrated
+	sculkKindShrieker
+)
+
+// listenRange is how far the kind of sculk block hears.
+func (k sculkKind) listenRange() float64 {
+	switch k {
+	case sculkKindCalibrated:
+		return calibratedSculkSensorRange
+	case sculkKindShrieker:
+		return sculkShriekerRange
+	}
+	return sculkSensorRange
+}
+
 // sculkListener is the vibration listener state of one sculk block.
 type sculkListener struct {
-	shrieker  bool
+	kind      sculkKind
 	seen      int64
 	candidate *sculkVibration
 	flying    *sculkVibration
@@ -474,14 +747,14 @@ func sculkListenersOf(w *world.World, create bool) map[cube.Pos]*sculkListener {
 
 // sculkListenerTick is VibrationListener::tick for a sculk block: the vibration selected in an earlier
 // tick starts flying (with its particle) and the one in flight arrives.
-func sculkListenerTick(tx *world.Tx, pos cube.Pos, now int64, shrieker bool) {
+func sculkListenerTick(tx *world.Tx, pos cube.Pos, now int64, kind sculkKind) {
 	reg := sculkListenersOf(tx.World(), true)
 	l, ok := reg[pos]
-	if !ok || l.shrieker != shrieker {
+	if !ok || l.kind != kind {
 		if !ok {
 			gameevent.Track(tx.World(), 1)
 		}
-		l = &sculkListener{shrieker: shrieker}
+		l = &sculkListener{kind: kind}
 		reg[pos] = l
 	}
 	l.seen = now
@@ -521,7 +794,7 @@ func sculkHear(tx *world.Tx, ev gameevent.Event, pos mgl64.Vec3, ctx gameevent.C
 			continue
 		}
 		dist := lp.Vec3().Sub(at.Vec3()).Len()
-		if dist > sculkSensorRange {
+		if dist > l.kind.listenRange() {
 			continue
 		}
 		if !sculkListens(tx, lp, l, ev, at, ctx) || gameevent.Sneaking(ev, ctx) || ctx.Damped {
@@ -530,9 +803,18 @@ func sculkHear(tx *world.Tx, ev gameevent.Event, pos mgl64.Vec3, ctx gameevent.C
 		if vibrationOccluded(tx, pos, lp.Vec3Centre()) {
 			continue
 		}
-		// VibrationSelector::addCandidate: the closest of a tick wins, then the higher frequency.
-		if c := l.candidate; c != nil && c.tick == now {
-			if c.dist < dist || (c.dist == dist && c.ev.Frequency >= ev.Frequency) {
+		// VibrationSelector::addCandidate: a candidate of an earlier tick stays until it flies (so that an
+		// event posted every tick, as sculk_touch, does not keep replacing it); within a tick the closest
+		// wins, then the higher frequency.
+		if c := l.candidate; c != nil {
+			if c.tick != now {
+				continue
+			}
+			if math.Abs(c.dist-dist) <= 0.005 {
+				if c.ev.Frequency >= ev.Frequency {
+					continue
+				}
+			} else if dist > c.dist {
 				continue
 			}
 		}
@@ -549,29 +831,62 @@ func sculkHear(tx *world.Tx, ev gameevent.Event, pos mgl64.Vec3, ctx gameevent.C
 
 // sculkListens is the config's isValidVibration and shouldListen for the block at lp.
 func sculkListens(tx *world.Tx, lp cube.Pos, l *sculkListener, ev gameevent.Event, at cube.Pos, ctx gameevent.Context) bool {
-	if l.shrieker {
+	if l.kind == sculkKindShrieker {
 		s, ok := tx.Block(lp).(SculkShrieker)
-		return ok && ev == gameevent.SculkSensorTendrilsClicking && !s.Active && playerOf(ctx) != nil
+		return ok && ev == gameevent.SculkSensorTendrilsClicking && !s.Active && playerOf(tx, ctx) != nil
 	}
-	s, ok := tx.Block(lp).(SculkSensor)
-	if !ok || ev.Frequency == 0 || s.Phase != 0 {
+	b, ok := tx.Block(lp).(sculkSensorBlock)
+	if !ok || ev.Frequency == 0 || b.sensor().Phase != 0 {
 		return false
 	}
 	if at == lp && (ev == gameevent.BlockDestroy || ev == gameevent.BlockPlace) {
 		return false
 	}
-	return ev != gameevent.SculkTouch || at == lp
+	if ev == gameevent.SculkTouch && at != lp {
+		return false
+	}
+	// CalibratedSculkSensorVibrationConfig::shouldListen: with a signal into its back, only the frequency
+	// equal to it.
+	if c, ok := b.(CalibratedSculkSensor); ok {
+		if in := c.InputStrength(lp, tx); in != 0 && in != ev.Frequency {
+			return false
+		}
+	}
+	return true
 }
 
-// playerOf is SculkShriekerBlockActor::tryGetPlayerInHierarchy for a vibration: the owner (a shooter)
-// or the source, if a player.
-func playerOf(ctx gameevent.Context) wardenThreatened {
-	e := ctx.Source
+// playerOf is SculkShriekerBlockActor::tryGetPlayerInHierarchy for a vibration: the player behind its
+// owner (a shooter) or else behind its source.
+func playerOf(tx *world.Tx, ctx gameevent.Context) wardenThreatened {
 	if ctx.Owner != nil {
-		e = ctx.Owner
+		if p := playerInHierarchy(tx, ctx.Owner); p != nil {
+			return p
+		}
+	}
+	return playerInHierarchy(tx, ctx.Source)
+}
+
+// playerInHierarchy is SculkShriekerBlockActor::tryGetPlayerInHierarchy: e itself if a player, else the
+// player controlling it (riding it in the controlling seat, the first), else the player who shot it if a
+// projectile. BDS also takes the player who threw an item entity, which item entities do not keep here.
+func playerInHierarchy(tx *world.Tx, e world.Entity) wardenThreatened {
+	if e == nil {
+		return nil
 	}
 	if p, ok := e.(wardenThreatened); ok {
 		return p
+	}
+	if r, ok := e.(interface{ Passengers() []world.Entity }); ok {
+		if ps := r.Passengers(); len(ps) > 0 {
+			if p, ok := ps[0].(wardenThreatened); ok {
+				return p
+			}
+		}
+	}
+	if o, ok := gameevent.ProjectileOwner(tx, e); ok {
+		if p, ok := o.(wardenThreatened); ok {
+			return p
+		}
 	}
 	return nil
 }
@@ -601,14 +916,15 @@ func sculkReceive(tx *world.Tx, lp cube.Pos, v *sculkVibration) {
 		owner, _ = v.owner.Entity(tx)
 	}
 	switch b := tx.Block(lp).(type) {
-	case SculkSensor:
-		if b.Phase != 0 {
+	case sculkSensorBlock:
+		if b.sensor().Phase != 0 {
 			return
 		}
-		power := max(1, 15-int(math.Floor(v.dist/sculkSensorRange*15)))
-		b.activate(tx, lp, power, v.ev.Frequency, src, owner)
+		// SculkSensorVibrationConfig::onSignalReceive: 15 - floor(distance / range * 15), at least 1.
+		power := max(1, 15-int(math.Floor(v.dist/b.sensorRange()*15)))
+		sculkSensorActivate(b, tx, lp, power, v.ev.Frequency, src, owner)
 	case SculkShrieker:
-		if p := playerOf(gameevent.Context{Source: src, Owner: owner}); p != nil {
+		if p := playerOf(tx, gameevent.Context{Source: src, Owner: owner}); p != nil {
 			b.tryShriek(tx, lp, p)
 		}
 	}

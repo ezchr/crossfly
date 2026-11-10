@@ -3,6 +3,7 @@
 package boss
 
 import (
+	"math"
 	"math/rand/v2"
 
 	"github.com/df-mc/dragonfly/server/block"
@@ -92,6 +93,9 @@ func trackMovement(m *mob.Mob) {
 	tx := m.Tx()
 	if !gameevent.Active(tx) {
 		return
+	}
+	if m.OnGround() {
+		stepOnSculk(tx, m)
 	}
 	var mv *gameevent.Movement
 	if v, ok := m.Data(moveKey{}); ok {
@@ -185,4 +189,29 @@ func boxFree(tx *world.Tx, box cube.BBox) bool {
 		}
 	}
 	return true
+}
+
+// stepOnSculk is BlockLegacy::onStandOn for a mob on the ground: a sculk sensor under it posts sculk_touch
+// and a sculk shrieker shrieks for the player riding it (SculkSensorBlock::onStandOn,
+// SculkShriekerBlock::onStandOn). Players and other entities do this from their own movement; for mobs it
+// runs with the movement tracking, only in worlds with vibration listeners. Of the blocks under the mob,
+// the first that reacts to standing on it is the one stood on, as for the other entities
+// (entity.StepOnBlock).
+func stepOnSculk(tx *world.Tx, m *mob.Mob) {
+	box := m.H().Type().BBox(m).Translate(m.Position())
+	y := int(math.Floor(box.Min()[1] - 0.0001))
+	h := box.Grow(-0.0001)
+	lo, hi := cube.PosFromVec3(h.Min()), cube.PosFromVec3(h.Max())
+	for x := lo[0]; x <= hi[0]; x++ {
+		for z := lo[2]; z <= hi[2]; z++ {
+			pos := cube.Pos{x, y, z}
+			switch b := tx.Block(pos).(type) {
+			case block.SculkStepper:
+				b.EntityStepOn(pos, tx, m)
+				return
+			case block.EntityStepper:
+				return
+			}
+		}
+	}
 }

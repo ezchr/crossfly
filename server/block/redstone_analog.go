@@ -71,6 +71,16 @@ func redstoneAnalogOutput(pos cube.Pos, b world.Block, tx *world.Tx) (int, bool)
 			return 0, true
 		}
 		return b.Rotations%8 + 1, true
+	case sculkSensorBlock:
+		// The frequency of the vibration received while active (SculkSensorBlock::getComparatorSignal, the
+		// same in Java Edition).
+		return sculkSensorComparatorOutput(b), true
+	case Beehive:
+		// Java's BeehiveBlock.getAnalogOutputSignal: the honey level.
+		return b.HoneyLevel, true
+	case CopperGolemStatue:
+		// Java's CopperGolemStatueBlock.getAnalogOutputSignal: standing 1, sitting 2, running 3, star 4.
+		return int(b.Pose.Uint8()) + 1, true
 	case DecoratedPot:
 		if b.Item.Empty() {
 			return 0, true

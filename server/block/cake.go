@@ -6,6 +6,7 @@ import (
 	"github.com/df-mc/dragonfly/server/item"
 	"github.com/df-mc/dragonfly/server/item/enchantment"
 	"github.com/df-mc/dragonfly/server/world"
+	"github.com/df-mc/dragonfly/server/world/gameevent"
 	"github.com/df-mc/dragonfly/server/world/sound"
 	"github.com/go-gl/mathgl/mgl64"
 )
@@ -113,9 +114,13 @@ func (c Cake) Activate(pos cube.Pos, face cube.Face, tx *world.Tx, u item.User, 
 		c.Bites++
 		if c.Bites > 6 {
 			tx.SetBlock(pos, nil, nil)
+			// CakeBlock::removeCakeSlice: the last slice eaten destroys the cake.
+			postBlockEvent(tx, gameevent.BlockDestroy, pos, u)
 			return true
 		}
 		tx.SetBlock(pos, c, nil)
+		// CakeBlock::removeCakeSlice: block_change, made by the player.
+		postBlockEvent(tx, gameevent.BlockChange, pos, u)
 		return true
 	}
 	return false

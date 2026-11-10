@@ -8,6 +8,7 @@ import (
 	"github.com/df-mc/dragonfly/server/block/cube"
 	"github.com/df-mc/dragonfly/server/item"
 	"github.com/df-mc/dragonfly/server/world"
+	"github.com/df-mc/dragonfly/server/world/gameevent"
 	"github.com/df-mc/dragonfly/server/world/sound"
 )
 
@@ -58,6 +59,8 @@ func (j Jukebox) startDisc(pos cube.Pos, tx *world.Tx, s item.Stack, d sound.Dis
 	j.Item, j.handle, j.started = s, tx.World().NextSoundHandle(), tx.CurrentTick()
 	tx.SetBlock(pos, j, nil)
 	tx.PlaySound(pos.Vec3Centre(), sound.MusicDiscPlay{DiscType: d, Handle: j.handle})
+	// JukeboxBlockActor: block_change as a disc goes in.
+	postBlockEvent(tx, gameevent.BlockChange, pos, nil)
 	jukeboxPlaying(tx, pos, true)
 	tx.ScheduleBlockUpdate(pos, j, time.Second)
 }
@@ -75,6 +78,9 @@ func (j Jukebox) ScheduledTick(pos cube.Pos, tx *world.Tx, _ *rand.Rand) {
 	if float64(elapsed)*0.05 > discSeconds[d] {
 		tx.PlaySound(pos.Vec3Centre(), sound.MusicDiscEnd{Handle: j.handle})
 		jukeboxPlaying(tx, pos, false)
+		// The song is over: the disc stays, but the jukebox no longer plays (nor gives a redstone signal).
+		j.handle = 0
+		tx.SetBlock(pos, j, nil)
 		return
 	}
 	jukeboxPlaying(tx, pos, true)
@@ -139,6 +145,7 @@ func (j Jukebox) Activate(pos cube.Pos, _ cube.Face, tx *world.Tx, u item.User, 
 		tx.PlaySound(pos.Vec3Centre(), sound.MusicDiscEnd{Handle: j.handle})
 		j.Item, j.handle = item.Stack{}, 0
 		tx.SetBlock(pos, j, nil)
+		postBlockEvent(tx, gameevent.BlockChange, pos, u)
 		jukeboxPlaying(tx, pos, false)
 	} else if held, _ := u.HeldItems(); !held.Empty() {
 		if m, ok := held.Item().(item.MusicDisc); ok {
