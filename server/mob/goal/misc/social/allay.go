@@ -27,10 +27,20 @@ type noteMemory struct {
 // VibrationListener default 16 blocks).
 const noteHearingRange = 16
 
+// noteLoyalTicks is how long an allay ignores other note blocks after it
+// heard one: AllayVibrationConfig::onSignalReceive takes a new note block
+// only when it heard none yet, the same one again, or the last more than
+// 600 ticks ago.
+const noteLoyalTicks = 600
+
+// Note blocks call NoteBlockPlayed through block.NoteListener
+// (mob.BlockHost), whether a player or redstone plays them.
+func init() { mob.RegisterNoteBlockHook(NoteBlockPlayed) }
+
 // NoteBlockPlayed tells the allays within 16 blocks that the note block at
 // pos played (BDS: the note_block_play game event reaches the allay's
-// vibration listener, VibrationDataComponent). Dragonfly emits no game event
-// for it, so the code that plays note blocks (a player handler) calls this.
+// vibration listener, AllayVibrationConfig::onSignalReceive, which stores it
+// in VibrationDataComponent). Note.playNote calls it for every note.
 func NoteBlockPlayed(tx *world.Tx, pos cube.Pos) {
 	c := pos.Vec3Centre()
 	r := float64(noteHearingRange)
@@ -39,9 +49,15 @@ func NoteBlockPlayed(tx *world.Tx, pos cube.Pos) {
 		if !ok || m.Dead() || e.Position().Sub(c).Len() > r {
 			continue
 		}
-		if m.HasComponent("minecraft:behavior.go_and_give_items_to_noteblock") || m.HasComponent("minecraft:behavior.stay_near_noteblock") {
-			m.SetData(noteKey{}, noteMemory{pos: pos, tick: m.Ticks()})
+		if !m.HasComponent("minecraft:behavior.go_and_give_items_to_noteblock") && !m.HasComponent("minecraft:behavior.stay_near_noteblock") {
+			continue
 		}
+		if v, ok := m.Data(noteKey{}); ok {
+			if n := v.(noteMemory); n.pos != pos && m.Ticks()-n.tick <= noteLoyalTicks {
+				continue
+			}
+		}
+		m.SetData(noteKey{}, noteMemory{pos: pos, tick: m.Ticks()})
 	}
 }
 

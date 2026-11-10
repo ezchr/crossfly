@@ -22,10 +22,21 @@ type Note struct {
 	Powered bool
 }
 
-// playNote emits the configured note sound and particle at pos.
+// NoteListener is the optional part of the MobHost that hears note blocks play: an allay likes the
+// note block it heard (BDS: NoteBlock::triggerEvent posts the note_block_play game event, which
+// AllayVibrationConfig::onSignalReceive takes).
+type NoteListener interface {
+	// NotePlayed is called each time the note block at pos plays, by a player or by redstone.
+	NotePlayed(tx *world.Tx, pos cube.Pos)
+}
+
+// playNote emits the configured note sound and particle at pos, and tells the mobs.
 func (n Note) playNote(pos cube.Pos, tx *world.Tx) {
 	tx.PlaySound(pos.Vec3(), sound.Note{Instrument: n.instrument(pos, tx), Pitch: n.Pitch})
 	tx.AddParticle(pos.Vec3(), particle.Note{Instrument: n.Instrument(), Pitch: n.Pitch})
+	if l, ok := Mobs().(NoteListener); ok {
+		l.NotePlayed(tx, pos)
+	}
 }
 
 // instrument returns the note block instrument selected by the block below it.
