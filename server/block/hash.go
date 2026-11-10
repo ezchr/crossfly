@@ -189,6 +189,7 @@ const (
 	hashPistonHead
 	hashMovingPiston
 	hashSnifferEgg
+	hashSweetBerryBush
 	hashTarget
 	hashDaylightDetector
 	hashRedstoneComparator
@@ -1206,4 +1207,8 @@ func (FrogSpawn) Hash() (uint64, uint64) {
 
 func (s SnifferEgg) Hash() (uint64, uint64) {
 	return hashSnifferEgg, uint64(s.Cracks)
+}
+
+func (b SweetBerryBush) Hash() (uint64, uint64) {
+	return hashSweetBerryBush, uint64(b.Age)
 }

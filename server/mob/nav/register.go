@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 
+	"github.com/df-mc/dragonfly/server/block"
 	"github.com/df-mc/dragonfly/server/block/cube"
 	"github.com/df-mc/dragonfly/server/entity/effect"
 	"github.com/df-mc/dragonfly/server/mob"
@@ -181,6 +182,13 @@ func (a agent) PathTraits() Traits {
 	tr.PassFire = fireImmune || (hasTarget && m.HasFamily("zombie") && m.HasFamily("monster"))
 	if pp, ok := mob.ComponentOf[*preferredPath](m); ok {
 		tr.Preferred = &pp.pp
+	}
+	if c, ok := m.Component("minecraft:damage_sensor"); ok {
+		if s, ok := c.(interface {
+			CancelsDamage(*mob.Mob, world.DamageSource) bool
+		}); ok {
+			tr.BerryBushSafe = s.CancelsDamage(m, block.DamageSource{Block: block.SweetBerryBush{Age: 1}})
+		}
 	}
 	return tr
 }

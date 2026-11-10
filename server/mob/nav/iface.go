@@ -89,6 +89,9 @@ type Traits struct {
 	ClimbPowderSnow bool
 	// BlockClimber lets the mob climb scaffolding (minecraft:block_climber).
 	BlockClimber bool
+	// BerryBushSafe makes grown sweet berry bushes pathable and not damaging: the mob's damage sensor
+	// cancels their damage (SweetBerryBushBlock::checkIsPathable; foxes and bees).
+	BerryBushSafe bool
 	// Breakable, if set, reports blocks the mob may break through (break_blocks with mobGriefing on).
 	// Such blocks become Breakable nodes.
 	Breakable func(world.Block) bool

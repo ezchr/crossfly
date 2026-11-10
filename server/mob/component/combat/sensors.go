@@ -8,6 +8,7 @@ import (
 	"math"
 	"slices"
 
+	"github.com/df-mc/dragonfly/server/block"
 	"github.com/df-mc/dragonfly/server/entity"
 	"github.com/df-mc/dragonfly/server/mob"
 	"github.com/df-mc/dragonfly/server/mob/component/combat/sense"
@@ -270,6 +271,11 @@ func (s *DamageSensor) ModifyDamage(m *mob.Mob, d *mob.Damage) {
 	if sense.IsPlayer(d.Attacker) {
 		ctx.Player = d.Attacker
 	}
+	if bs, ok := d.Source.(block.DamageSource); ok && bs.Block != nil {
+		// The block that hurts is the "block" subject (sweet berry bushes: the
+		// fox and bee is_block sensors).
+		ctx.Block, ctx.HasBlock = bs.Block, true
+	}
 	if t, ok := m.Target(); ok {
 		ctx.Target = t
 	}
@@ -287,6 +293,28 @@ func (s *DamageSensor) ModifyDamage(m *mob.Mob, d *mob.Damage) {
 			return
 		}
 	}
+}
+
+// CancelsDamage reports whether the sensor cancels damage of src to m,
+// without firing on_damage events: DamageSensorComponent::recordBlockDamage
+// as SweetBerryBushBlock::checkIsPathable asks it (foxes and bees path
+// through berry bushes).
+func (s *DamageSensor) CancelsDamage(m *mob.Mob, src world.DamageSource) bool {
+	cause := sense.DamageCause(src)
+	ctx := m.Ctx()
+	ctx.Damage = src
+	if bs, ok := src.(block.DamageSource); ok && bs.Block != nil {
+		ctx.Block, ctx.HasBlock = bs.Block, true
+	}
+	for _, t := range s.triggers {
+		if t.cause != "" && t.cause != "all" && t.cause != "any" && t.cause != cause {
+			continue
+		}
+		if t.onDamage.Test(m, ctx) && !t.deals {
+			return true
+		}
+	}
+	return false
 }
 
 // nearbyLightning finds the lightning bolt that struck m, for the

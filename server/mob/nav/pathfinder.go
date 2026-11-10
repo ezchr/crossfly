@@ -1002,7 +1002,7 @@ func (f *Finder) pathable(bi *blockInfo, from, pos cube.Pos) bool {
 	case bi.mat == matWater:
 		return true
 	case bi.name == "minecraft:sweet_berry_bush":
-		return !bi.berryGrown
+		return !bi.berryGrown || f.r.Traits.BerryBushSafe
 	case bi.scaffolding:
 		return from[1] <= pos[1]
 	}
@@ -1039,6 +1039,9 @@ func (f *Finder) checkNeighbors(pos cube.Pos, bi *blockInfo, p prop, r int, fn f
 func (f *Finder) damaging(pos cube.Pos, bi *blockInfo, r int) bool {
 	return f.checkNeighbors(pos, bi, propCausesDamage, r, func(b *blockInfo) bool {
 		if f.r.Traits.FireImmune && (b.magma || b.campfire) {
+			return false
+		}
+		if f.r.Traits.BerryBushSafe && b.name == "minecraft:sweet_berry_bush" {
 			return false
 		}
 		return !(b.campfire && !b.campfireLit)

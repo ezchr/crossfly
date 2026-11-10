@@ -211,4 +211,5 @@ var discSongs = [...]string{
 var soundOverrides = [...][2]string{
 	{"mob.rabbit.hurt", "entity.rabbit.hurt"},
 	{"mob.gubby.idle", "entity.rabbit.ambient"},
+	{"block.sweet_berry_bush.pick", "block.sweet_berry_bush.pick_berries"},
 }

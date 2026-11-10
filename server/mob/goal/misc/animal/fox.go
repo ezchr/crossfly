@@ -545,10 +545,21 @@ func (g *raidGarden) params() map[string]float64 {
 		"max_to_eat": float64(g.maxToEat), "initial_eat_delay_ticks": float64(g.initDelay), "eat_delay_ticks": float64(g.eatDelay), "full_delay_ticks": float64(g.fullDelay)}
 }
 
+// raidableBlock is a block with the "minecraft:is_raidable" tag that handles
+// "minecraft:on_raided" itself (sweet berry bushes and cave vines drop their
+// berries, SweetBerryBushBlock/CaveVinesBlock::executeEvent).
+type raidableBlock interface {
+	Raidable() bool
+	Raid(pos cube.Pos, tx *world.Tx, e world.Entity)
+}
+
 // edibleCrop reports whether b is a block of the list the mob may eat.
 func (g *raidGarden) edibleCrop(b world.Block) bool {
 	if !g.blocks.Has(b) {
 		return false
+	}
+	if r, ok := b.(raidableBlock); ok {
+		return r.Raidable()
 	}
 	if c, ok := b.(interface{ GrowthStage() int }); ok {
 		return c.GrowthStage() >= 7
@@ -593,7 +604,9 @@ func (g *raidGarden) Tick(m *mob.Mob) {
 	}
 	tx := m.Tx()
 	b := tx.Block(g.target)
-	if c, ok := b.(block.Carrot); ok {
+	if r, ok := b.(raidableBlock); ok {
+		r.Raid(g.target, tx, m)
+	} else if c, ok := b.(block.Carrot); ok {
 		if c.Growth <= 0 {
 			tx.SetBlock(g.target, block.Air{}, nil)
 		} else {
