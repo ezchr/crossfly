@@ -56,6 +56,7 @@ const (
 	hashCopperBars
 	hashCopperChain
 	hashCopperDoor
+	hashDriedGhast
 	hashIronDoor
 	hashCopperGolemStatue
 	hashCopperGrate
@@ -1186,4 +1187,8 @@ func (c Cauldron) Hash() (uint64, uint64) {
 
 func (h Beehive) Hash() (uint64, uint64) {
 	return hashBeehive, uint64(boolByte(h.Nest)) | uint64(h.Facing)<<1 | uint64(h.HoneyLevel)<<3
+}
+
+func (d DriedGhast) Hash() (uint64, uint64) {
+	return hashDriedGhast, uint64(d.Facing) | uint64(d.Hydration)<<2
 }
