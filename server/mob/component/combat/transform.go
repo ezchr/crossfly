@@ -279,6 +279,12 @@ func Transform(m *mob.Mob, id, event string, preserveEquipment, dropEquipment, k
 // persistence, the owner with keep_owner, plays transformation_sound, runs
 // the TransformHooks and removes the old mob. Health and fire do not carry
 // over.
+//
+// BDS creates the new actor (its definition events run and its
+// minecraft:equipment table is rolled) and adds it to the level before it
+// copies the equipment: each of the six slots the old mob has an item in is
+// set on the new one (Mob::getItemSlot, not null), so the preserved items
+// replace the rolled gear and empty slots keep it.
 func TransformWith(m *mob.Mob, o TransformOptions) (*mob.Mob, error) {
 	tx := m.Tx()
 	o.Into = ActorID(o.Into)
@@ -318,10 +324,6 @@ func TransformWith(m *mob.Mob, o TransformOptions) (*mob.Mob, error) {
 		if o.KeepOwner && owner != nil {
 			n.UpdateMeta(func(meta *mob.Meta) { meta.Owner = owner })
 		}
-		if o.PreserveEquipment {
-			n.SetHeldItems(main, off)
-			n.Armour().Set(armour[0], armour[1], armour[2], armour[3])
-		}
 	}
 	n, err := mob.Spawn(tx, o.Into, pos, opts)
 	if err != nil {
@@ -339,6 +341,12 @@ func TransformWith(m *mob.Mob, o TransformOptions) (*mob.Mob, error) {
 		fire(o.Event)
 	}
 	fire(mob.EventTransformed)
+	if o.PreserveEquipment {
+		if r, ok := mob.ComponentOf[mob.GearRoller](n); ok {
+			r.RollGear(n)
+		}
+		preserveEquipment(n, main, off, armour)
+	}
 	for _, s := range o.Sounds {
 		m.PlaySound(s)
 	}
@@ -347,6 +355,25 @@ func TransformWith(m *mob.Mob, o TransformOptions) (*mob.Mob, error) {
 	}
 	_ = m.Close()
 	return n, nil
+}
+
+// preserveEquipment puts the items of the old mob's hands and armour slots
+// (helmet, chestplate, leggings, boots) that are not empty on n.
+func preserveEquipment(n *mob.Mob, main, off item.Stack, armour []item.Stack) {
+	nMain, nOff := n.HeldItems()
+	if !main.Empty() {
+		nMain = main
+	}
+	if !off.Empty() {
+		nOff = off
+	}
+	n.SetHeldItems(nMain, nOff)
+	a := n.Armour()
+	for i, set := range []func(item.Stack){a.SetHelmet, a.SetChestplate, a.SetLeggings, a.SetBoots} {
+		if !armour[i].Empty() {
+			set(armour[i])
+		}
+	}
 }
 
 // BreakDoor is minecraft:annotation.break_door: the mob may break wooden

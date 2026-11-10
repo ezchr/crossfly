@@ -20,6 +20,14 @@ type SlotEquipper interface {
 	DropSlot(m *Mob, slot string) (item.Stack, bool)
 }
 
+// GearRoller is implemented by a component that equips the mob with its
+// spawn gear once (minecraft:equipment rolls its loot table on its first
+// tick). RollGear rolls it now if that has not happened yet: a
+// transformation does so before it puts the preserved items on.
+type GearRoller interface {
+	RollGear(m *Mob)
+}
+
 // InventoryHolder is implemented by a component holding items of the mob's
 // container (equippable slots, minecraft:inventory).
 type InventoryHolder interface {

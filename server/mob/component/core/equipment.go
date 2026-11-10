@@ -97,6 +97,9 @@ func (c *equipment) Tick(m *mob.Mob) {
 	EquipFromTable(m, c.table)
 }
 
+// RollGear implements mob.GearRoller.
+func (c *equipment) RollGear(m *mob.Mob) { c.Tick(m) }
+
 // RollEquipment rolls m's minecraft:equipment table now if its first tick
 // has not done so yet (for /mobdebug and tests). It reports whether m has
 // the component.
