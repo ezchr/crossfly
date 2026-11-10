@@ -140,6 +140,21 @@ func (t *PortalTravelComputer) finishPendingPortalTravel(e Traveller, tx *world.
 	return true
 }
 
+// SetCooldown keeps the entity from travelling through a portal for d (Java Entity.setPortalCooldown, 300 ticks for
+// a zombified piglin that a portal block spawned).
+func (t *PortalTravelComputer) SetCooldown(d time.Duration) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	t.cooldownUntil = time.Now().Add(d)
+}
+
+// OnCooldown reports whether the entity may not travel through a portal yet.
+func (t *PortalTravelComputer) OnCooldown() bool {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	return time.Now().Before(t.cooldownUntil)
+}
+
 // StopPortalContact resets the portal timer if the entity was not inside a portal this tick.
 func (t *PortalTravelComputer) StopPortalContact() {
 	t.mu.Lock()
