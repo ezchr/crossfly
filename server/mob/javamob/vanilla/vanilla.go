@@ -10,6 +10,7 @@ import (
 
 	// The Java mob packages, one line each.
 	_ "github.com/df-mc/dragonfly/server/mob/javamob/monster"
+	_ "github.com/df-mc/dragonfly/server/mob/jfarm"
 	_ "github.com/df-mc/dragonfly/server/mob/jnether"
 )
 
