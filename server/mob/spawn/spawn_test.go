@@ -138,13 +138,29 @@ func TestCowsSpawnInDaylightInHerds(t *testing.T) {
 			}
 		}
 	})
-	got := spawnTicks(w, 6000)
-	cows := got["minecraft:cow"]
-	if len(cows) == 0 {
-		t.Fatalf("no cows spawned")
+	// Each herd is cows or sheep by the spawn weights, and the animal cap
+	// fills after about three herds: now and then they are all sheep (the
+	// mobs wander, so the later spawn checks differ from run to run even with
+	// the spawner seeded). Then the animals are cleared for another round.
+	var cows []*world.EntityHandle
+	for round := 0; round < 10 && len(cows) == 0; round++ {
+		if round > 0 {
+			run(w, func(tx *world.Tx) {
+				for e := range tx.Entities() {
+					if m, ok := mob.Of(e); ok && NaturallySpawned(m) {
+						_ = m.Close()
+					}
+				}
+			})
+		}
+		got := spawnTicks(w, 6000)
+		if len(got["minecraft:zombie"]) != 0 {
+			t.Fatalf("zombies in daylight: %d", len(got["minecraft:zombie"]))
+		}
+		cows = got["minecraft:cow"]
 	}
-	if len(got["minecraft:zombie"]) != 0 {
-		t.Fatalf("zombies in daylight: %d", len(got["minecraft:zombie"]))
+	if len(cows) == 0 {
+		t.Fatalf("no cows spawned in 10 rounds")
 	}
 	run(w, func(tx *world.Tx) {
 		for _, h := range cows {
