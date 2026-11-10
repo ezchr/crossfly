@@ -8,6 +8,7 @@ import (
 	"github.com/df-mc/dragonfly/server/entity"
 	"github.com/df-mc/dragonfly/server/mob"
 	"github.com/df-mc/dragonfly/server/mob/javamob"
+	"github.com/df-mc/dragonfly/server/player"
 	"github.com/df-mc/dragonfly/server/world"
 	"github.com/go-gl/mathgl/mgl64"
 )
@@ -188,3 +189,21 @@ func (mountComp) JumpStrength(bm *mob.Mob) float64 {
 	}
 	return 0
 }
+
+// travelRidden is the ridden part of LivingEntity.travel for a mount: a
+// mount steered by a player whose client moved it this tick is not moved by
+// the server (Entity.isControlledByLocalInstance is false there). It
+// reports whether the base must skip its own travel.
+func travelRidden(m *javamob.Mob) bool {
+	c, ok := m.ControllingPassenger()
+	if !ok {
+		return false
+	}
+	if _, isPlayer := c.(*player.Player); !isPlayer {
+		return false
+	}
+	return m.ClientMoved()
+}
+
+// TravelRidden implements the base's ridden travel hook for equines.
+func (h *Equine) TravelRidden(m *javamob.Mob) bool { return travelRidden(m) }

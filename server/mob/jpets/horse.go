@@ -298,8 +298,12 @@ func (h *Equine) followMommy(m *javamob.Mob) {
 }
 
 // PostTick is the rest of AbstractHorse.tick: the mouth, rearing, tail and
-// sprint counters.
+// sprint counters; the riders are put on their seats (Entity.positionRider,
+// which package mob's stages do for Bedrock-engine mobs).
 func (h *Equine) PostTick(m *javamob.Mob) {
+	if len(m.PassengerHandles()) > 0 {
+		m.PositionRiders()
+	}
 	if h.mouthCounter > 0 {
 		h.mouthCounter++
 		if h.mouthCounter > 30 {
