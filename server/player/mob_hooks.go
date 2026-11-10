@@ -45,6 +45,22 @@ func (p *Player) recordAttacker(src world.DamageSource) {
 		return
 	}
 	lastAttackers.Store(p.H(), attackRecord{attacker: attacker.H(), at: time.Now()})
+	lastHurtTargets.Store(attacker.H(), attackRecord{attacker: p.H(), at: time.Now()})
+}
+
+// lastHurtTargets holds the player each entity last hurt (by the attacker's handle).
+var lastHurtTargets sync.Map
+
+// LastHurtTarget returns the player the entity e last hurt and when (Java's LivingEntity.lastHurtMob for
+// player victims: a pet attacks what its owner hit). For players only; mobs hit by players are recorded
+// by the mob packages.
+func LastHurtTarget(e *world.EntityHandle) (*world.EntityHandle, time.Time, bool) {
+	v, ok := lastHurtTargets.Load(e)
+	if !ok {
+		return nil, time.Time{}, false
+	}
+	r := v.(attackRecord)
+	return r.attacker, r.at, true
 }
 
 // mobDamager is a mob (package mob, which imports this package): an entity with type families.

@@ -900,7 +900,25 @@ func (s *state) BedrockAttributes() []protocol.AttributeValue {
 			return []protocol.AttributeValue{{Name: AttrJumpStrength, Value: float32(v), Max: math.MaxFloat32}}
 		}
 	}
+	if v := s.vehicleJumpStrength(); v > 0 {
+		return []protocol.AttributeValue{{Name: AttrJumpStrength, Value: float32(v), Max: math.MaxFloat32}}
+	}
 	return nil
+}
+
+// VehicleJumpStrength may be implemented by a Vehicle that jumps without
+// minecraft:can_power_jump (the mounts of the Java mob mode): its jump
+// strength, 0 when it does not jump now. The clients size the jump bar with
+// it.
+type VehicleJumpStrength interface {
+	JumpStrength(m *Mob) float64
+}
+
+func (s *state) vehicleJumpStrength() float64 {
+	if v, ok := s.vehicle.(VehicleJumpStrength); ok && s.cur != nil {
+		return v.JumpStrength(s.cur)
+	}
+	return 0
 }
 
 // InteractTexter is a component that names the button a player looking at
@@ -941,7 +959,7 @@ func (s *state) JumpStrength() float64 {
 			return s.attrs.Value(AttrJumpStrength)
 		}
 	}
-	return 0
+	return s.vehicleJumpStrength()
 }
 
 // WindowProvider is implemented by the component holding the mob's
