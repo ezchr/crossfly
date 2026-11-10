@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"github.com/df-mc/dragonfly/server/world/gameevent"
 	"github.com/df-mc/dragonfly/server/world/particle"
+	"github.com/google/uuid"
 	"math"
 	"slices"
 
@@ -72,6 +73,16 @@ type AngerLevel struct {
 	next    int64
 	maxSeen int
 	cur     *world.EntityHandle
+	// saved are nuisances loaded with the mob whose entities have not been
+	// found yet (they may join or load later); they decay like the others.
+	saved []savedNuisance
+}
+
+// savedNuisance is a loaded nuisance not yet matched to its entity.
+type savedNuisance struct {
+	id     uuid.UUID
+	anger  int
+	player bool
 }
 
 func newAngerLevel(key string, raw json.RawMessage) (mob.Component, error) {
@@ -112,6 +123,83 @@ func newAngerLevel(key string, raw json.RawMessage) (mob.Component, error) {
 		a.sounds = append(a.sounds, angerSound{sound: s.Sound, cond: cond})
 	}
 	return a, nil
+}
+
+// EncodeNBT saves the nuisances as AngerLevelComponent::addAdditionalSaveData
+// does ("Nuisances": anger and priority, players first), with the entity's
+// UUID in place of its BDS actor id, which Dragonfly does not keep.
+func (a *AngerLevel) EncodeNBT() map[string]any {
+	if len(a.list) == 0 && len(a.saved) == 0 {
+		return nil
+	}
+	list := make([]map[string]any, 0, len(a.list)+len(a.saved))
+	for _, n := range a.list {
+		list = append(list, map[string]any{"UUID": n.h.UUID().String(), "Anger": int32(n.anger), "Priority": priority(n.player)})
+	}
+	for _, n := range a.saved {
+		list = append(list, map[string]any{"UUID": n.id.String(), "Anger": int32(n.anger), "Priority": priority(n.player)})
+	}
+	return map[string]any{"Nuisances": list}
+}
+
+// priority is a nuisance's saved priority: 1 for players, which come first.
+func priority(player bool) uint8 {
+	if player {
+		return 1
+	}
+	return 0
+}
+
+// DecodeNBT restores the saved nuisances. Their entities are matched in Tick,
+// once loaded.
+func (a *AngerLevel) DecodeNBT(_ *mob.Mob, data map[string]any) {
+	var list []map[string]any
+	switch v := data["Nuisances"].(type) {
+	case []map[string]any:
+		list = v
+	case []any:
+		for _, e := range v {
+			if n, ok := e.(map[string]any); ok {
+				list = append(list, n)
+			}
+		}
+	}
+	for _, n := range list {
+		s, _ := n["UUID"].(string)
+		id, err := uuid.Parse(s)
+		anger, _ := n["Anger"].(int32)
+		if err != nil || anger <= 0 {
+			continue
+		}
+		prio, _ := n["Priority"].(uint8)
+		a.saved = append(a.saved, savedNuisance{id: id, anger: min(int(anger), a.MaxAnger), player: prio == 1})
+	}
+}
+
+// matchSaved finds the entities of the loaded nuisances (every second while
+// some are missing).
+func (a *AngerLevel) matchSaved(m *mob.Mob) {
+	if len(a.saved) == 0 || m.Ticks()%20 != 0 {
+		return
+	}
+	tx := m.Tx()
+	for e := range tx.Entities() {
+		id := e.H().UUID()
+		for i, n := range a.saved {
+			if n.id != id {
+				continue
+			}
+			if a.find(e.H()) == nil {
+				a.list = append(a.list, &nuisance{h: e.H(), anger: n.anger, player: sense.IsPlayer(e)})
+			}
+			a.saved = append(a.saved[:i], a.saved[i+1:]...)
+			break
+		}
+		if len(a.saved) == 0 {
+			break
+		}
+	}
+	a.sort()
 }
 
 // AngerOf returns m's anger_level component.
@@ -236,6 +324,9 @@ func (a *AngerLevel) TryIncreaseAngerAt(m *mob.Mob, e world.Entity, amount int, 
 
 // IsAngry reports whether the angriest nuisance is past the threshold.
 func (a *AngerLevel) IsAngry() bool {
+	if len(a.list) == 0 && len(a.saved) != 0 {
+		return false
+	}
 	if len(a.list) == 0 {
 		return a.Threshold <= 0
 	}
@@ -272,8 +363,13 @@ func (a *AngerLevel) AngerLevel() int {
 func (a *AngerLevel) Tick(m *mob.Mob) {
 	a.cur = m.TargetHandle()
 	tx := m.Tx()
+	a.matchSaved(m)
 	for m.Ticks() >= a.next {
 		a.next += int64(a.interval)
+		for i := range a.saved {
+			a.saved[i].anger--
+		}
+		a.saved = slices.DeleteFunc(a.saved, func(n savedNuisance) bool { return n.anger <= 0 })
 		best := 0
 		a.list = slices.DeleteFunc(a.list, func(n *nuisance) bool {
 			n.anger--

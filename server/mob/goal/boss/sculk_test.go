@@ -14,6 +14,7 @@ import (
 	"github.com/df-mc/dragonfly/server/player"
 	"github.com/df-mc/dragonfly/server/world"
 	"github.com/go-gl/mathgl/mgl64"
+	"github.com/sandertv/gophertunnel/minecraft/nbt"
 	"github.com/sandertv/gophertunnel/minecraft/protocol"
 )
 
@@ -261,3 +262,44 @@ type testExplosion struct{ pos mgl64.Vec3 }
 
 func (e testExplosion) Size() float64        { return 1 }
 func (e testExplosion) Position() mgl64.Vec3 { return e.pos }
+
+// TestWardenAngerSaved: the warden's anger at a player is saved with it and comes back, matched to the
+// player once found.
+func TestWardenAngerSaved(t *testing.T) {
+	w := sculkWorld(t)
+	r := w.Spawn(bc.WardenID, mgl64.Vec3{0.5, 1, 0.5})
+	r2 := w.Spawn(bc.WardenID, mgl64.Vec3{-4.5, 1, 0.5})
+	p := w.AddPlayer("Steve", mgl64.Vec3{12.5, 1, 0.5})
+	w.Tick(2)
+	var saved map[string]any
+	w.Do(func(tx *world.Tx) {
+		m := mobOf(t, tx, r)
+		pl, _ := p.Entity(tx)
+		a := anger(t, m)
+		a.IncreaseAngerAt(m, pl, 60)
+		saved = a.EncodeNBT()
+	})
+	if saved == nil {
+		t.Fatal("no anger saved")
+	}
+	// As stored in the world: through NBT.
+	raw, err := nbt.Marshal(saved)
+	if err != nil {
+		t.Fatal(err)
+	}
+	saved = nil
+	if err := nbt.Unmarshal(raw, &saved); err != nil {
+		t.Fatal(err)
+	}
+	w.Do(func(tx *world.Tx) {
+		m := mobOf(t, tx, r2)
+		anger(t, m).DecodeNBT(m, saved)
+	})
+	w.Tick(21)
+	w.Do(func(tx *world.Tx) {
+		pl, _ := p.Entity(tx)
+		if got := anger(t, mobOf(t, tx, r2)).AngerAt(pl); got < 55 || got > 60 {
+			t.Errorf("restored anger %d, want about 60", got)
+		}
+	})
+}
