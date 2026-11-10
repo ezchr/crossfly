@@ -56,6 +56,7 @@ func (endCrystalType) DecodeNBT(m map[string]any, data *world.EntityData) {
 	b := endCrystalBehaviour{
 		showBase:      nbtconv.Bool(m, "ShowBottom"),
 		explosionSize: nbtconv.Float64(m, "ExplosionSize"),
+		invulnerable:  nbtconv.Bool(m, "Invulnerable"),
 	}
 	if b.explosionSize == 0 {
 		b.explosionSize = 6
@@ -75,6 +76,9 @@ func (endCrystalType) EncodeNBT(data *world.EntityData) map[string]any {
 	m := map[string]any{
 		"ShowBottom":    boolByte(b.showBase),
 		"ExplosionSize": b.explosionSize,
+	}
+	if b.invulnerable {
+		m["Invulnerable"] = uint8(1)
 	}
 	if b.hasBeamTarget {
 		m["BlockTargetX"] = int32(b.beamTarget[0])

@@ -44,9 +44,9 @@ func (e EndPortal) DecodeNBT(map[string]any) any {
 }
 
 // NeighbourUpdateTick removes the connected portal blocks if the surrounding frame ring is no longer complete,
-// like breaking the frame of a nether portal.
+// like breaking the frame of a nether portal. The exit portal in the End has no frame and stays.
 func (EndPortal) NeighbourUpdateTick(pos, _ cube.Pos, tx *world.Tx) {
-	if portal.EndPortalRingIntact(tx, pos) {
+	if tx.World().Dimension() == world.End || portal.EndPortalRingIntact(tx, pos) {
 		return
 	}
 	portal.DeactivateEndPortal(tx, pos)

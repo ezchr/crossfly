@@ -1571,6 +1571,12 @@ func (s *Session) ViewBlockAction(pos cube.Pos, a world.BlockAction) {
 			Position:  blockPos,
 			EventType: packet.BlockEventChangeChestState,
 		})
+	case block.EndGatewayBeamAction:
+		// EndGatewayBlockActor::teleportEntity: blockEvent(pos, 1, 0) shows the cooldown beam.
+		s.writePacket(&packet.BlockEvent{
+			Position:  blockPos,
+			EventType: 1,
+		})
 	case block.StartCrackAction:
 		if t.BreakTime <= 0 {
 			// An instant break has no cracking to animate, and encoding the crack speed would divide by zero.

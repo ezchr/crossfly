@@ -55,6 +55,12 @@ func (db *DB) Settings() *world.Settings {
 	return db.set
 }
 
+// Seed returns the world seed of level.dat (RandomSeed). Dragonfly generates no terrain from it, but the
+// End fight lays out its spikes and gateways by it, as Bedrock does.
+func (db *DB) Seed() int64 {
+	return db.ldat.RandomSeed
+}
+
 // SaveSettings saves the world.Settings passed to the level.dat.
 func (db *DB) SaveSettings(s *world.Settings) {
 	db.ldat.PutSettings(s)

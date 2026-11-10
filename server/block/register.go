@@ -53,6 +53,7 @@ func init() {
 	world.RegisterBlock(EnchantingTable{})
 	world.RegisterBlock(EndBricks{})
 	world.RegisterBlock(EndPortal{})
+	world.RegisterBlock(EndGateway{})
 	for _, f := range allEndPortalFrames() {
 		world.RegisterBlock(f)
 	}

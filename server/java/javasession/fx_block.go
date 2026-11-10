@@ -21,6 +21,8 @@ func (s *Session) ViewBlockAction(pos cube.Pos, a world.BlockAction) {
 		s.blockEvent(pos, 1, 1)
 	case block.CloseAction:
 		s.blockEvent(pos, 1, 0)
+	case block.EndGatewayBeamAction:
+		s.blockEvent(pos, 1, 0) // EndGatewayBlockEntity.triggerEvent 1: the cooldown beam
 	case block.StartCrackAction:
 		s.startCrack(pos, t.BreakTime)
 	case block.ContinueCrackAction:

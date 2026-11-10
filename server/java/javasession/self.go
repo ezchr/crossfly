@@ -194,6 +194,7 @@ func (s *Session) ViewEntityState(e world.Entity) {
 	s.viewCustomName(e, id)
 	s.viewArmourStand(e, id)
 	s.viewMinecart(e, id)
+	s.viewEndCrystal(e, id)   // its beam (endcrystal.go)
 	s.viewMobData(e, id)      // mob flags, health, baby, variants... (mobdata.go)
 	s.viewMobEquipment(e, id) // saddle and body armour
 	s.viewLeash(e, id)        // the lead it is tied with (mob_leash.go)
