@@ -1,9 +1,4 @@
-//go:build anchorwip
-
 package block
-
-// WIP (not compiled yet): needs ExplosionConfig.NoBlockDamage, sound.RespawnAnchor*, chat.MessageRespawnAnchorSet,
-// registration, hash, redstone_analog case. See HANDOFF.md.
 
 import (
 	"github.com/df-mc/dragonfly/server/block/cube"

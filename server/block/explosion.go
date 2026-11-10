@@ -36,6 +36,9 @@ type ExplosionConfig struct {
 	UnblockableByShield bool
 	// Source is the entity that caused the explosion, if known.
 	Source world.Entity
+	// NoBlockDamage makes the explosion leave blocks alone and start no fires, as a respawn anchor blowing up
+	// next to water does (RespawnAnchorBlock::_explode).
+	NoBlockDamage bool
 
 	// Sound is the sound to play when the explosion is created. If set to nil, this will default to the sound of a
 	// regular explosion.
@@ -233,7 +236,10 @@ func (c ExplosionConfig) Explode(tx *world.Tx, src world.ExplosionSource) {
 	}
 
 	ctx := tx.Event()
-	spawnFire := c.SpawnFire
+	spawnFire := c.SpawnFire && !c.NoBlockDamage
+	if c.NoBlockDamage {
+		affectedBlocks = affectedBlocks[:0]
+	}
 	itemDropChance := c.ItemDropChance
 	if tx.World().Handler().HandleExplosion(ctx, src, &affectedEntities, &affectedBlocks, &itemDropChance, &spawnFire); ctx.Cancelled() {
 		return

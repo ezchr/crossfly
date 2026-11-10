@@ -262,6 +262,8 @@ const (
 	hashBubbleColumn
 	hashEndGateway
 	hashBell
+	hashRespawnAnchor
+	hashHeavyCore
 	hashCustomBlockBase
 )
 
@@ -1219,4 +1221,12 @@ func (b SweetBerryBush) Hash() (uint64, uint64) {
 
 func (c CaveVines) Hash() (uint64, uint64) {
 	return hashCaveVines, uint64(c.Age) | uint64(boolByte(c.Berries))<<5 | uint64(boolByte(c.Body))<<6
+}
+
+func (r RespawnAnchor) Hash() (uint64, uint64) {
+	return hashRespawnAnchor, uint64(r.Charge)
+}
+
+func (HeavyCore) Hash() (uint64, uint64) {
+	return hashHeavyCore, 0
 }

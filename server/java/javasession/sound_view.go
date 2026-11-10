@@ -241,6 +241,18 @@ func (s *Session) playSound(pos mgl64.Vec3, t world.Sound, broadcast bool) {
 		s.sound(pos, sndBrewingStandBrew, srcBlocks, 1, 1)
 	case sound.BellRing:
 		s.customSound(pos, "minecraft:block.bell.use", 2, 1)
+	case sound.RespawnAnchorCharge:
+		s.customSound(pos, "minecraft:block.respawn_anchor.charge", 1, 1)
+	case sound.RespawnAnchorDeplete:
+		s.customSound(pos, "minecraft:block.respawn_anchor.deplete", 1, 1)
+	case sound.RespawnAnchorSetSpawn:
+		s.customSound(pos, "minecraft:block.respawn_anchor.set_spawn", 1, 1)
+	case sound.MaceSmashAir:
+		s.customSound(pos, "minecraft:item.mace.smash_air", 1, 1)
+	case sound.MaceSmashGround:
+		s.customSound(pos, "minecraft:item.mace.smash_ground", 1, 1)
+	case sound.MaceHeavySmashGround:
+		s.customSound(pos, "minecraft:item.mace.smash_ground_heavy", 1, 1)
 	case sound.CopperBulbTurnOn:
 		s.customSound(pos, "minecraft:block.copper_bulb.turn_on", 1, 1)
 	case sound.CopperBulbTurnOff:

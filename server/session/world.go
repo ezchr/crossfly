@@ -1124,6 +1124,18 @@ func (s *Session) playSound(pos mgl64.Vec3, t world.Sound, disableRelative bool)
 		pk.SoundType = packet.SoundEventComposterReady
 	case sound.BellRing:
 		pk.SoundType = packet.SoundEventBell
+	case sound.RespawnAnchorCharge:
+		pk.SoundType = packet.SoundEventRespawnAnchorCharge
+	case sound.RespawnAnchorDeplete:
+		pk.SoundType = packet.SoundEventRespawnAnchorDeplete
+	case sound.RespawnAnchorSetSpawn:
+		pk.SoundType = packet.SoundEventRespawnAnchorSetSpawn
+	case sound.MaceSmashAir:
+		pk.SoundType = packet.SoundEventMaceSmashAir
+	case sound.MaceSmashGround:
+		pk.SoundType = packet.SoundEventMaceSmashGround
+	case sound.MaceHeavySmashGround:
+		pk.SoundType = packet.SoundEventMaceHeavySmashGround
 	case sound.CopperBulbTurnOn:
 		pk.SoundType = packet.SoundEventCopperBulbTurnOn
 	case sound.CopperBulbTurnOff:

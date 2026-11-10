@@ -44,5 +44,8 @@ func (sharpness) CompatibleWithEnchantment(t item.EnchantmentType) bool {
 
 // CompatibleWithItem ...
 func (sharpness) CompatibleWithItem(i world.Item) bool {
+	if _, mace := i.(item.Mace); mace {
+		return false
+	}
 	return meleeDamageItem(i)
 }

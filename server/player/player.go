@@ -1,6 +1,7 @@
 package player
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"github.com/df-mc/dragonfly/server/world/gameevent"
@@ -1024,7 +1025,7 @@ func finishDying(p *Player) {
 		// position server side so that in the future, the client won't respawn
 		// on the death location when disconnecting. The client should not see
 		// the movement itself yet, though.
-		pos, _, _, _ := p.spawnLocation()
+		pos, _, _, _ := p.spawnLocation(false)
 
 		p.data.Pos = pos.Vec3()
 	}
@@ -1083,11 +1084,15 @@ func (p *Player) respawn(f func(p *Player)) {
 	}
 	p.dismountEntity(p.tx, false)
 
-	blockPos, w, spawnObstructed, _ := p.spawnLocation()
+	blockPos, w, spawnObstructed, _ := p.spawnLocation(true)
 	pos := blockPos.Vec3Middle()
 
 	if spawnObstructed {
-		p.Messaget(chat.MessageBedNotValid)
+		if dim, ok := p.tx.World().PlayerSpawnDimension(p.UUID()); ok && dim == world.Nether {
+			p.Messaget(chat.MessageRespawnAnchorNotValid)
+		} else {
+			p.Messaget(chat.MessageBedNotValid)
+		}
 	}
 
 	p.addHealth(p.MaxHealth())
@@ -1177,11 +1182,21 @@ func (p *Player) respawn(f func(p *Player)) {
 	})
 }
 
-// spawnLocation designates a players safe spawn location.
-func (p *Player) spawnLocation() (playerSpawn cube.Pos, w *world.World, spawnBlockBroken bool, previousDimension world.Dimension) {
+// spawnLocation designates a players safe spawn location. With consume set, a respawn anchor the player
+// respawns at loses a charge (RespawnAnchorBlock::notifySpawnedAt); without it nothing in the world changes.
+func (p *Player) spawnLocation(consume bool) (playerSpawn cube.Pos, w *world.World, spawnBlockBroken bool, previousDimension world.Dimension) {
 	tx := p.tx
 	w = tx.World()
 	previousDimension = w.Dimension()
+	if pos, nether, found, isAnchor := p.anchorSpawn(tx, consume); isAnchor {
+		if found {
+			return pos, nether, false, previousDimension
+		}
+		// The anchor is out of charges, gone or blocked: the overworld's spawn (RespawnAnchorBlock, BDS
+		// Player::_fixupSpawnPosition).
+		w = w.PortalDestination(w.Dimension())
+		return w.Spawn(), w, true, previousDimension
+	}
 	playerSpawn = w.PlayerSpawn(p.UUID())
 	if b, ok := tx.Block(playerSpawn).(block.Bed); ok && b.CanRespawnOn() {
 		pos, ok := b.SafeSpawn(playerSpawn, tx)
@@ -1195,6 +1210,48 @@ func (p *Player) spawnLocation() (playerSpawn cube.Pos, w *world.World, spawnBlo
 	w = w.PortalDestination(w.Dimension())
 	worldSpawn := w.Spawn()
 	return worldSpawn, w, playerSpawn != worldSpawn, previousDimension
+}
+
+// anchorSpawn resolves a spawn point set by a respawn anchor in the Nether (BDS keeps the spawn dimension next
+// to the position). isAnchor is false when the spawn point is not in the Nether. The anchor is read in the
+// Nether world: directly when the player is there, else through a short task on that world.
+func (p *Player) anchorSpawn(tx *world.Tx, consume bool) (feet cube.Pos, nether *world.World, found, isAnchor bool) {
+	w := tx.World()
+	dim, ok := w.PlayerSpawnDimension(p.UUID())
+	if !ok || dim != world.Nether {
+		return cube.Pos{}, nil, false, false
+	}
+	nether = w
+	if w.Dimension() != world.Nether {
+		nether = w.PortalDestination(world.Nether)
+	}
+	if nether == nil || nether.Dimension() != world.Nether {
+		return cube.Pos{}, nil, false, false
+	}
+	spawn := nether.PlayerSpawn(p.UUID())
+	check := func(ntx *world.Tx) {
+		a, ok := ntx.Block(spawn).(block.RespawnAnchor)
+		if !ok || !a.CanRespawnOn() {
+			return
+		}
+		if pos, ok := a.SafeSpawn(spawn, ntx); ok {
+			feet, found = pos, true
+			if consume {
+				a.UseCharge(spawn, ntx)
+			}
+		}
+	}
+	if nether == w {
+		check(tx)
+		return feet, nether, found, true
+	}
+	task := nether.Do(check)
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	if err := task.Wait(ctx); err != nil {
+		return cube.Pos{}, nether, false, true
+	}
+	return feet, nether, found, true
 }
 
 // StartSprinting makes a player start sprinting, increasing the speed of the player by 30% and making
@@ -2129,10 +2186,14 @@ func (p *Player) AttackEntity(e world.Entity) bool {
 		return false
 	}
 	p.SwingArm()
+	// attackEntity already took the durability of a hit on a living entity; only charge it here for other
+	// damageable entities, so a hit never costs the weapon twice.
 	if !hit {
 		return false
 	}
-	p.damageHeldItem()
+	if _, living := e.(entity.Living); !living {
+		p.damageHeldItem()
+	}
 	return true
 }
 
@@ -2306,11 +2367,29 @@ func (p *Player) attackEntity(e world.Entity, criticalAllowed bool) (valid, hit 
 			v.ViewEntityAction(living, entity.EnchantedHitAction{})
 		}
 	}
+	src := entity.AttackDamageSource{Attacker: p}
+	mace, isMace := i.Item().(item.Mace)
+	fd := p.FallDistance()
+	smash := isMace && mace.SmashAttack(fd)
+	if isMace {
+		if smash {
+			dmg += mace.SmashBonus(fd)
+			if d, ok := i.Enchantment(enchantment.Density); ok {
+				dmg += enchantment.Density.Addend(d.Level()) * fd
+			}
+		}
+		if b, ok := i.Enchantment(enchantment.Breach); ok {
+			src.Breach = enchantment.Breach.ArmourReduction(b.Level())
+		}
+	}
 	if critical {
 		dmg *= 1.5
 	}
 
-	n, result := living.Hurt(dmg, entity.AttackDamageSource{Attacker: p})
+	n, result := living.Hurt(dmg, src)
+	if smash {
+		p.maceSmash(living, fd, i)
+	}
 	i, left := p.HeldItems()
 
 	if durable, ok := i.Item().(item.Durable); ok {
@@ -4745,4 +4824,51 @@ func consumeSound(it world.Item) world.Sound {
 		}
 	}
 	return sound.Eat{}
+}
+
+// maceSmash runs the effects of a mace smash attack on target after a fall of fd blocks, as BDS MaceItem
+// does: the attacker stops falling and takes no fall damage, a sound and particles play, mobs around the
+// target are knocked away from it and Wind Burst launches the attacker back up.
+func (p *Player) maceSmash(target entity.Living, fd float64, held item.Stack) {
+	v := p.Velocity()
+	p.SetVelocity(mgl64.Vec3{v[0], 0, v[2]})
+	p.ResetFallDistance()
+
+	pos := target.Position()
+	switch og, ok := target.(interface{ OnGround() bool }); {
+	case ok && !og.OnGround():
+		p.tx.PlaySound(pos, sound.MaceSmashAir{})
+	case fd <= 5:
+		p.tx.PlaySound(pos, sound.MaceSmashGround{})
+	default:
+		p.tx.PlaySound(pos, sound.MaceHeavySmashGround{})
+	}
+	p.tx.AddParticle(pos, particle.Named{Bedrock: "minecraft:smash_ground_particle_center", Java: "gust_emitter_small"})
+
+	box := target.H().Type().BBox(target).Translate(pos).Grow(2.5)
+	for e := range p.tx.EntitiesWithin(box) {
+		if e.H() == p.H() || e.H() == target.H() || e.H().Type().EncodeEntity() == "minecraft:armor_stand" {
+			continue
+		}
+		mover, ok := e.(interface {
+			Velocity() mgl64.Vec3
+			SetVelocity(mgl64.Vec3)
+		})
+		if _, living := e.(entity.Living); !ok || !living {
+			continue
+		}
+		diff := e.Position().Sub(pos)
+		d := diff.Len()
+		if d >= 2.5 || d == 0 {
+			continue
+		}
+		push := diff.Normalize().Mul((2.5 - d) * 0.6)
+		mover.SetVelocity(mover.Velocity().Add(mgl64.Vec3{push[0], push[1] + 0.6, push[2]}))
+	}
+
+	if w, ok := held.Enchantment(enchantment.WindBurst); ok {
+		// The burst goes off at the attacker's feet, so it pushes straight up with the level's strength.
+		v := p.Velocity()
+		p.SetVelocity(mgl64.Vec3{v[0], enchantment.WindBurst.Multiplier(w.Level()), v[2]})
+	}
 }

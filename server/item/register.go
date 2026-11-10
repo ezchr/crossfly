@@ -18,6 +18,8 @@ func init() {
 	world.RegisterItem(Beetroot{})
 	world.RegisterItem(BlazePowder{})
 	world.RegisterItem(BlazeRod{})
+	world.RegisterItem(BreezeRod{})
+	world.RegisterItem(Mace{})
 	world.RegisterItem(BoneMeal{})
 	world.RegisterItem(Bone{})
 	world.RegisterItem(BookAndQuill{})

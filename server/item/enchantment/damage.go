@@ -99,5 +99,8 @@ func hasFamily(e world.Entity, family string) bool {
 // and bane of arthropods) can be applied to an item.
 func meleeDamageItem(i world.Item) bool {
 	t, ok := i.(item.Tool)
+	if _, mace := i.(item.Mace); mace {
+		return true
+	}
 	return ok && (t.ToolType() == item.TypeSword || t.ToolType() == item.TypeAxe || t.ToolType() == item.TypeSpear)
 }

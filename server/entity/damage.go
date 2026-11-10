@@ -14,6 +14,9 @@ type (
 		// Attacker holds the attacking entity. The entity may be a player or
 		// any other entity.
 		Attacker world.Entity
+		// Breach is the fraction of the target's armour points the attack ignores (the Breach
+		// enchantment on a mace).
+		Breach float64
 	}
 
 	// VoidDamageSource is used for damage caused by an entity being in the
@@ -132,3 +135,6 @@ func (s ExplosionDamageSource) ShieldBlockInfo() (world.ShieldBlockInfo, bool) {
 	}
 	return world.ShieldBlockInfo{Origin: s.Source.Position(), BlockWhenImmune: true}, true
 }
+
+// ArmourBreach returns the fraction of armour points the attack ignores.
+func (s AttackDamageSource) ArmourBreach() float64 { return s.Breach }

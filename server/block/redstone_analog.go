@@ -61,6 +61,8 @@ func redstoneAnalogOutput(pos cube.Pos, b world.Block, tx *world.Tx) (int, bool)
 		return (b.Level + 1) / 2, true // Bedrock levels 0 to 6 are Java's 0 to 3
 	case Composter:
 		return b.Level, true
+	case RespawnAnchor:
+		return b.ComparatorSignal(), true
 	case EndPortalFrame:
 		if b.Eye {
 			return 15, true

@@ -44,6 +44,9 @@ func (fireAspect) CompatibleWithEnchantment(item.EnchantmentType) bool {
 
 // CompatibleWithItem ...
 func (fireAspect) CompatibleWithItem(i world.Item) bool {
+	if _, mace := i.(item.Mace); mace {
+		return true
+	}
 	t, ok := i.(item.Tool)
 	return ok && (t.ToolType() == item.TypeSword || t.ToolType() == item.TypeSpear)
 }
