@@ -17,6 +17,7 @@ import (
 //	Strength, StrengthMax int32 (llamas; absent when unset)
 //	HeadYaw, BodyYaw float32
 //	Persistent       byte
+//	IsTamed          byte (the TAMED actor flag, Actor::addSaveData)
 //	HomePos          [3]int32 (absent without a home)
 //	Mainhand, Offhand, BodyArmor item NBT
 //	Armor            item list
@@ -28,6 +29,7 @@ func (s *state) encodeNBT() map[string]any {
 		"HeadYaw":    float32(s.headYaw),
 		"BodyYaw":    float32(s.bodyYaw),
 		"Persistent": boolByte(s.persistent),
+		"IsTamed":    boolByte(s.meta.Tamed),
 		"MaxHealth":  float32(s.health.MaxHealth()),
 		// The variant data BDS keeps on the actor (bred babies get theirs
 		// from their parents, without a minecraft:variant component).
@@ -128,6 +130,12 @@ func (m *Mob) decodeNBT(d map[string]any) {
 		s.bodyYaw = float64(nbtconv.Float32(d, "BodyYaw"))
 	}
 	s.persistent = nbtconv.Uint8(d, "Persistent") == 1
+	// The TAMED flag (BDS Actor::readAdditionalSaveData "IsTamed"): taming and
+	// breeding set it without minecraft:is_tamed. A minecraft:is_tamed
+	// attached from the saved groups has set it already.
+	if nbtconv.Uint8(d, "IsTamed") == 1 && !s.meta.Tamed {
+		m.UpdateMeta(func(meta *Meta) { meta.Tamed = true })
+	}
 	if _, ok := d["HomePos"]; ok {
 		p := nbtconv.Pos(d, "HomePos")
 		s.home = &p

@@ -262,7 +262,8 @@ func (m *Mob) attach(c RawComponent) attachedComponent {
 		return a
 	}
 	if f, ok := componentFactories[c.Key]; ok {
-		comp, err := f(c.Key, c.Raw)
+		// a.raw stays the definition's JSON: applyComponents compares it.
+		comp, err := f(c.Key, aliasKeys(c.Key, c.Raw))
 		if err != nil {
 			recordFactoryError(m.Identifier(), c.Key, err)
 			return a

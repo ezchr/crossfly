@@ -22,9 +22,13 @@ func init() {
 // renames the mob (NameableComponent::getInteraction). nameEntity then makes
 // the mob persistent and fires the on_named trigger of the first
 // name_actions entry one of whose name_filter names equals the new name
-// exactly, else default_trigger (the vindicator's "Johnny").
+// exactly, else default_trigger (the vindicator's "Johnny"). always_show
+// (NameableDefinition::initialize: actor data 81) shows the name at any
+// distance. BDS also reads allowNameTagRenaming and alwaysShow (package mob
+// renames them).
 type nameable struct {
 	allowRenaming bool
+	alwaysShow    bool
 	actions       []nameAction
 	defaultTrig   Trigger
 }
@@ -37,6 +41,7 @@ type nameAction struct {
 func newNameable(key string, raw json.RawMessage) (mob.Component, error) {
 	var j struct {
 		AllowRenaming *bool   `json:"allow_name_tag_renaming"`
+		AlwaysShow    bool    `json:"always_show"`
 		Default       Trigger `json:"default_trigger"`
 		Actions       []struct {
 			NameFilter json.RawMessage `json:"name_filter"`
@@ -46,7 +51,7 @@ func newNameable(key string, raw json.RawMessage) (mob.Component, error) {
 	if err := decode(raw, &j); err != nil {
 		return nil, fmt.Errorf("%v: %w", key, err)
 	}
-	c := &nameable{allowRenaming: j.AllowRenaming == nil || *j.AllowRenaming, defaultTrig: j.Default}
+	c := &nameable{allowRenaming: j.AllowRenaming == nil || *j.AllowRenaming, alwaysShow: j.AlwaysShow, defaultTrig: j.Default}
 	for _, a := range j.Actions {
 		names, err := stringList(a.NameFilter)
 		if err != nil {
@@ -57,7 +62,13 @@ func newNameable(key string, raw json.RawMessage) (mob.Component, error) {
 	return c, nil
 }
 
-func (*nameable) Attach(*mob.Mob) {}
+// Attach shows the name at any distance with always_show. Without it the
+// flag is left as it is (a command or plugin may have set it).
+func (c *nameable) Attach(m *mob.Mob) {
+	if c.alwaysShow {
+		m.SetAlwaysShowNameTag(true)
+	}
+}
 func (*nameable) Detach(*mob.Mob) {}
 
 // Interact is NameableComponent::getInteraction: a name tag with a custom
@@ -81,7 +92,7 @@ func (c *nameable) Interact(m *mob.Mob, user item.User, held item.Stack, _ mgl64
 // at, becomes persistent and runs the matching name action.
 func (c *nameable) Name(m *mob.Mob, name string) {
 	m.SetNameTag(name)
-	m.SetAlwaysShowNameTag(false)
+	m.SetAlwaysShowNameTag(c.alwaysShow)
 	m.SetPersistent(true)
 	for _, a := range c.actions {
 		for _, n := range a.names {

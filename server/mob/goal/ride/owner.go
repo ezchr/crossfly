@@ -24,24 +24,28 @@ import (
 
 // ---- behavior.follow_owner ----
 
-// followOwner is minecraft:behavior.follow_owner (BDS FollowOwnerGoal): a
-// tamed mob that is not sitting follows its player owner once it is
-// start_distance away, repathing every 10 ticks at speed_multiplier, until
-// it is within stop_distance. When no path is found and the owner is 12 or
-// more blocks away it teleports next to the owner (can_teleport). Unless
+// followOwner is minecraft:behavior.follow_owner (BDS 1.21.3
+// FollowOwnerGoal): a tamed mob that is not sitting follows its player owner
+// once it is start_distance away, repathing every 10 ticks at
+// speed_multiplier, until it is within stop_distance. When no path is found,
+// the mob is not leashed and the owner is 12 or more blocks away, it
+// teleports next to the owner (can_teleport; FollowOwnerGoal::tick). Without
+// can_teleport it only starts and keeps going while the owner is within
+// max_distance and a path to the owner exists (_canReachOwner). Unless
 // ignore_vibration, it does not start within 600 ticks of a vibration (no
 // vibrations are modelled, so it always may). It does not avoid water while
 // it follows.
 //
 //	speed_multiplier 1, start_distance 10, stop_distance 2, can_teleport
-//	true, ignore_vibration true. Flags move|look.
+//	true, ignore_vibration true, max_distance 60 (LegacyGoalDefinition).
+//	Flags move|look.
 type followOwner struct {
 	mob.GoalBase
-	speed, start, stop float64
-	teleport           bool
-	owner              *world.EntityHandle
-	timer              int
-	avoidWater         bool
+	speed, start, stop, max float64
+	teleport                bool
+	owner                   *world.EntityHandle
+	timer                   int
+	avoidWater              bool
 }
 
 func newFollowOwner(spec mob.GoalSpec) (mob.Goal, error) {
@@ -49,15 +53,17 @@ func newFollowOwner(spec mob.GoalSpec) (mob.Goal, error) {
 		Speed    *float64 `json:"speed_multiplier"`
 		Start    *float64 `json:"start_distance"`
 		Stop     *float64 `json:"stop_distance"`
+		Max      *float64 `json:"max_distance"`
 		Teleport *bool    `json:"can_teleport"`
 	}{}
 	if err := spec.Decode(&v); err != nil {
 		return nil, fmt.Errorf("%v: %w", spec.Key, err)
 	}
-	g := &followOwner{GoalBase: mob.GoalBase{Control: spec.FlagsOr(mob.FlagMove | mob.FlagLook)}, speed: 1, start: 10, stop: 2, teleport: true}
+	g := &followOwner{GoalBase: mob.GoalBase{Control: spec.FlagsOr(mob.FlagMove | mob.FlagLook)}, speed: 1, start: 10, stop: 2, max: 60, teleport: true}
 	setF(&g.speed, v.Speed)
 	setF(&g.start, v.Start)
 	setF(&g.stop, v.Stop)
+	setF(&g.max, v.Max)
 	if v.Teleport != nil {
 		g.teleport = *v.Teleport
 	}
@@ -83,7 +89,7 @@ func (g *followOwner) CanUse(m *mob.Mob) bool {
 		return false
 	}
 	p, ok := playerOwner(m)
-	if !ok || p.Position().Sub(m.Pos()).LenSqr() < g.start*g.start {
+	if !ok || p.Position().Sub(m.Pos()).LenSqr() < g.start*g.start || !g.canReachOwner(m, p) {
 		return false
 	}
 	g.owner = p.H()
@@ -98,7 +104,20 @@ func (g *followOwner) CanContinueToUse(m *mob.Mob) bool {
 	if !ok || p.H() != g.owner {
 		return false
 	}
-	return p.Position().Sub(m.Pos()).LenSqr() > g.stop*g.stop && !m.Navigation().Done()
+	return p.Position().Sub(m.Pos()).LenSqr() > g.stop*g.stop && !m.Navigation().Done() && g.canReachOwner(m, p)
+}
+
+// canReachOwner is FollowOwnerGoal::_canReachOwner: always with
+// can_teleport, else the owner must be within max_distance and a path to
+// them must exist.
+func (g *followOwner) canReachOwner(m *mob.Mob, o world.Entity) bool {
+	if g.teleport {
+		return true
+	}
+	if o.Position().Sub(m.Pos()).LenSqr() > g.max*g.max {
+		return false
+	}
+	return m.Navigation().CreatePathToEntity(m, o) != nil
 }
 
 func (g *followOwner) Start(m *mob.Mob) {
@@ -139,52 +158,100 @@ func (g *followOwner) Tick(m *mob.Mob) {
 	g.moveOrTeleport(m, o)
 }
 
+// moveOrTeleport paths to the owner. When that fails, a mob that may
+// teleport, is not on a lead and is 12 or more blocks from its owner
+// teleports next to them (FollowOwnerGoal::tick checks !isLeashed()).
 func (g *followOwner) moveOrTeleport(m *mob.Mob, o world.Entity) {
 	if m.Navigation().MoveToEntity(m, o, g.speed) {
 		return
 	}
-	if g.teleport && o.Position().Sub(m.Pos()).LenSqr() >= 144 {
+	if g.teleport && !core.Leashed(m) && o.Position().Sub(m.Pos()).LenSqr() >= 144 {
 		if teleportNear(m, o) {
 			m.Navigation().Stop(m)
 		}
 	}
 }
 
-// teleportNear puts m on a free spot 2 to 3 blocks around o (BDS
-// FollowOwnerGoal::_tryToGetTeleportPosition, java teleportToOwner: 10
-// tries, x and z -3..3 but not both within 1, y -1..1, solid floor, no
-// leaves, room for the box).
+// teleportNear puts m on a free spot next to o
+// (FollowOwnerGoal::_tryToGetTeleportPosition, 1.21.3, with
+// RANDOMIZE_AND_CHECK_FOR_CLERANCE_WHEN_TELEPORTING, which every world since
+// base game version 1.20.80 has): of the blocks 2 away from the block of o
+// in x or z (the ring around the 3x3 around o), at the height of the feet of
+// o, those whose block below is solid and whose feet and head blocks are
+// neither solid nor liquid, in random order; the first of at most 9 of them
+// where the box of m (centred on the spot) holds no other entity, moved by
+// up to 0.05 in x and z. It reports whether m was teleported.
 func teleportNear(m *mob.Mob, o world.Entity) bool {
+	pos, ok := teleportSpot(m, o)
+	if !ok {
+		return false
+	}
+	m.Teleport(pos)
+	m.ResetFallDistance()
+	return true
+}
+
+func teleportSpot(m *mob.Mob, o world.Entity) (mgl64.Vec3, bool) {
 	tx := m.Tx()
-	base := cube.PosFromVec3(o.Position())
-	for i := 0; i < 10; i++ {
-		dx, dy, dz := m.Rand().IntN(7)-3, m.Rand().IntN(3)-1, m.Rand().IntN(7)-3
-		if math.Abs(float64(dx)) < 2 && math.Abs(float64(dz)) < 2 {
-			continue
-		}
-		p := base.Add(cube.Pos{dx, dy, dz})
-		if _, leaves := tx.Block(p.Side(cube.FaceDown)).(block.Leaves); leaves {
-			continue
-		}
-		pos := mgl64.Vec3{float64(p[0]) + 0.5, float64(p[1]), float64(p[2]) + 0.5}
-		box := m.H().Type().BBox(m).Translate(pos)
-		if len(entity.BlockBBoxesAround(tx, box.Grow(-0.01))) > 0 {
-			continue
-		}
-		floor := cube.Box(box.Min()[0], pos[1]-0.1, box.Min()[2], box.Max()[0], pos[1], box.Max()[2])
-		if len(entity.BlockBBoxesAround(tx, floor)) == 0 {
-			continue
-		}
-		if l, ok := tx.Liquid(p); ok {
-			if _, lava := l.(block.Lava); lava {
+	op := o.Position()
+	ox, oz := int(math.Floor(op[0])), int(math.Floor(op[2]))
+	y := int(math.Floor(o.H().Type().BBox(o).Translate(op).Min()[1]))
+	var spots []mgl64.Vec3
+	for dx := -2; dx <= 2; dx++ {
+		for dz := -2; dz <= 2; dz++ {
+			if dx >= -1 && dz >= -1 && dx <= 1 && dz <= 1 {
 				continue
 			}
+			p := cube.Pos{ox + dx, y, oz + dz}
+			if !solidBlock(tx, p.Side(cube.FaceDown)) || solidBlock(tx, p) || liquidAt(tx, p) ||
+				solidBlock(tx, p.Side(cube.FaceUp)) || liquidAt(tx, p.Side(cube.FaceUp)) {
+				continue
+			}
+			spots = append(spots, mgl64.Vec3{float64(p[0]) + 0.5, float64(p[1]), float64(p[2]) + 0.5})
 		}
-		m.Teleport(pos)
-		m.ResetFallDistance()
-		return true
 	}
-	return false
+	r := m.Rand()
+	r.Shuffle(len(spots), func(i, j int) { spots[i], spots[j] = spots[j], spots[i] })
+	box := m.H().Type().BBox(m)
+	w, h, d := box.Width()/2, box.Height()/2, box.Length()/2
+	for _, s := range spots[:min(len(spots), 9)] {
+		at := cube.Box(s[0]-w, s[1]-h, s[2]-d, s[0]+w, s[1]+h, s[2]+d)
+		if !unobstructedByEntities(tx, at, m) {
+			continue
+		}
+		s[0] += r.Float64()*0.1 - 0.05
+		s[2] += r.Float64()*0.1 - 0.05
+		return s, true
+	}
+	return mgl64.Vec3{}, false
+}
+
+// solidBlock is Material::isSolid for the teleport spot: a block with a
+// collision box.
+func solidBlock(tx *world.Tx, p cube.Pos) bool {
+	return len(tx.Block(p).Model().BBox(p, tx)) > 0
+}
+
+func liquidAt(tx *world.Tx, p cube.Pos) bool {
+	_, ok := tx.Liquid(p)
+	return ok
+}
+
+// unobstructedByEntities is BlockSource::isUnobstructedByEntities: no player
+// or mob other than m in box.
+func unobstructedByEntities(tx *world.Tx, box cube.BBox, m *mob.Mob) bool {
+	for e := range tx.EntitiesWithin(box) {
+		if e.H() == m.H() {
+			continue
+		}
+		if _, ok := e.(*player.Player); ok {
+			return false
+		}
+		if om, ok := mob.Of(e); ok && !om.Dead() {
+			return false
+		}
+	}
+	return true
 }
 
 // ---- behavior.stay_while_sitting ----
@@ -237,7 +304,8 @@ func newTeleportToOwner(spec mob.GoalSpec) (mob.Goal, error) {
 }
 
 func (g *teleportToOwner) CanUse(m *mob.Mob) bool {
-	if m.Ticks() < g.next || orderedToSit(m) || m.Riding() {
+	// Never on a lead, as the teleport of follow_owner (FollowOwnerGoal::tick).
+	if m.Ticks() < g.next || orderedToSit(m) || m.Riding() || core.Leashed(m) {
 		return false
 	}
 	o, ok := playerOwner(m)

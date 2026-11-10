@@ -30,10 +30,15 @@ const (
 //	{mate_type, baby_type, breed_event}), love_filters, allow_sitting,
 //	extra_baby_chance, breed_cooldown (seconds, default 60),
 //	environment_requirements ({blocks, count, radius} or a list: panda
-//	bamboo), and the 1.21 inheritance keys minecraft:offspring took over
-//	(mutation_factor, blend_attributes, ...; see inheritance)
+//	bamboo), inherit_tamed (default true; minecraft:offspring's wins when
+//	the mob has one), and the 1.21 inheritance keys minecraft:offspring took
+//	over (mutation_factor, blend_attributes, ...; see inheritance)
+//
+// Every bred baby is persistent; with inherit_tamed the baby of a tamed
+// parent is tamed to the same owner (BreedableComponent::_handleMate).
 type Breedable struct {
 	requireTame, requireFullHealth, allowSitting bool
+	inheritTamed                                 bool
 	items                                        []breedItem
 	with                                         map[string]breedType
 	loveFilter                                   mob.Filter
@@ -63,6 +68,7 @@ func newBreedable(key string, raw json.RawMessage) (mob.Component, error) {
 		RequireTame       *bool           `json:"require_tame"`
 		RequireFullHealth bool            `json:"require_full_health"`
 		AllowSitting      bool            `json:"allow_sitting"`
+		InheritTamed      *bool           `json:"inherit_tamed"`
 		BreedItems        json.RawMessage `json:"breed_items"`
 		BreedsWith        json.RawMessage `json:"breeds_with"`
 		LoveFilters       json.RawMessage `json:"love_filters"`
@@ -81,11 +87,14 @@ func newBreedable(key string, raw json.RawMessage) (mob.Component, error) {
 	if err != nil {
 		return nil, fmt.Errorf("%v: environment_requirements: %w", key, err)
 	}
-	b := &Breedable{requireTame: true, requireFullHealth: j.RequireFullHealth, allowSitting: j.AllowSitting,
+	b := &Breedable{requireTame: true, requireFullHealth: j.RequireFullHealth, allowSitting: j.AllowSitting, inheritTamed: true,
 		extraBabyChance: j.ExtraBabyChance, cooldownTicks: ticksOf(defaultBreedCooling), with: map[string]breedType{},
 		environment: env, inherit: inherit}
 	if j.RequireTame != nil {
 		b.requireTame = *j.RequireTame
+	}
+	if j.InheritTamed != nil {
+		b.inheritTamed = *j.InheritTamed
 	}
 	if j.BreedCooldown != nil {
 		b.cooldownTicks = ticksOf(*j.BreedCooldown)
@@ -331,10 +340,22 @@ func (b *Breedable) handleMate(m, partner *mob.Mob) *mob.Mob {
 		ev = mob.EventBorn
 	}
 	off, _ := mob.ComponentOf[*offspring](m)
+	inheritTamed := b.inheritTamed
+	if off != nil {
+		inheritTamed = off.inheritTamed
+	}
 	baby, err := mob.Spawn(m.Tx(), t.Baby, m.Position(), mob.SpawnOptions{
 		Rotation: m.Rotation(),
 		Event:    ev,
 		Configure: func(baby *mob.Mob) {
+			// BreedableComponent::_handleMate, before the baby is added: the
+			// TAMED flag is the parent's with inherit_tamed, the baby is
+			// persistent, and a tamed baby gets the parent's owner.
+			baby.SetPersistent(true)
+			if inheritTamed && m.Meta().Tamed {
+				baby.UpdateMeta(func(meta *mob.Meta) { meta.Tamed = true })
+				baby.SetOwnerOf(m)
+			}
 			if off != nil {
 				off.inheritProperties(m, partner, baby)
 			}
@@ -382,6 +403,7 @@ func (b *Breedable) DecodeNBT(_ *mob.Mob, d map[string]any) {
 //	combine_parent_colors  mix the parents' minecraft:color (sheep)
 //	property_inheritance   {property: {}} copied from a random parent
 //	inherit_tamed          (default true) the baby is tamed by the owner
+//	                       (Breedable.handleMate)
 //	mutation_factor, mutation_strategy, random_*_mutation_interval,
 //	deny_parents_variant, blend_attributes, parent_centric_attribute_blending
 //	                       variant, markings, colour, attribute and strength
@@ -451,10 +473,6 @@ func (o *offspring) inheritProperties(m, partner, baby *mob.Mob) {
 func (o *offspring) inheritAfterBirth(m, partner, baby *mob.Mob) {
 	if o.combineColors {
 		SetColor(baby, mixColours(m, m.Meta().Color, partner.Meta().Color))
-	}
-	if o.inheritTamed && m.Meta().Tamed && m.Meta().Owner != nil {
-		owner := m.Meta().Owner
-		baby.UpdateMeta(func(meta *mob.Meta) { meta.Tamed, meta.Owner = true, owner })
 	}
 }
 

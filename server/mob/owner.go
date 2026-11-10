@@ -25,6 +25,20 @@ func (m *Mob) SetOwner(e world.Entity) {
 	m.UpdateMeta(func(meta *Meta) { meta.Owner = e.H() })
 }
 
+// SetOwnerOf gives m the owner of from (none if from has none), also when
+// that owner is not in the world (BDS setOwner(other.getOwnerId()): a bred
+// baby of a tamed parent).
+func (m *Mob) SetOwnerOf(from *Mob) {
+	id, ok := from.OwnerUUID()
+	if !ok {
+		m.SetOwner(nil)
+		return
+	}
+	m.SetData(ownerKey{}, id)
+	h := from.s.meta.Owner
+	m.UpdateMeta(func(meta *Meta) { meta.Owner = h })
+}
+
 // OwnerUUID returns the UUID of the mob's owner, if it has one.
 func (m *Mob) OwnerUUID() (uuid.UUID, bool) {
 	if id, ok := m.s.scratch[ownerKey{}].(uuid.UUID); ok {

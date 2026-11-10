@@ -60,11 +60,23 @@ func IsOwner(m *mob.Mob, e world.Entity) bool {
 	return ok && e != nil && e.H().UUID() == id
 }
 
-// tameTo makes p the owner of m (TameableComponent::tame,
-// MountTamingComponent::tameToPlayer): persistent, the tame event, hearts.
+// SetTamed sets or clears the TAMED actor flag (Actor::setStatusFlag(28)),
+// which taming and breeding set without minecraft:is_tamed. It is saved with
+// the mob (IsTamed).
+func SetTamed(m *mob.Mob, v bool) {
+	if m.Meta().Tamed != v {
+		m.UpdateMeta(func(meta *mob.Meta) { meta.Tamed = v })
+	}
+}
+
+// tameTo makes p the owner of m (TameableComponent::tame/_becomeTame,
+// MountTamingComponent::tameToPlayer): persistent, the TAMED flag (set by
+// BDS itself, setStatusFlag(28), not only through minecraft:is_tamed), the
+// tame event, hearts.
 func tameTo(m *mob.Mob, p world.Entity, ev *core.Trigger) {
 	m.SetOwner(p)
 	m.SetPersistent(true)
+	SetTamed(m, true)
 	m.StopMovement()
 	m.ResetTarget()
 	if ev != nil {
