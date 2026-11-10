@@ -1217,7 +1217,39 @@ func (w *World) SetPlayerSpawn(id uuid.UUID, pos cube.Pos) {
 	}
 	if err := w.conf.Provider.SavePlayerSpawnPosition(id, pos); err != nil {
 		w.conf.Log.Error("save player spawn: "+err.Error(), "ID", id)
+		return
 	}
+	// The spawn point is in this World's dimension. Providers that keep it (BDS's SpawnDimension) let a respawn
+	// anchor's spawn point in the Nether be found from the Overworld.
+	if p, ok := w.conf.Provider.(SpawnDimensionProvider); ok {
+		if dim, ok := DimensionID(w.Dimension()); ok {
+			if err := p.SavePlayerSpawnDimension(id, dim); err != nil {
+				w.conf.Log.Error("save player spawn dimension: "+err.Error(), "ID", id)
+			}
+		}
+	}
+}
+
+// PlayerSpawnDimension returns the dimension of the spawn point of a player with a UUID, as set last by
+// SetPlayerSpawn of a World with the same provider. ok is false if the provider does not keep it or it was never
+// set.
+func (w *World) PlayerSpawnDimension(id uuid.UUID) (dim Dimension, ok bool) {
+	if w == nil {
+		return nil, false
+	}
+	p, isP := w.conf.Provider.(SpawnDimensionProvider)
+	if !isP {
+		return nil, false
+	}
+	n, exists, err := p.LoadPlayerSpawnDimension(id)
+	if err != nil {
+		w.conf.Log.Error("load player spawn dimension: "+err.Error(), "ID", id)
+		return nil, false
+	}
+	if !exists {
+		return nil, false
+	}
+	return DimensionByID(n)
 }
 
 // SetRequiredSleepDuration sets the duration of time players in the world must sleep for, in order to advance to the

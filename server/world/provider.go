@@ -33,6 +33,17 @@ type Provider interface {
 	StoreColumn(pos ChunkPos, dim Dimension, col *chunk.Column) error
 }
 
+// SpawnDimensionProvider is implemented by a Provider that also keeps the dimension of a player's spawn point
+// (BDS keeps it as SpawnDimension next to SpawnX/Y/Z), so that a spawn point set by a respawn anchor in the Nether
+// is known to be in the Nether. dim is the ID of the dimension (see DimensionID).
+type SpawnDimensionProvider interface {
+	// LoadPlayerSpawnDimension loads the dimension of the player's spawn point. exists is false if it is not
+	// known.
+	LoadPlayerSpawnDimension(uuid uuid.UUID) (dim int, exists bool, err error)
+	// SavePlayerSpawnDimension saves the dimension of the player's spawn point.
+	SavePlayerSpawnDimension(uuid uuid.UUID, dim int) error
+}
+
 // Compile time check to make sure NopProvider implements Provider.
 var _ Provider = (*NopProvider)(nil)
 
@@ -90,6 +101,26 @@ func (l *lockedProvider) SavePlayerSpawnPosition(id uuid.UUID, pos cube.Pos) err
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	return l.p.SavePlayerSpawnPosition(id, pos)
+}
+
+func (l *lockedProvider) LoadPlayerSpawnDimension(id uuid.UUID) (int, bool, error) {
+	p, ok := l.p.(SpawnDimensionProvider)
+	if !ok {
+		return 0, false, nil
+	}
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return p.LoadPlayerSpawnDimension(id)
+}
+
+func (l *lockedProvider) SavePlayerSpawnDimension(id uuid.UUID, dim int) error {
+	p, ok := l.p.(SpawnDimensionProvider)
+	if !ok {
+		return nil
+	}
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return p.SavePlayerSpawnDimension(id, dim)
 }
 
 func (l *lockedProvider) LoadColumn(pos ChunkPos, dim Dimension) (*chunk.Column, error) {
