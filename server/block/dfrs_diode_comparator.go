@@ -197,17 +197,9 @@ func bedrockAnalogOutput(pos cube.Pos, b world.Block, dir cube.Face, tx *world.T
 		}
 		return int(math.Floor(ratio*14)) + 1, true
 	case DetectorRail:
-		for _, cart := range detectorMinecarts(pos, tx, false) {
-			if inv := cart.MinecartInventory(); inv != nil {
-				return bedrockContainerSignal(inv), true
-			}
-		}
-		return 0, true
+		return DetectorRailComparatorOutput(pos, tx), true // the first container minecart on it (mech)
 	case CopperBulb:
-		if b.Lit {
-			return 15, true
-		}
-		return 0, true
+		return CopperBulbComparatorOutput(b), true
 	case Cake:
 		return 2 * (7 - b.Bites), true
 	case Cauldron:
