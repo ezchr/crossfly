@@ -41,6 +41,9 @@ type BeehiveOccupant struct {
 	// TicksLeft is how many ticks the mob still stays (TicksLeftToStay): 600 when it entered, 2400 when it
 	// brought nectar.
 	TicksLeft int
+	// TicksInHive and MinTicksInHive are Java's BeehiveBlockEntity.Occupant ticks_in_hive and
+	// min_ticks_in_hive, used by BeehiveRules (the Java mob mode) instead of TicksLeft.
+	TicksInHive, MinTicksInHive int
 }
 
 // beehiveBees is the block entity data of a Beehive.
@@ -49,6 +52,8 @@ type beehiveBees struct {
 	// spawnBees is ShouldSpawnBees: a hive placed by world generation gets 2 or 3 bees on its first tick. Crossfly
 	// does not generate nests, so it is only kept.
 	spawnBees bool
+	// flowerPos is Java's BeehiveBlockEntity.savedFlowerPos (flower_pos), kept for BeehiveRules.
+	flowerPos *cube.Pos
 }
 
 // BeehiveHost is the part of the MobHost a beehive needs: it stores bees in the hive and lets them out again.
@@ -112,7 +117,7 @@ func (h Beehive) Occupants() []BeehiveOccupant {
 // MobEvent handles minecraft:bee_returned_to_hive (BeehiveBlock::executeEvent): the bee enters the hive, or gets
 // minecraft:hive_full if three bees are in already.
 func (h Beehive) MobEvent(pos cube.Pos, tx *world.Tx, event string, e world.Entity) {
-	if event != beeReturnedToHive {
+	if event != beeReturnedToHive || beehiveRules != nil {
 		return
 	}
 	host := beehiveHost()
@@ -151,6 +156,10 @@ func (h Beehive) tryAdmit(pos cube.Pos, tx *world.Tx, e world.Entity, host Beehi
 // the bees that may leave.
 func (h Beehive) Tick(_ int64, pos cube.Pos, tx *world.Tx) {
 	if h.bees == nil || len(h.bees.occupants) == 0 {
+		return
+	}
+	if r := beehiveRules; r != nil {
+		r.Tick(h, pos, tx)
 		return
 	}
 	host := beehiveHost()
@@ -250,6 +259,10 @@ func (h Beehive) evictAll(pos cube.Pos, tx *world.Tx, disturbed bool) {
 	if h.bees == nil || len(h.bees.occupants) == 0 {
 		return
 	}
+	if beehiveRules != nil {
+		beehiveRules.EmptyAll(h, pos, tx, nil)
+		return
+	}
 	host := beehiveHost()
 	if host == nil {
 		return
@@ -295,6 +308,9 @@ func (h Beehive) Activate(pos cube.Pos, _ cube.Face, tx *world.Tx, u item.User, 
 	_, bottle := held.Item().(item.GlassBottle)
 	if !shears && !bottle {
 		return false
+	}
+	if beehiveRules != nil {
+		return h.activateJava(pos, tx, u, ctx, shears)
 	}
 	if !beehiveCampfireBelow(pos, tx) {
 		h.evictAll(pos, tx, true)
@@ -378,11 +394,22 @@ func (h Beehive) playerBroke(pos cube.Pos, tx *world.Tx, u item.User) {
 		return
 	}
 	if g.GameMode().CreativeInventory() {
-		dropItem(tx, item.NewStack(h.withOccupantsItem(), 1), pos.Vec3Centre())
+		// BeehiveBlock.playerWillDestroy (Java): only a hive with bees or honey drops in creative.
+		if beehiveRules == nil || h.HoneyLevel > 0 || (h.bees != nil && len(h.bees.occupants) > 0) {
+			dropItem(tx, item.NewStack(h.withOccupantsItem(), 1), pos.Vec3Centre())
+		}
 		return
 	}
 	held, _ := u.HeldItems()
 	if hasSilkTouch(held.Enchantments()) {
+		return
+	}
+	if r := beehiveRules; r != nil {
+		// BeehiveBlock.playerDestroy: the bees come out after the player, and nearby bees are angered.
+		if h.bees != nil && len(h.bees.occupants) > 0 {
+			r.EmptyAll(h, pos, tx, u)
+		}
+		r.AngerNearby(pos, tx)
 		return
 	}
 	h.evictAll(pos, tx, true)
@@ -399,7 +426,7 @@ func (b *beehiveBees) clone() *beehiveBees {
 	if b == nil || (len(b.occupants) == 0 && !b.spawnBees) {
 		return nil
 	}
-	return &beehiveBees{occupants: append([]BeehiveOccupant(nil), b.occupants...), spawnBees: b.spawnBees}
+	return &beehiveBees{occupants: append([]BeehiveOccupant(nil), b.occupants...), spawnBees: b.spawnBees, flowerPos: b.flowerPos}
 }
 
 // FlammabilityInfo ...
@@ -440,16 +467,24 @@ func (h Beehive) EncodeNBT() map[string]any {
 			if data == nil {
 				data = map[string]any{}
 			}
-			list = append(list, map[string]any{
+			om := map[string]any{
 				"ActorIdentifier": o.Identifier,
 				"TicksLeftToStay": int32(o.TicksLeft),
 				"SaveData":        data,
-			})
+			}
+			if o.MinTicksInHive > 0 {
+				om["ticks_in_hive"], om["min_ticks_in_hive"] = int32(o.TicksInHive), int32(o.MinTicksInHive)
+			}
+			list = append(list, om)
 		}
 		m["Occupants"] = list
 	}
 	if h.HoneyLevel > 0 {
 		m["HoneyLevel"] = int32(h.HoneyLevel)
+	}
+	if h.bees != nil && h.bees.flowerPos != nil {
+		p := *h.bees.flowerPos
+		m["flower_pos"] = []int32{int32(p[0]), int32(p[1]), int32(p[2])}
 	}
 	return m
 }
@@ -467,10 +502,15 @@ func (h Beehive) DecodeNBT(data map[string]any) any {
 		if id == "" || !ok {
 			continue
 		}
-		b.occupants = append(b.occupants, BeehiveOccupant{Identifier: id, Data: save, TicksLeft: int(nbtconv.Int32(o, "TicksLeftToStay"))})
+		b.occupants = append(b.occupants, BeehiveOccupant{Identifier: id, Data: save, TicksLeft: int(nbtconv.Int32(o, "TicksLeftToStay")),
+			TicksInHive: int(nbtconv.Int32(o, "ticks_in_hive")), MinTicksInHive: int(nbtconv.Int32(o, "min_ticks_in_hive"))})
 	}
 	if len(b.occupants) > beehiveMaxOccupants {
 		b.occupants = b.occupants[:beehiveMaxOccupants]
+	}
+	if fp, ok := data["flower_pos"].([]int32); ok && len(fp) == 3 {
+		p := cube.Pos{int(fp[0]), int(fp[1]), int(fp[2])}
+		b.flowerPos = &p
 	}
 	h.bees = b
 	if _, ok := data["HoneyLevel"]; ok {
