@@ -116,6 +116,7 @@ func playClientAmbient(m *mob.Mob, event string) {
 	if event == "" {
 		return
 	}
+	event = ClassAmbientEvent(m, event) // class_ambient.go
 	m.Tx().PlaySound(m.Position(), MobSound{Event: event, Identifier: m.Identifier(), Baby: IsBaby(m), ClientSide: true})
 }
 
