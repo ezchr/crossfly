@@ -41,3 +41,17 @@ func TestDanceSoundNames(t *testing.T) {
 		t.Error("plain parrot ambient handled")
 	}
 }
+
+// TestMobSoundNameDance: javaMobSoundName, which every mob sound goes through, gives the parrot
+// imitations and the allay chime their Java names, and nothing for silent imitations.
+func TestMobSoundNameDance(t *testing.T) {
+	if n, ok := javaMobSoundName("imitate.zombie", "minecraft:parrot"); !ok || n != "minecraft:entity.parrot.imitate.zombie" {
+		t.Errorf("imitate.zombie -> %q, %v", n, ok)
+	}
+	if n, ok := javaMobSoundName("imitate.wolf", "minecraft:parrot"); ok {
+		t.Errorf("imitate.wolf -> %q, want no sound", n)
+	}
+	if n, ok := javaMobSoundName("chime.amethyst_block", "minecraft:allay"); !ok || n != "minecraft:block.amethyst_block.chime" {
+		t.Errorf("chime.amethyst_block -> %q, %v", n, ok)
+	}
+}

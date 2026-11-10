@@ -101,6 +101,11 @@ func hardcodedAmbientTick(m *mob.Mob) {
 	default:
 		return // ambient.in.water: no Java sound for these mobs
 	}
+	if s, ok := mob.AmbientOverride(m, ev); ok {
+		// A parrot imitating a monster (server/mob/parrot_ambient.go).
+		m.Tx().PlaySound(m.Position(), s)
+		return
+	}
 	playClientAmbient(m, ev)
 }
 
