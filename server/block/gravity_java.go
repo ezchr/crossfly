@@ -83,7 +83,9 @@ func (d DragonEgg) BlockStateChanged(pos, _ cube.Pos, tx *world.Tx) { gravitySha
 func (d DragonEgg) ScheduledTick(pos cube.Pos, tx *world.Tx, _ *rand.Rand) { d.fall(d, pos, tx) }
 
 // BlockPlaced ...
-func (c ConcretePowder) BlockPlaced(pos cube.Pos, _ world.Block, tx *world.Tx) { gravityPlaced(c, pos, tx) }
+func (c ConcretePowder) BlockPlaced(pos cube.Pos, _ world.Block, tx *world.Tx) {
+	gravityPlaced(c, pos, tx)
+}
 
 // BlockStateChanged is ConcretePowderBlock.updateShape: water beside it hardens it now, else it may fall later.
 func (c ConcretePowder) BlockStateChanged(pos, _ cube.Pos, tx *world.Tx) {
