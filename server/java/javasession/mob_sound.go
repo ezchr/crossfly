@@ -77,6 +77,32 @@ func javaMobSoundName(event, typ string) (string, bool) {
 		return "minecraft:entity.cow.ambient", true
 	case short == "goat" && event == "ambient.screamer":
 		return "minecraft:entity.goat.screaming.ambient", true
+	case short == "cat" && (event == "ambient" || event == "ambient.baby"):
+		// Stray cats; tame ones play ambient.tame, Java entity.cat.ambient.
+		return "minecraft:entity.cat.stray_ambient", true
+	case short == "happy_ghast" && (event == "armor.equip_generic" || event == "armor.unequip_generic"):
+		// Putting a harness on or taking it off.
+		return "minecraft:entity.happy_ghast." + strings.TrimSuffix(strings.TrimPrefix(event, "armor."), "_generic"), true
+	case short == "happy_ghast" && (event == "attach" || event == "detach"):
+		// The harness goggles go down when a player boards, up when the last one leaves.
+		if event == "attach" {
+			return "minecraft:entity.happy_ghast.harness_goggles_down", true
+		}
+		return "minecraft:entity.happy_ghast.harness_goggles_up", true
+	case event == "armor.equip_wolf" || event == "armor.unequip_wolf":
+		return "minecraft:item." + event, true
+	case event == "armor.crack_wolf" || event == "armor.break_wolf" || event == "armor.repair_wolf":
+		// Wolf armour (server/mob/body_armour.go).
+		return "minecraft:item.wolf_armor." + strings.TrimSuffix(strings.TrimPrefix(event, "armor."), "_wolf"), true
+	case event == "mob.armadillo.brush" || event == "mob.armadillo.scute_drop":
+		return "minecraft:entity.armadillo." + strings.TrimPrefix(event, "mob.armadillo."), true
+	case short == "iron_golem" && event == "irongolem.repair":
+		return "minecraft:entity.iron_golem.repair", true
+	case short == "sulfur_cube" && event == "pushed_by_player":
+		// Java has a push sound per archetype; the regular one stands for all.
+		return "minecraft:entity.sulfur_cube.regular.push", true
+	case short == "sulfur_cube" && (event == "absorb_block" || event == "eject_block"):
+		return "minecraft:entity.sulfur_cube." + strings.TrimSuffix(event, "_block"), true
 	case (short == "llama" || short == "trader_llama") && event == "shoot":
 		return "minecraft:entity.llama.spit", true
 	case event == "bucket.fill.fish" || event == "bucket.empty.fish":
