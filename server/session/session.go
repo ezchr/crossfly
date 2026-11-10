@@ -249,7 +249,53 @@ func (conf Config) New(conn Conn) *Session {
 			}
 		}
 	}()
+	go s.watchStall(conn)
 	return s
+}
+
+const (
+	// stallCheckEvery is how often watchStall checks that the connection still takes packets.
+	stallCheckEvery = 5 * time.Second
+	// stallLimit is how long a flush may block before the connection counts as stalled.
+	stallLimit = 20 * time.Second
+)
+
+// watchStall closes the connection when the other side stops reading. The Conn buffers every
+// written packet until a flush sends it, and a flush blocks while nobody reads, so a stalled peer
+// (a client or proxy that hangs) made the server queue every chunk, block change and movement for
+// that player without limit: gigabytes within a minute with many players on a stalled proxy.
+func (s *Session) watchStall(conn Conn) { s.watchStallEvery(conn, stallCheckEvery, stallLimit) }
+
+// stallTarget is what watchStall needs of a connection.
+type stallTarget interface {
+	Flush() error
+	Close() error
+}
+
+func (s *Session) watchStallEvery(conn stallTarget, every, limit time.Duration) {
+	t := time.NewTicker(every)
+	defer t.Stop()
+	for {
+		select {
+		case <-s.closeBackground:
+			return
+		case <-t.C:
+		}
+		done := make(chan struct{})
+		go func() {
+			_ = conn.Flush()
+			close(done)
+		}()
+		select {
+		case <-done:
+		case <-s.closeBackground:
+			return
+		case <-time.After(limit):
+			s.conf.Log.Warn("session: connection stopped taking packets, closing it", "blocked", limit)
+			_ = conn.Close()
+			return
+		}
+	}
 }
 
 // SetHandle sets the world.EntityHandle of the Session and attaches a skin to
