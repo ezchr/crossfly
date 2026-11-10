@@ -37,6 +37,16 @@ The `[Java]` section of `config.toml`:
 
 Everything else in `config.toml` is Dragonfly's own configuration.
 
+### Mobs (Crossfly Full)
+
+`[Mobs] Behaviour` in `config.toml` (or the environment variable `DF_MOBS`, which overrides it):
+
+| Value | What it does |
+|---|---|
+| `bedrock` (default) | Vanilla mobs with Bedrock Edition's AI (its behaviour packs). |
+| `java` | Mobs behave as on a Paper server (Java Edition 26.3, Paper's default config): Java pathfinding, goals, physics and drops, so Java mob farms work. Mobs without a Java port yet keep the Bedrock AI. See [server/mob/javamob](server/mob/javamob). |
+| `off` | No mobs. |
+
 ## Building from source
 
 You need Go 1.26 or newer.

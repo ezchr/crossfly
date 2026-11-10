@@ -14,6 +14,7 @@ import (
 	"github.com/df-mc/dragonfly/server/item"
 	"github.com/df-mc/dragonfly/server/java/javasession"
 	"github.com/df-mc/dragonfly/server/mob"
+	javamobs "github.com/df-mc/dragonfly/server/mob/javamob/vanilla"
 	"github.com/df-mc/dragonfly/server/mob/spawn"
 	"github.com/df-mc/dragonfly/server/mob/vanilla"
 	"github.com/df-mc/dragonfly/server/world"
@@ -41,8 +42,10 @@ type commandsConfig struct {
 // mobsConfig holds the settings of the mobs.
 type mobsConfig struct {
 	// Behaviour is how mobs behave: "bedrock" runs the vanilla mobs with the AI of Bedrock Edition (its behaviour
-	// packs), "off" has no mobs.
-	Behaviour string `comment:"Behaviour is how mobs behave: bedrock runs the vanilla mobs with the AI of Bedrock Edition (from its behaviour packs), off has no mobs."`
+	// packs); "java" runs them as on a Paper server (Java Edition 26.3 with Paper's default config: goals,
+	// pathfinding, physics and drops as in Java Edition, so Java mob farms work; mobs not ported to Java yet keep
+	// Bedrock's AI); "off" has no mobs. The environment variable DF_MOBS overrides it.
+	Behaviour string `comment:"Behaviour is how mobs behave: bedrock runs the vanilla mobs with the AI of Bedrock Edition (from its behaviour packs), java runs them as on a Paper server (Java Edition AI, pathfinding and physics, so Java mob farms work; mobs not ported to Java yet keep the Bedrock AI), off has no mobs. The environment variable DF_MOBS overrides it."`
 	// NaturalSpawning spawns mobs around players as in vanilla, by the spawn rules of Bedrock Edition.
 	NaturalSpawning bool `comment:"NaturalSpawning spawns mobs around players as in vanilla, by the spawn rules of Bedrock Edition."`
 }
@@ -80,16 +83,20 @@ func defaultEdition() Edition {
 	}
 }
 
-func (e Edition) mobs() bool         { return e.Mobs.Behaviour == "bedrock" }
+func (e Edition) mobs() bool         { return e.Mobs.Behaviour == "bedrock" || e.javaMobs() }
+func (e Edition) javaMobs() bool     { return e.Mobs.Behaviour == "java" }
 func (e Edition) javaRedstone() bool { return e.Redstone.Behaviour == "java" }
 
 // register sets up the features that are on and registers their blocks, items and entity types. It runs before
 // the server is configured, which makes the block registry and the creative inventory.
-func (e Edition) register(log *slog.Logger) error {
+func (e *Edition) register(log *slog.Logger) error {
+	if v := os.Getenv("DF_MOBS"); v != "" {
+		e.Mobs.Behaviour = v
+	}
 	switch e.Mobs.Behaviour {
-	case "bedrock", "off":
+	case "bedrock", "java", "off":
 	default:
-		return fmt.Errorf("Mobs.Behaviour %q is not \"bedrock\" or \"off\"", e.Mobs.Behaviour)
+		return fmt.Errorf("Mobs.Behaviour %q is not \"bedrock\", \"java\" or \"off\"", e.Mobs.Behaviour)
 	}
 	switch e.Redstone.Behaviour {
 	case "java", "dragonfly":
@@ -111,6 +118,10 @@ func (e Edition) register(log *slog.Logger) error {
 		}
 		if _, err := vanilla.Register(vanilla.Options{Skip: func(id string) bool { return existing[id] }}); err != nil {
 			return fmt.Errorf("register mobs: %w", err)
+		}
+		if e.javaMobs() {
+			// After the Bedrock types: the Java types replace the ones they port.
+			javamobs.Install()
 		}
 		item.RegisterSpawnEggs(mob.Identifiers(), mob.EggSpawner{})
 	}
@@ -152,7 +163,8 @@ func (e Edition) configure(conf *server.Config) error {
 // once the server runs.
 func (e Edition) start(srv *server.Server, log *slog.Logger) {
 	commands.Register(srv, operators)
-	if e.mobs() && e.Mobs.NaturalSpawning {
+	// Java mob mode has its own natural spawning (package mob/javaspawn hooks in here).
+	if e.mobs() && !e.javaMobs() && e.Mobs.NaturalSpawning {
 		for _, w := range []*world.World{srv.World(), srv.Nether(), srv.End()} {
 			spawn.Enable(w, spawn.Config{})
 		}
