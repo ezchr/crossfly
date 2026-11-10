@@ -252,6 +252,9 @@ func (s *Session) viewEntityMeta(e world.Entity, id int32) {
 		s.viewFirework(fb, id) // firework.go
 		return
 	}
+	if s.viewThrownEgg(ent, id) {
+		return
+	}
 	ib, ok := ent.Behaviour().(*entity.ItemBehaviour)
 	if !ok {
 		return

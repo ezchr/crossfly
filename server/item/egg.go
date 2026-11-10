@@ -49,9 +49,8 @@ func (e Egg) MaxCount() int {
 
 // Use ...
 func (e Egg) Use(tx *world.Tx, user User, ctx *UseContext) bool {
-	create := tx.World().EntityRegistry().Config().Egg
 	opts := world.EntitySpawnOpts{Position: eyePosition(user), Velocity: user.Rotation().Vec3().Mul(1.5)}
-	tx.AddEntity(create(opts, user))
+	tx.AddEntity(e.entity(tx, opts, user))
 	tx.PlaySound(user.Position(), sound.ItemThrow{})
 
 	ctx.SubtractFromCount(1)
@@ -67,6 +66,24 @@ func (e Egg) EncodeItem() (name string, meta int16) {
 		return "minecraft:blue_egg", 0
 	}
 	return "minecraft:egg", 0
+}
+
+// colouredEggEntity creates the thrown egg of a brown or blue egg. See RegisterEggEntity.
+var colouredEggEntity func(opts world.EntitySpawnOpts, egg Egg, owner world.Entity) *world.EntityHandle
+
+// RegisterEggEntity sets the function that creates thrown brown and blue eggs, which
+// world.EntityRegistryConfig.Egg cannot tell from white ones. Package entity sets it from an init function;
+// without it they are thrown as white eggs.
+func RegisterEggEntity(f func(opts world.EntitySpawnOpts, egg Egg, owner world.Entity) *world.EntityHandle) {
+	colouredEggEntity = f
+}
+
+// entity creates the thrown egg entity of e, thrown by owner (nil for a dispenser).
+func (e Egg) entity(tx *world.Tx, opts world.EntitySpawnOpts, owner world.Entity) *world.EntityHandle {
+	if e.Variant != EggTemperate && colouredEggEntity != nil {
+		return colouredEggEntity(opts, e, owner)
+	}
+	return tx.World().EntityRegistry().Config().Egg(opts, owner)
 }
 
 func init() {

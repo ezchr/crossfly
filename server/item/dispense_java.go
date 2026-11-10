@@ -141,7 +141,7 @@ func (e Egg) Dispense(pos cube.Pos, face cube.Face, tx *world.Tx, ctx *DispenseC
 		return DispenseFailure
 	}
 	return dispenseProjectile(pos, face, tx, ctx, sound.ItemThrow{}, func(opts world.EntitySpawnOpts) *world.EntityHandle {
-		return create(opts, nil)
+		return e.entity(tx, opts, nil)
 	})
 }
 
