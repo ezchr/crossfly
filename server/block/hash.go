@@ -21,6 +21,7 @@ const (
 	hashBeacon
 	hashBed
 	hashBedrock
+	hashBeehive
 	hashBeetrootSeeds
 	hashBlackstone
 	hashBlastFurnace
@@ -1181,4 +1182,8 @@ func (w Wool) Hash() (uint64, uint64) {
 
 func (c Cauldron) Hash() (uint64, uint64) {
 	return hashCauldron, uint64(c.Level) | uint64(c.Liquid.Uint8())<<3
+}
+
+func (h Beehive) Hash() (uint64, uint64) {
+	return hashBeehive, uint64(boolByte(h.Nest)) | uint64(h.Facing)<<1 | uint64(h.HoneyLevel)<<3
 }

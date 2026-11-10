@@ -109,7 +109,8 @@ func (t Trigger) Run(m *mob.Mob, ctx *mob.FilterContext) bool {
 }
 
 // Fire fires the event on the trigger's target without testing filters.
-// Targets: self (default), target, other, player, parent, baby, damager.
+// Targets: self (default), target, other, player, parent, baby, damager,
+// block (block.ExecuteMobEvent at the context block).
 func (t Trigger) Fire(m *mob.Mob, ctx *mob.FilterContext) {
 	if t.Empty() {
 		return
@@ -119,6 +120,12 @@ func (t Trigger) Fire(m *mob.Mob, ctx *mob.FilterContext) {
 	}
 	var subject world.Entity = m
 	switch t.Target {
+	case "block":
+		// Block::executeEvent: the event goes to the block (a bee entering its hive).
+		if ctx.HasBlock {
+			block.ExecuteMobEvent(m.Tx(), ctx.BlockPos, t.Event, m)
+		}
+		return
 	case "target":
 		subject = ctx.Target
 		if subject == nil {

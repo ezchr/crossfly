@@ -46,6 +46,11 @@ var hostileSoundTypes = map[string]bool{
 
 // javaMobSoundName maps a Bedrock level sound event of an entity type to a Java sound event name.
 func javaMobSoundName(event, typ string) (string, bool) {
+	if strings.HasPrefix(event, "block.") {
+		// Block sound events (block.beehive.enter) have the same name on Java.
+		name := "minecraft:" + event
+		return name, validSoundName(name)
+	}
 	jt := typ
 	if j, listed := javaEntityName[typ]; listed {
 		if j == "" {

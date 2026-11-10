@@ -6,6 +6,7 @@ import (
 	"bytes"
 	"encoding/json"
 
+	"github.com/df-mc/dragonfly/server/block"
 	"github.com/df-mc/dragonfly/server/mob"
 	"github.com/df-mc/dragonfly/server/world"
 )
@@ -66,6 +67,12 @@ func (t Trigger) Fire(m *mob.Mob, ctx *mob.FilterContext) bool {
 	}
 	var target world.Entity = m
 	switch t.Target {
+	case "block":
+		// Block::executeEvent: the event goes to the block (a bee entering its hive).
+		if ctx.HasBlock {
+			block.ExecuteMobEvent(m.Tx(), ctx.BlockPos, t.Event, m)
+		}
+		return true
 	case "other":
 		target = ctx.Other
 	case "target":

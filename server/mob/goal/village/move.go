@@ -587,14 +587,16 @@ func (g *goHome) fire(m *mob.Mob, ts []ccore.Trigger) {
 
 func (g *goHome) CanUse(m *mob.Mob) bool {
 	home, ok := m.Home()
-	if !hasNav(m) || !ok {
+	if !hasNav(m) || (!ok && !m.HasComponent("minecraft:home")) {
 		return false
 	}
 	if g.interval > 0 && m.Rand().IntN(g.interval) != 0 {
 		return false
 	}
 	fr := m.Attr(mob.AttrFollowRange)
-	if distSq(m.Position(), home.Vec3Centre()) <= fr*fr {
+	// No home is the BlockPos::MIN of HomeComponent, out of any follow range: on_failed fires (a bee whose home
+	// is no hive goes looking for one).
+	if ok && distSq(m.Position(), home.Vec3Centre()) <= fr*fr {
 		return true
 	}
 	g.fire(m, g.onFailed)

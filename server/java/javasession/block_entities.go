@@ -39,6 +39,8 @@ var javaBlockEntityTypes = []struct{ bedrock, java string }{
 	{"minecraft:mob_spawner", "minecraft:mob_spawner"},
 	{"minecraft:trial_spawner", "minecraft:trial_spawner"},
 	{"minecraft:vault", "minecraft:vault"},
+	{"minecraft:beehive", "minecraft:beehive"}, // the bees inside stay on the server: the client needs no data
+	{"minecraft:bee_nest", "minecraft:beehive"},
 	{"*copper_golem_statue", "minecraft:copper_golem_statue"}, // every oxidation, waxed or not
 }
 
