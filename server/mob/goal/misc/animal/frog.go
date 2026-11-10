@@ -8,7 +8,9 @@ import (
 
 	"github.com/df-mc/dragonfly/server/block"
 	"github.com/df-mc/dragonfly/server/block/cube"
+	"github.com/df-mc/dragonfly/server/item"
 	"github.com/df-mc/dragonfly/server/mob"
+	"github.com/df-mc/dragonfly/server/mob/component/core"
 	cmisc "github.com/df-mc/dragonfly/server/mob/component/misc"
 	"github.com/df-mc/dragonfly/server/mob/goal/misc/kit"
 	"github.com/df-mc/dragonfly/server/world"
@@ -88,7 +90,7 @@ func (g *croak) Stop(m *mob.Mob) {
 // target at run_speed; within reach_mob_distance it shoots its tongue
 // (eat_mob_sound, actor flag digest_mob... BDS "eat mob"), pulls the target
 // in with pull_in_force for eat_animation_time, then the target is removed
-// and loot_table drops where it was.
+// and loot_table, rolled for the frog and its prey, drops where it was.
 //
 //	run_speed 1, eat_animation_time 1 s, pull_in_force 1,
 //	reach_mob_distance 1.
@@ -184,7 +186,7 @@ func (g *eatMob) Tick(m *mob.Mob) {
 		return
 	}
 	pos := t.Position()
-	stacks := rollLoot(m, g.table)
+	stacks := g.loot(m, t)
 	if tm, ok := kit.Mob(t); ok {
 		_ = tm.Close()
 	} else {
@@ -193,6 +195,20 @@ func (g *eatMob) Tick(m *mob.Mob) {
 	dropAt(m.Tx(), m, pos, stacks)
 	m.ResetTarget()
 	g.done = true
+}
+
+// loot rolls loot_table with the frog as "this" entity and the eaten mob as
+// the killed one (EatMobGoal: LootTableContext::Builder withThisEntity,
+// withKilledActor): entity_killed tests the prey, has_variant the frog.
+func (g *eatMob) loot(m *mob.Mob, prey world.Entity) []item.Stack {
+	if g.table == "" {
+		return nil
+	}
+	t, err := core.LoadLootTable(g.table)
+	if err != nil || t == nil {
+		return nil
+	}
+	return t.Roll(&core.LootContext{Mob: m, Killed: prey})
 }
 
 // Stop ...

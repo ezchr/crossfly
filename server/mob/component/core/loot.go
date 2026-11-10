@@ -92,6 +92,9 @@ type LootContext struct {
 	Mob *mob.Mob
 	// Killer is the entity responsible, or nil.
 	Killer world.Entity
+	// Killed is the entity killed when that is not Mob, such as the mob a
+	// frog eats (LootTableContext::Builder::withKilledActor), or nil.
+	Killed world.Entity
 	// ByPlayer: killed by (or recently hit by) a player.
 	ByPlayer bool
 	// Looting is the highest Looting level of the killer's hand items.
@@ -519,6 +522,9 @@ func (c lootCondition) test(ctx *LootContext) bool {
 		}
 		return identifierOf(ctx.Killer) == normaliseID(c.EntityType)
 	case "entity_killed":
+		if ctx.Killed != nil {
+			return identifierOf(ctx.Killed) == normaliseID(c.EntityType)
+		}
 		return m.Identifier() == normaliseID(c.EntityType)
 	case "has_variant":
 		var v int32
