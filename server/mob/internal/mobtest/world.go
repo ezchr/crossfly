@@ -12,8 +12,10 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/df-mc/dragonfly/server/block"
 	"github.com/df-mc/dragonfly/server/block/cube"
 	"github.com/df-mc/dragonfly/server/entity"
+	"github.com/df-mc/dragonfly/server/item"
 	"github.com/df-mc/dragonfly/server/mob"
 	"github.com/df-mc/dragonfly/server/mob/data"
 	"github.com/df-mc/dragonfly/server/player"
@@ -78,6 +80,15 @@ var (
 	typesOnce sync.Once
 	typesErr  error
 )
+
+// The server registers the blocks and items of the mobs before any world
+// exists (Edition.register in full.go, Mobs on): the saddle, horse armour,
+// the seeds sniffers dig up, eggs that hatch. Without them a saddle dropped
+// from a horse is an empty item entity that vanishes on its first tick.
+func init() {
+	block.RegisterMobBlocks()
+	item.RegisterMobItems()
+}
 
 // RegisterTypes registers the embedded vanilla mobs (definitions with at
 // least one minecraft:behavior.*) as mob types, parsed with whatever
