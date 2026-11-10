@@ -117,6 +117,9 @@ func isSolid(tx *world.Tx, pos cube.Pos) bool {
 // at pos: animals (spawn category "creature") like grass (10) and light,
 // monsters like the dark, magma is avoided (-0.5), others don't care (0).
 func WalkTargetValue(m *mob.Mob, pos cube.Pos) float64 {
+	if v, ok := classWalkTargetValue(m, pos); ok {
+		return v // walk_target_class.go
+	}
 	tx := m.Tx()
 	below := tx.Block(pos.Side(cube.FaceDown))
 	animal := m.Definition().Description().SpawnCategory == "creature"
