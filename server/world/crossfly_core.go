@@ -45,3 +45,4 @@ func (*blockEntityTicks) noteWrite(*Column, cube.Pos, Block, bool) {}
 func (*blockEntityTicks) run(l []cube.Pos, _ func(cube.Pos)) []cube.Pos {
 	return l
 }
+func (*World) watchAnalogNow(cube.Pos, Block) {}

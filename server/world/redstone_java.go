@@ -22,6 +22,14 @@ func (w *World) checkAnalogWatchers(tx *Tx) {
 	}
 }
 
+// watchAnalogNow adds a comparator set between ticks to the watchers, so that a container changed next to it before
+// the next tick wakes it at once, as Java's Container.setChanged updates the comparators beside it.
+func (w *World) watchAnalogNow(pos cube.Pos, b Block) {
+	if _, ok := b.(RedstoneAnalogWatcher); ok && !w.beTicks.active && !slices.Contains(w.analogWatchers, pos) {
+		w.analogWatchers = append(w.analogWatchers, pos)
+	}
+}
+
 // pendingWork is the work queued for the next tick before a transaction ran: neighbour updates and redstone changes.
 type pendingWork struct {
 	updates int

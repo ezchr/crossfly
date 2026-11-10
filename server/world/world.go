@@ -477,6 +477,9 @@ func (tx *Tx) setBlock(pos cube.Pos, b Block, opts *SetOpts) {
 	}
 	if w.conf.Blocks.NBTBlock(rid) {
 		c.BlockEntities[pos] = b
+		if javaRedstone {
+			w.watchAnalogNow(pos, b)
+		}
 		if !javaRedstone {
 			// Block entities tick in no particular order.
 		} else if fresh, ok := b.(FreshBlockEntity); (ok && fresh.FreshBlockEntity()) || previousEntity == nil || reflect.TypeOf(previousEntity) != reflect.TypeOf(b) {
