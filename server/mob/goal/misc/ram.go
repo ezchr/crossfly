@@ -24,13 +24,17 @@ import (
 //     is pathable);
 //  2. the goat walks to the ram start at run_speed (BDS default 1), faces
 //     the target and lowers its head for 20 ticks (pre_ram_sound,
-//     ram_attack actor flag);
-//  3. it charges at ram_speed (2) towards where the target stood, 1.1
-//     times as far (RamAttackGoal::_initiateRamAttack);
+//     ram_attack actor flag); the ram ends at the centre of the block the
+//     target stood in then (RamAttackGoal::_initiateRamAttack);
+//  3. it charges at ram_speed (2) to that end, for at most 140 ticks;
 //  4. touching the target (_tryKnockbackTarget) hurts it, plays
 //     ram_impact_sound and knocks it back with knockback_force (5) scaled by
 //     the goat's speed in m/s x 1/12, clamped to 0.2..3
-//     (baby_knockback_modifier 1/3 for babies), knockback_height (0.1).
+//     (baby_knockback_modifier 1/3 for babies), knockback_height (0.1);
+//  5. a goat that reaches the end (within 0.7) without hitting anything
+//     still tries for 2 ticks, then loses a horn if the block one past the
+//     end is a log, stone, packed ice or one of some ores
+//     (RamAttackGoalUtils::RamGoalItemDropperImpl, goat_horns.go).
 //
 // The goal then waits cooldown_range (10..20 s) before the next ram.
 // on_start fires when the charge begins (the vanilla goat adds its
@@ -49,6 +53,9 @@ type ramAttack struct {
 	end, dir            mgl64.Vec3
 	target              *world.EntityHandle
 	init                bool
+	// hornDrop is RamGoalItemDropperImpl's flag: the block past the end is
+	// one a goat loses a horn on.
+	hornDrop bool
 }
 
 const (
@@ -56,7 +63,12 @@ const (
 	ramApproach
 	ramPrepare
 	ramCharge
+	// ramFinish is BDS state 5: at the end, 2 more ticks of trying to hit.
+	ramFinish
 )
+
+// ramMaxChargeTicks is how long a charge may take (RamAttackGoal::tick).
+const ramMaxChargeTicks = 140
 
 func newRamAttack(spec mob.GoalSpec) (mob.Goal, error) {
 	var v struct {
@@ -153,7 +165,7 @@ func (g *ramAttack) CanContinueToUse(m *mob.Mob) bool {
 	if g.state == ramIdle {
 		return false
 	}
-	if g.state == ramCharge {
+	if g.state == ramCharge || g.state == ramFinish {
 		return true
 	}
 	t, ok := g.targetOf(m)
@@ -167,7 +179,7 @@ func (g *ramAttack) Start(m *mob.Mob) {
 	g.state = ramApproach
 	d := math.Sqrt(kit.HDistSq(m.Position(), t.Position()))
 	if d <= g.ramDist {
-		g.prepare(m)
+		g.prepare(m, t)
 		return
 	}
 	// Walk until within ram_distance.
@@ -179,8 +191,10 @@ func (g *ramAttack) Start(m *mob.Mob) {
 	kit.MoveTo(m, t.Position().Add(dir.Mul(g.ramDist-0.5)), g.runSpeed)
 }
 
-func (g *ramAttack) prepare(m *mob.Mob) {
+func (g *ramAttack) prepare(m *mob.Mob, t world.Entity) {
 	g.state, g.timer = ramPrepare, 20
+	tp := cube.PosFromVec3(t.Position())
+	g.end = mgl64.Vec3{float64(tp[0]) + 0.5, float64(tp[1]), float64(tp[2]) + 0.5}
 	kit.Stop(m)
 	kit.Flag(m, protocol.EntityDataFlagRamAttack, true)
 	kit.Sound(m, g.preSound)
@@ -189,12 +203,12 @@ func (g *ramAttack) prepare(m *mob.Mob) {
 func (g *ramAttack) charge(m *mob.Mob, t world.Entity) {
 	g.state, g.timer = ramCharge, 0
 	start := m.Position()
-	d := t.Position().Sub(start)
+	d := g.end.Sub(start)
 	d[1] = 0
-	g.end = start.Add(d.Mul(1.1))
 	if d.Len() > 0 {
 		g.dir = d.Normalize()
 	}
+	g.hornDrop = goatHornBlockAhead(m.Tx(), start, g.end)
 	kit.FireAll(m, g.onStart, kit.OtherCtx(m, t))
 	kit.MoveTo(m, g.end, g.ramSpeed)
 }
@@ -210,7 +224,7 @@ func (g *ramAttack) Tick(m *mob.Mob) {
 		}
 		kit.LookAtEntity(m, t)
 		if math.Sqrt(kit.HDistSq(m.Position(), t.Position())) <= g.ramDist || m.Navigation().Done() {
-			g.prepare(m)
+			g.prepare(m, t)
 		}
 	case ramPrepare:
 		if !ok {
@@ -225,15 +239,49 @@ func (g *ramAttack) Tick(m *mob.Mob) {
 	case ramCharge:
 		g.timer++
 		kit.LookAt(m, g.end.Add(mgl64.Vec3{0, m.EyeHeight()}))
-		if ok && kit.Alive(t) && m.BBox().Grow(0.2).IntersectsWith(kit.BBox(t)) {
-			g.impact(m, t)
-			g.state = ramIdle
+		if g.tryHit(m, t, ok) {
 			return
 		}
-		if m.Navigation().Done() || g.timer > 60 || m.Physics().HorizontalCollision && g.timer > 5 {
+		if g.reachedEnd(m) {
+			kit.Stop(m)
+			g.state, g.timer = ramFinish, 2
+			return
+		}
+		if m.Navigation().Done() || g.timer > ramMaxChargeTicks || m.Physics().HorizontalCollision && g.timer > 5 {
+			g.state = ramIdle
+		}
+	case ramFinish:
+		if g.tryHit(m, t, ok) {
+			return
+		}
+		if g.timer--; g.timer <= 0 {
+			// RamGoalItemDropperImpl::tryDropHorn at the end of the ram.
+			if g.hornDrop {
+				goatDropHorn(m, g.end.Add(mgl64.Vec3{0, 0.5}))
+			}
+			g.hornDrop = false
 			g.state = ramIdle
 		}
 	}
+}
+
+// tryHit is RamAttackGoal::_tryKnockbackTarget: touching the target ends the
+// ram with the hit, and no horn drops (dontDropHorn).
+func (g *ramAttack) tryHit(m *mob.Mob, t world.Entity, ok bool) bool {
+	if !ok || !kit.Alive(t) || !m.BBox().Grow(0.2).IntersectsWith(kit.BBox(t)) {
+		return false
+	}
+	g.impact(m, t)
+	g.hornDrop = false
+	g.state = ramIdle
+	return true
+}
+
+// reachedEnd reports whether the goat's centre is within 0.7 of the centre
+// of the end block.
+func (g *ramAttack) reachedEnd(m *mob.Mob) bool {
+	c := m.Position().Add(mgl64.Vec3{0, m.BBox().Height() / 2})
+	return c.Sub(g.end.Add(mgl64.Vec3{0, 0.5})).Len() < 0.7
 }
 
 // impact is RamAttackGoal::_tryKnockbackTarget.
@@ -259,6 +307,7 @@ func (g *ramAttack) impact(m *mob.Mob, t world.Entity) {
 func (g *ramAttack) Stop(m *mob.Mob) {
 	g.state = ramIdle
 	g.target = nil
+	g.hornDrop = false
 	kit.Flag(m, protocol.EntityDataFlagRamAttack, false)
 	kit.Stop(m)
 	g.resetCooldown(m)
@@ -268,6 +317,6 @@ func (g *ramAttack) Stop(m *mob.Mob) {
 func (g *ramAttack) AppendDebugInfo(b *strings.Builder) {
 	b.WriteString("RamAttack")
 	if g.state != ramIdle {
-		b.WriteString([]string{"", " approach", " prepare", " charge"}[g.state])
+		b.WriteString([]string{"", " approach", " prepare", " charge", " finish"}[g.state])
 	}
 }
