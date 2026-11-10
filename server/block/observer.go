@@ -53,6 +53,10 @@ func (o Observer) BlockStateChanged(pos, changed cube.Pos, tx *world.Tx) {
 	}
 }
 func (o Observer) ScheduledTick(pos cube.Pos, tx *world.Tx, _ *rand.Rand) {
+	if !world.JavaRedstone() {
+		o.dfTick(pos, tx)
+		return
+	}
 	o.Powered = !o.Powered
 	tx.SetBlock(pos, o, &world.SetOpts{DisableBlockUpdates: true, DisableRedstoneUpdates: true})
 	if o.Powered {

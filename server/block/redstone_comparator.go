@@ -95,7 +95,7 @@ func (c RedstoneComparator) UseOnBlock(pos cube.Pos, face cube.Face, _ mgl64.Vec
 	if !placed(ctx) {
 		return false
 	}
-	if c.shouldTurnOn(pos, tx) {
+	if world.JavaRedstone() && c.shouldTurnOn(pos, tx) {
 		tx.ScheduleBlockUpdate(pos, c, time.Second/20)
 	}
 	return true
@@ -106,6 +106,11 @@ func (c RedstoneComparator) Activate(pos cube.Pos, _ cube.Face, tx *world.Tx, _ 
 	c.Subtract = !c.Subtract
 	tx.PlaySound(pos.Vec3Centre(), sound.Click{})
 	tx.SetBlock(pos, c, &world.SetOpts{DisableBlockUpdates: true, DisableRedstoneUpdates: true, KeepRedstonePower: true})
+	if !world.JavaRedstone() {
+		// Bedrock: the new mode counts from the next redstone tick.
+		tx.ScheduleBlockUpdate(pos, c, dfComparatorDelay*time.Second/20)
+		return true
+	}
 	c.refresh(pos, tx)
 	return true
 }
@@ -116,11 +121,18 @@ func (c RedstoneComparator) NeighbourUpdateTick(pos, _ cube.Pos, tx *world.Tx) {
 		breakBlock(c, pos, tx)
 		return
 	}
+	if !world.JavaRedstone() {
+		return // the redstone engine updates its inputs
+	}
 	c.check(pos, tx)
 }
 
 // RedstonePowerActionUpdate checks the inputs when the circuit around the comparator changed.
 func (c RedstoneComparator) RedstonePowerActionUpdate(pos cube.Pos, tx *world.Tx, _ world.RedstoneUpdate) {
+	if !world.JavaRedstone() {
+		c.dfUpdate(pos, tx)
+		return
+	}
 	c.check(pos, tx)
 }
 
@@ -128,6 +140,10 @@ func (c RedstoneComparator) RedstonePowerActionUpdate(pos cube.Pos, tx *world.Tx
 // how full a container is changes without a block update, and Java Edition's containers update the comparators
 // reading them when they change.
 func (c RedstoneComparator) RedstoneAnalogCheck(pos cube.Pos, tx *world.Tx) {
+	if !world.JavaRedstone() {
+		c.dfAnalogCheck(pos, tx)
+		return
+	}
 	if c.readsAnalog(pos, tx) && !c.readsDetectorRail(pos, tx) {
 		c.check(pos, tx)
 	}
@@ -163,6 +179,10 @@ func (c RedstoneComparator) check(pos cube.Pos, tx *world.Tx) {
 
 // ScheduledTick updates the comparator's output.
 func (c RedstoneComparator) ScheduledTick(pos cube.Pos, tx *world.Tx, _ *rand.Rand) {
+	if !world.JavaRedstone() {
+		c.dfTick(pos, tx)
+		return
+	}
 	c.refresh(pos, tx)
 }
 

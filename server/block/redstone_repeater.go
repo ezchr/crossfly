@@ -79,7 +79,7 @@ func (r RedstoneRepeater) UseOnBlock(pos cube.Pos, face cube.Face, _ mgl64.Vec3,
 	if !placed(ctx) {
 		return false
 	}
-	if r.input(pos, tx) > 0 {
+	if world.JavaRedstone() && r.input(pos, tx) > 0 {
 		// Java Edition: a repeater placed with power behind it turns on after a game tick.
 		tx.ScheduleBlockUpdate(pos, r, time.Second/20)
 	}
@@ -90,6 +90,10 @@ func (r RedstoneRepeater) UseOnBlock(pos cube.Pos, face cube.Face, _ mgl64.Vec3,
 func (r RedstoneRepeater) Activate(pos cube.Pos, _ cube.Face, tx *world.Tx, _ item.User, _ *item.UseContext) bool {
 	r.Delay = (r.Delay + 1) % 4
 	tx.SetBlock(pos, r, &world.SetOpts{DisableRedstoneUpdates: true, KeepRedstonePower: true})
+	if !world.JavaRedstone() {
+		// Bedrock keeps what is on its way and only changes the delay.
+		r.dfTick(pos, tx)
+	}
 	return true
 }
 
@@ -99,11 +103,18 @@ func (r RedstoneRepeater) NeighbourUpdateTick(pos, _ cube.Pos, tx *world.Tx) {
 		breakBlock(r, pos, tx)
 		return
 	}
+	if !world.JavaRedstone() {
+		return // the redstone engine updates its input
+	}
 	r.checkInput(pos, tx)
 }
 
 // RedstonePowerActionUpdate checks the input when the circuit around the repeater changed.
 func (r RedstoneRepeater) RedstonePowerActionUpdate(pos cube.Pos, tx *world.Tx, _ world.RedstoneUpdate) {
+	if !world.JavaRedstone() {
+		r.dfUpdate(pos, tx)
+		return
+	}
 	r.checkInput(pos, tx)
 }
 
@@ -123,6 +134,10 @@ func (r RedstoneRepeater) checkInput(pos cube.Pos, tx *world.Tx) {
 
 // ScheduledTick turns the repeater on or off. Turned on by a pulse that is already over, it stays on for its delay.
 func (r RedstoneRepeater) ScheduledTick(pos cube.Pos, tx *world.Tx, _ *rand.Rand) {
+	if !world.JavaRedstone() {
+		r.dfTick(pos, tx)
+		return
+	}
 	if r.locked(pos, tx) {
 		return
 	}

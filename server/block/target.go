@@ -48,6 +48,10 @@ func (t Target) BlockPlaced(pos cube.Pos, previous world.Block, tx *world.Tx) {
 	}
 }
 func (t Target) ProjectileHitAt(pos cube.Pos, tx *world.Tx, projectile world.Entity, face cube.Face, hit mgl64.Vec3) {
+	if !world.JavaRedstone() {
+		t.dfProjectileHit(pos, tx, projectile, face, hit)
+		return
+	}
 	if tx.BlockUpdateScheduled(pos, t) {
 		return
 	}
@@ -75,6 +79,9 @@ func targetStrength(face cube.Face, hit mgl64.Vec3) int {
 	return max(1, int(math.Ceil(15*min(1, max(0, (.5-distance)/.5)))))
 }
 func (t Target) ScheduledTick(pos cube.Pos, tx *world.Tx, _ *rand.Rand) {
+	if !world.JavaRedstone() && tx.CurrentTick() < t.Expires {
+		return // hit again since: a later tick ends it
+	}
 	if t.Power > 0 {
 		t.Power = 0
 		t.Expires = 0

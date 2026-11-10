@@ -151,6 +151,9 @@ func (p PressurePlate) EncodeBlock() (string, map[string]any) {
 
 // detects checks whether an entity can activate the plate.
 func (p PressurePlate) detects(e world.Entity) bool {
+	if !world.JavaRedstone() {
+		return p.dfPressurePlateDetects(e)
+	}
 	if player, ok := e.(interface{ GameMode() world.GameMode }); ok && !player.GameMode().HasCollision() {
 		return false
 	}
@@ -216,6 +219,9 @@ type pressurePlateLivingEntity interface {
 }
 
 func pressurePlateActivationBox(pos cube.Pos) cube.BBox {
+	if !world.JavaRedstone() {
+		return dfPressurePlateBox(pos)
+	}
 	return cube.Box(0.125, 0, 0.125, 0.875, 0.25, 0.875).Translate(pos.Vec3())
 }
 

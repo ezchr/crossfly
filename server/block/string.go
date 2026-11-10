@@ -36,11 +36,17 @@ func (s String) UseOnBlock(pos cube.Pos, face cube.Face, _ mgl64.Vec3, tx *world
 	s.Suspended = !tx.Block(below).Model().FaceSolid(below, cube.FaceUp, tx)
 	s.Connections = calculateConnections(s, tx, pos)
 	place(tx, pos, s, user, ctx)
+	if placed(ctx) && !world.JavaRedstone() {
+		s.dfPlaced(pos, tx)
+	}
 	return placed(ctx)
 }
 
 // NeighbourUpdateTick ...
-func (s String) NeighbourUpdateTick(pos, _ cube.Pos, tx *world.Tx) {
+func (s String) NeighbourUpdateTick(pos, changed cube.Pos, tx *world.Tx) {
+	if !world.JavaRedstone() {
+		defer s.dfNeighbourUpdate(pos, changed, tx)
+	}
 	below := pos.Side(cube.FaceDown)
 	suspended, connections := !tx.Block(below).Model().FaceSolid(below, cube.FaceUp, tx), calculateConnections(s, tx, pos)
 	if suspended == s.Suspended && connections == s.Connections {

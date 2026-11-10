@@ -58,6 +58,9 @@ func (d DaylightDetector) update(pos cube.Pos, tx *world.Tx) {
 		sky = int(tx.CurrentSkyLight(pos))
 	}
 	power := daylightPower(sky, tx.World().Time(), d.Inverted, rain, thunder)
+	if !world.JavaRedstone() {
+		power = bedrockDaylightPower(sky, tx.World().Time(), tx.World().TimeCycle(), d.Inverted, rain, thunder)
+	}
 	if d.Power != power {
 		d.Power = power
 		tx.SetBlock(pos, d, nil)

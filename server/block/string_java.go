@@ -38,6 +38,7 @@ func (s String) BlockRemoved(pos cube.Pos, replacement world.Block, tx *world.Tx
 // PlayerWillBreak disarms the wire when a player cuts it with shears, so that the hooks detach without tripping.
 func (s String) PlayerWillBreak(pos cube.Pos, held item.Stack, tx *world.Tx) {
 	if !world.JavaRedstone() {
+		s.dfPlayerWillBreak(pos, held, tx)
 		return
 	}
 	if _, ok := held.Item().(item.Shears); ok {
@@ -49,6 +50,7 @@ func (s String) PlayerWillBreak(pos cube.Pos, held item.Stack, tx *world.Tx) {
 // EntityInside trips the wire.
 func (s String) EntityInside(pos cube.Pos, tx *world.Tx, e world.Entity) {
 	if !world.JavaRedstone() {
+		s.dfEntityInside(pos, tx, e)
 		return
 	}
 	s.Connections = calculateConnections(s, tx, pos)
@@ -61,6 +63,7 @@ func (s String) EntityInside(pos cube.Pos, tx *world.Tx, e world.Entity) {
 // ScheduledTick looks again whether something is still in a tripped wire.
 func (s String) ScheduledTick(pos cube.Pos, tx *world.Tx, _ *rand.Rand) {
 	if !world.JavaRedstone() {
+		s.dfScheduledTick(pos, tx)
 		return
 	}
 	if s.Powered {
