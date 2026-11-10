@@ -137,9 +137,7 @@ func (c Chest) AddViewer(v ContainerViewer, tx *world.Tx, pos cube.Pos) {
 	}
 	c.viewers[v] = struct{}{}
 	c.viewerMu.Unlock()
-	if world.JavaRedstone() {
-		c.updateTrappedPower(pos, tx)
-	}
+	c.updateTrappedPower(pos, tx)
 }
 
 // RemoveViewer removes a viewer from the chest, so that slot updates in the inventory are no longer sent to
@@ -159,9 +157,7 @@ func (c Chest) RemoveViewer(v ContainerViewer, tx *world.Tx, pos cube.Pos) {
 		postContainer(tx, pos, false)
 	}
 	c.viewerMu.Unlock()
-	if world.JavaRedstone() {
-		c.updateTrappedPower(pos, tx)
-	}
+	c.updateTrappedPower(pos, tx)
 }
 
 // Activate ...

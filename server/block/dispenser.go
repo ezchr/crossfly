@@ -100,6 +100,10 @@ func (Dispenser) Activate(pos cube.Pos, _ cube.Face, tx *world.Tx, u item.User, 
 // elsewhere doesn't make it look again, which is what makes a dispenser a block update detector with the power it
 // also takes at the block above it (quasi-connectivity).
 func (d Dispenser) RedstonePowerActionUpdate(pos cube.Pos, tx *world.Tx, update world.RedstoneUpdate) {
+	if !world.JavaRedstone() {
+		d.dfPowerUpdate(pos, tx, update.NewPower)
+		return
+	}
 
 	if update.OldPower == update.NewPower {
 		return
@@ -113,6 +117,9 @@ func (d Dispenser) RedstonePowerActionUpdate(pos cube.Pos, tx *world.Tx, update 
 
 // NeighbourUpdateTick checks the dispenser's power when a block next to it changes.
 func (d Dispenser) NeighbourUpdateTick(pos, changed cube.Pos, tx *world.Tx) {
+	if !world.JavaRedstone() {
+		return // redstone=dragonfly: no block update detection
+	}
 	if changed == pos {
 		return // the update a block gets when it is placed: a Java dispenser doesn't look at its power then
 	}
@@ -143,6 +150,10 @@ func (d Dispenser) check(pos cube.Pos, tx *world.Tx, powered bool) {
 
 // ScheduledTick dispenses one item after the activation delay.
 func (d Dispenser) ScheduledTick(pos cube.Pos, tx *world.Tx, r *rand.Rand) {
+	if !world.JavaRedstone() {
+		d.dfFire(pos, tx, r)
+		return
+	}
 	if !d.dispense(pos, tx, r) {
 		tx.PlaySound(pos.Vec3Centre(), sound.ClickFail{})
 		if !d.Dropper {

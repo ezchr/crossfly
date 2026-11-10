@@ -131,11 +131,11 @@ func (l Lectern) TurnPage(pos cube.Pos, tx *world.Tx, page int) error {
 		return fmt.Errorf("page number %d is out of bounds", page)
 	}
 	l.Page = page
-	if !world.JavaRedstone() {
+	if !lecternPulses() {
 		tx.SetBlock(pos, l, nil)
 		return nil
 	}
-	// Java Edition's signalPageChange: a two tick pulse.
+	// Java Edition's signalPageChange, and with redstone=dragonfly LecternBlock::emitRedstonePulse: a two tick pulse.
 	l.Powered = true
 	tx.SetBlock(pos, l, nil)
 	tx.ScheduleBlockUpdate(pos, l, time.Second/10)

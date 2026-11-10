@@ -47,6 +47,9 @@ func (b CopperBulb) LightEmissionLevel() uint8 {
 
 // BlockPlaced is Java Edition's onPlace: a bulb placed into power turns on.
 func (b CopperBulb) BlockPlaced(pos cube.Pos, previous world.Block, tx *world.Tx) {
+	if !world.JavaRedstone() {
+		return // redstone=dragonfly: the redstone engine reports the power of a bulb placed into it
+	}
 	if _, same := previous.(CopperBulb); !same {
 		b.checkAndFlip(pos, tx)
 	}
@@ -54,11 +57,18 @@ func (b CopperBulb) BlockPlaced(pos cube.Pos, previous world.Block, tx *world.Tx
 
 // NeighbourUpdateTick ...
 func (b CopperBulb) NeighbourUpdateTick(pos, _ cube.Pos, tx *world.Tx) {
+	if !world.JavaRedstone() {
+		return
+	}
 	b.checkAndFlip(pos, tx)
 }
 
 // RedstonePowerActionUpdate ...
-func (b CopperBulb) RedstonePowerActionUpdate(pos cube.Pos, tx *world.Tx, _ world.RedstoneUpdate) {
+func (b CopperBulb) RedstonePowerActionUpdate(pos cube.Pos, tx *world.Tx, u world.RedstoneUpdate) {
+	if !world.JavaRedstone() {
+		b.dfPowerUpdate(pos, tx, u.NewPower)
+		return
+	}
 	b.checkAndFlip(pos, tx)
 }
 

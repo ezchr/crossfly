@@ -133,6 +133,10 @@ func railNeighbourChanged(r railBlock, pos, changed cube.Pos, tx *world.Tx) {
 			railUpdateDir(b, pos, tx, false)
 		}
 	case poweredRailBlock:
+		if !world.JavaRedstone() {
+			dfRailLine(b, pos, tx)
+			return
+		}
 		poweredRailUpdate(b, pos, tx)
 	}
 }
@@ -704,6 +708,9 @@ func (r DetectorRail) BlockPlaced(pos cube.Pos, previous world.Block, tx *world.
 	if wasDetector {
 		return
 	}
+	if !world.JavaRedstone() {
+		return // Bedrock looks for minecarts only when one enters the rail
+	}
 	if cur, ok := tx.Block(pos).(DetectorRail); ok {
 		cur.checkPressed(pos, tx, false)
 	}
@@ -711,6 +718,13 @@ func (r DetectorRail) BlockPlaced(pos cube.Pos, previous world.Block, tx *world.
 
 // EntityInside checks for minecarts when anything touches the rail while it is off.
 func (r DetectorRail) EntityInside(pos cube.Pos, tx *world.Tx, _ world.Entity) {
+	if !world.JavaRedstone() {
+		// Only a minecart turns it on: dfCheckPressed counts minecarts alone.
+		if !r.Powered {
+			r.dfCheckPressed(pos, tx)
+		}
+		return
+	}
 	if !r.Powered {
 		r.checkPressed(pos, tx, false)
 	}
@@ -718,6 +732,12 @@ func (r DetectorRail) EntityInside(pos cube.Pos, tx *world.Tx, _ world.Entity) {
 
 // ScheduledTick checks whether a minecart is still on the rail.
 func (r DetectorRail) ScheduledTick(pos cube.Pos, tx *world.Tx, _ *rand.Rand) {
+	if !world.JavaRedstone() {
+		if r.Powered {
+			r.dfCheckPressed(pos, tx)
+		}
+		return
+	}
 	if r.Powered {
 		r.checkPressed(pos, tx, true)
 	}

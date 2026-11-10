@@ -26,7 +26,7 @@ func (c Chest) RedstoneStrongPower(_ cube.Pos, _ *world.Tx, face cube.Face) int 
 	return 0
 }
 func (c Chest) Tick(tick int64, pos cube.Pos, tx *world.Tx) {
-	if c.Trapped && tick%5 == 0 {
+	if c.Trapped && tick%5 == 0 && world.JavaRedstone() {
 		c.updateTrappedPower(pos, tx)
 	}
 }

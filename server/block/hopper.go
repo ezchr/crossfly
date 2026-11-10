@@ -142,6 +142,9 @@ func (h Hopper) Tick(currentTick int64, pos cube.Pos, tx *world.Tx) {
 		h.javaTick(currentTick, pos, tx)
 		return
 	}
+	if h.dfTick(currentTick, pos, tx) {
+		return // Crossfly Full, redstone=dragonfly: Bedrock's hopper rules
+	}
 	cooldownChanged := h.TransferCooldown > 0 || h.CollectCooldown > 0
 	if h.TransferCooldown > 0 {
 		h.TransferCooldown--
