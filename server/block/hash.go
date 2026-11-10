@@ -188,6 +188,7 @@ const (
 	hashPiston
 	hashPistonHead
 	hashMovingPiston
+	hashSnifferEgg
 	hashTarget
 	hashDaylightDetector
 	hashRedstoneComparator
@@ -1201,4 +1202,8 @@ func (t TurtleEgg) Hash() (uint64, uint64) {
 
 func (FrogSpawn) Hash() (uint64, uint64) {
 	return hashFrogSpawn, 0
+}
+
+func (s SnifferEgg) Hash() (uint64, uint64) {
+	return hashSnifferEgg, uint64(s.Cracks)
 }
