@@ -29,7 +29,9 @@ func ambientData(m *mob.Mob) (interval, rng float32, event string) {
 // values, or the reloadHardcoded / defineEntityData defaults.
 func TestAmbientActorData(t *testing.T) {
 	needs(t, true, true, "minecraft:ambient_sound_interval")
-	w := mobtest.New(t, mobtest.Options{})
+	// At noon: at night an overworld bee seeks shelter on its first tick (shelter_detection), which swaps
+	// look_for_food's ambient.pollinate for default_sound.
+	w := mobtest.New(t, mobtest.Options{Time: mobtest.Noon})
 	w.Do(func(tx *world.Tx) { w.Floor(tx, 0, 12, block.Stone{}) })
 	cases := []struct {
 		id       string
