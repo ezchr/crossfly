@@ -11,6 +11,8 @@ import (
 
 	_ "github.com/df-mc/dragonfly/server/block"
 	"github.com/df-mc/dragonfly/server/item"
+	"github.com/df-mc/dragonfly/server/mob/internal/mobtest"
+	"github.com/df-mc/dragonfly/server/mob/javamob"
 	"github.com/google/uuid"
 	"github.com/sandertv/gophertunnel/minecraft/nbt"
 )
@@ -185,6 +187,10 @@ func TestXPLevels(t *testing.T) {
 
 func TestMain(m *testing.M) {
 	item.RegisterMobItems()
+	if err := mobtest.RegisterTypes(); err != nil {
+		panic(err)
+	}
+	javamob.Install()
 	os.Exit(m.Run())
 }
 

@@ -12,6 +12,7 @@ import (
 	_ "github.com/df-mc/dragonfly/server/mob/javamob/monster"
 	_ "github.com/df-mc/dragonfly/server/mob/jfarm"
 	_ "github.com/df-mc/dragonfly/server/mob/jnether"
+	_ "github.com/df-mc/dragonfly/server/mob/jvillage"
 )
 
 // Install registers the Java mob types of every linked package in package mob (javamob.Install).
