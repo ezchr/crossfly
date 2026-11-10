@@ -79,6 +79,12 @@ type Dragon struct {
 	// segments 2, wings 4x3x4).
 	Head, Neck, Body, Wing1, Wing2 cube.BBox
 	Tail                           [3]cube.BBox
+	// fight is the End fight this dragon belongs to (nil for a dragon
+	// summoned outside it).
+	fight *EndFight
+	// prevKilled is EnderDragon::setHasDragonPreviouslyBeenKilled, set by
+	// the fight: such a dragon drops 500 experience instead of 12000.
+	prevKilled bool
 
 	dying     bool
 	deathTime int
@@ -761,7 +767,11 @@ func (d *Dragon) checkCrystals(m *mob.Mob) {
 				d.crystals[e.H()] = e.Position()
 			}
 		}
-		d.NumCrystals = n
+		if d.fight == nil {
+			// The fight's dragon counts the crystals on the spikes
+			// (EndDragonFight::_updateCrystalCount).
+			d.NumCrystals = n
+		}
 	}
 	if m.Rand().IntN(10) == 0 {
 		var best world.Entity
@@ -790,6 +800,9 @@ func (d *Dragon) checkCrystals(m *mob.Mob) {
 // and goes after it (on_start_takeoff).
 func (d *Dragon) crystalDestroyed(m *mob.Mob, pos mgl64.Vec3, healing bool) {
 	tx := m.Tx()
+	if d.fight != nil {
+		d.fight.updateCrystalCount(tx)
+	}
 	p, ok := NearestPlayer(tx, pos, 64)
 	if healing {
 		var src world.ExplosionSource = world.BlockExplosionSource{Pos: cube.PosFromVec3(pos), ExplosionSize: 6}
@@ -897,13 +910,12 @@ func (d *Dragon) StartDeathAnimation(m *mob.Mob) {
 		return
 	}
 	d.dying, d.deathTime = true, 0
-	// The first dragon of a world drops 12000 experience, later ones 500
-	// (EnderDragon::tickDeath); the world remembers across restarts.
+	// The first dragon of the End fight drops 12000 experience, later ones
+	// 500 (EnderDragon::tickDeath, the flag the fight set); a dragon outside
+	// the fight always 12000.
 	d.xp = 12000
-	if w := m.Tx().World(); DragonPreviouslyKilled(w) {
+	if d.prevKilled {
 		d.xp = 500
-	} else {
-		SetDragonPreviouslyKilled(w)
 	}
 	if b, ok := BossOf(m); ok {
 		b.SetHealthOverride(0)
@@ -937,6 +949,7 @@ func (d *Dragon) tickDeath(m *mob.Mob) {
 	m.SetPosition(pos.Add(mgl64.Vec3{0, 0.1, 0}))
 	if d.deathTime >= 200 {
 		spawnXP(tx, pos, int(float64(d.xp)*0.2))
+		d.dragonDied(m)
 		_ = m.Close()
 	}
 }

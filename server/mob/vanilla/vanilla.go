@@ -14,6 +14,7 @@ import (
 	"strings"
 
 	"github.com/df-mc/dragonfly/server/mob"
+	"github.com/df-mc/dragonfly/server/mob/component/boss"
 	"github.com/df-mc/dragonfly/server/mob/component/loot"
 	"github.com/df-mc/dragonfly/server/mob/component/village"
 	"github.com/df-mc/dragonfly/server/mob/data"
@@ -87,6 +88,10 @@ func Register(opts Options) ([]*mob.Type, error) {
 			continue
 		}
 		out = append(out, mob.RegisterType(d))
+		if id == boss.DragonID {
+			// The ender dragon comes with the End fight (EndDragonFight).
+			boss.EnableEndFight()
+		}
 	}
 	return out, nil
 }

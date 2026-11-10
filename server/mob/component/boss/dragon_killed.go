@@ -59,11 +59,14 @@ func DragonPreviouslyKilled(w *world.World) bool {
 }
 
 // SetDragonPreviouslyKilled is EndDragonFight::
-// setHasDragonPreviouslyBeenKilled(true) with the dragon killed: the flag is
-// written to the world's database at once, keeping the rest of the End
-// fight's data.
+// setHasDragonPreviouslyBeenKilled(true): the flag is written to the world's
+// database at once, keeping the rest of the End fight's data. The End fight
+// sets it itself when its dragon dies (end_fight.go).
 func SetDragonPreviouslyKilled(w *world.World) {
 	killedDragons.Store(dragonKillKey(w), true)
+	if v, ok := fights.Load(w); ok {
+		v.(*EndFight).prevKilled = true
+	}
 	lp, ok := w.Provider().(levelDataProvider)
 	if !ok {
 		return
@@ -86,7 +89,7 @@ func SetDragonPreviouslyKilled(w *world.World) {
 		fight = map[string]any{}
 		d["DragonFight"] = fight
 	}
-	fight["PreviouslyKilled"], fight["DragonKilled"] = byte(1), byte(1)
+	fight["PreviouslyKilled"] = byte(1)
 	if err := lp.SetLevelData(theEndKey, data); err != nil {
 		slog.Default().Warn("mob: save the End fight", "err", err)
 	}
