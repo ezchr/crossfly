@@ -98,3 +98,65 @@ func TestDragonflyPistonCarriesOnTop(t *testing.T) {
 		t.Errorf("item on the pushed block did not move along: %v -> %v", start, pos)
 	}
 }
+
+// TestDragonflyPistonTNTBomber: a Bedrock-style TNT bomber, a flying machine carrying a dispenser full of TNT that
+// an observer on the front half fires each time the machine moves (the observer fires when a piston moves it).
+func TestDragonflyPistonTNTBomber(t *testing.T) {
+	if _, ok := any(block.Observer{}).(interface{ MovedByPiston(cube.Pos, *world.Tx) }); !ok {
+		t.Skip("observers do not fire when moved with redstone = \"dragonfly\" yet (diodes and sensors part)")
+	}
+	w := dfPistonWorld(t)
+	honey, _ := world.BlockByName("minecraft:honey_block", nil)
+	y := 64
+	disp := cube.Pos{2, y - 1, 0}
+	doWorld(w, func(tx *world.Tx) {
+		tx.SetBlock(cube.Pos{0, y, 0}, block.Observer{Facing: cube.FaceWest}, nil)
+		tx.SetBlock(cube.Pos{0, y + 1, 0}, honey, nil)
+		tx.SetBlock(cube.Pos{1, y, 0}, block.Piston{Facing: cube.FaceEast}, nil)
+		tx.SetBlock(cube.Pos{1, y + 1, 0}, honey, nil)
+		tx.SetBlock(cube.Pos{2, y, 0}, block.Slime{}, nil)
+		tx.SetBlock(cube.Pos{2, y + 1, 0}, block.Piston{Facing: cube.FaceWest, Sticky: true}, nil)
+		tx.SetBlock(cube.Pos{3, y, 0}, block.Slime{}, nil)
+		tx.SetBlock(cube.Pos{3, y + 1, 0}, block.Observer{Facing: cube.FaceEast}, nil)
+		d := block.NewDispenser()
+		d.Facing = cube.FaceDown
+		_ = d.Inventory(tx, disp).SetItem(0, item.NewStack(block.TNT{}, 64))
+		tx.SetBlock(disp, d, nil)
+		tx.SetBlock(cube.Pos{3, y - 1, 0}, block.Observer{Facing: cube.FaceEast}, nil)
+	})
+	for range 2 {
+		w.AdvanceTick()
+	}
+	doWorld(w, func(tx *world.Tx) { tx.SetBlock(cube.Pos{-1, y, 0}, block.Stone{}, nil) })
+	for range 60 {
+		w.AdvanceTick()
+	}
+	var xs []float64
+	left := -1
+	doWorld(w, func(tx *world.Tx) {
+		for e := range tx.Entities() {
+			if e.H().Type().EncodeEntity() == "minecraft:tnt" {
+				xs = append(xs, e.Position()[0])
+			}
+		}
+		for x := 2; x < 60; x++ {
+			if d, ok := tx.Block(cube.Pos{x, y - 1, 0}).(block.Dispenser); ok {
+				s, _ := d.Inventory(tx, cube.Pos{x, y - 1, 0}).Item(0)
+				left = s.Count()
+			}
+		}
+	})
+	if left < 0 {
+		t.Fatal("the dispenser is gone")
+	}
+	if len(xs) < 3 || 64-left < 3 {
+		t.Fatalf("bomber dropped %d TNT (%d left in the dispenser)", len(xs), left)
+	}
+	lo, hi := xs[0], xs[0]
+	for _, x := range xs {
+		lo, hi = min(lo, x), max(hi, x)
+	}
+	if hi-lo < 2 {
+		t.Errorf("the TNT was not dropped along the way: x from %v to %v", lo, hi)
+	}
+}
