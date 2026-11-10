@@ -5,6 +5,7 @@ package main
 import (
 	"fmt"
 	"log/slog"
+	"os"
 
 	"github.com/df-mc/dragonfly/commands"
 	"github.com/df-mc/dragonfly/server"
@@ -18,13 +19,23 @@ import (
 	"github.com/df-mc/dragonfly/server/world"
 )
 
-// Edition holds the settings of Crossfly Full's features in config.toml. Each can be turned off; a feature that
-// is off is not set up at all, and costs nothing.
+// Edition holds the settings of Crossfly Full's features in config.toml: the commands with their operators and the
+// console, the flat world, and the mobs, Java redstone, capes and extra commands, each of which can be turned off;
+// a feature that is off is not set up at all, and costs nothing.
 type Edition struct {
+	Commands      commandsConfig
+	FlatWorld     flatConfig
 	Mobs          mobsConfig
 	Redstone      redstoneConfig
 	Capes         capesConfig
 	ExtraCommands extraCommandsConfig
+}
+
+// commandsConfig holds the settings of the commands.
+type commandsConfig struct {
+	// OperatorsFile is the JSON file with the players who may run every command (/op, /deop). The server
+	// console runs every command too: type "op <name>" there to add the first one.
+	OperatorsFile string `comment:"OperatorsFile is the JSON file of the players who may run every command (/op, /deop). The server console runs every command too: type op <name> there to add the first operator."`
 }
 
 // mobsConfig holds the settings of the mobs.
@@ -60,6 +71,8 @@ type extraCommandsConfig struct {
 
 func defaultEdition() Edition {
 	return Edition{
+		Commands:      commandsConfig{OperatorsFile: "ops.json"},
+		FlatWorld:     defaultFlat(),
 		Mobs:          mobsConfig{Behaviour: "bedrock", NaturalSpawning: true},
 		Redstone:      redstoneConfig{Behaviour: "java"},
 		Capes:         capesConfig{JavaCapes: true},
@@ -106,8 +119,20 @@ func (e Edition) register(log *slog.Logger) error {
 	return nil
 }
 
-// configure adds the entity types of the features that are on to the server's entity registry.
-func (e Edition) configure(conf *server.Config) {
+// operators are the operators of ops.json (Commands.OperatorsFile), loaded by Edition.configure.
+var operators *commands.Operators
+
+// configure sets the flat overworld generator, loads the operators and adds the entity types of the features that
+// are on to the server's entity registry.
+func (e Edition) configure(conf *server.Config) error {
+	if err := e.FlatWorld.apply(conf); err != nil {
+		return err
+	}
+	ops, err := commands.LoadOperators(e.Commands.OperatorsFile)
+	if err != nil {
+		return fmt.Errorf("operators %s: %w", e.Commands.OperatorsFile, err)
+	}
+	operators = ops
 	c := entity.DefaultRegistry.Config()
 	types := entity.DefaultRegistry.Types()
 	if e.javaRedstone() {
@@ -120,10 +145,13 @@ func (e Edition) configure(conf *server.Config) {
 		types = append(types, mob.Types()...)
 	}
 	conf.Entities = c.New(types)
+	return nil
 }
 
-// start turns on natural spawning and registers the extra commands, once the server runs.
-func (e Edition) start(srv *server.Server, _ *slog.Logger) {
+// start registers the commands, turns on natural spawning and reads commands from the console (standard input),
+// once the server runs.
+func (e Edition) start(srv *server.Server, log *slog.Logger) {
+	commands.Register(srv, operators)
 	if e.mobs() && e.Mobs.NaturalSpawning {
 		for _, w := range []*world.World{srv.World(), srv.Nether(), srv.End()} {
 			spawn.Enable(w, spawn.Config{})
@@ -132,6 +160,7 @@ func (e Edition) start(srv *server.Server, _ *slog.Logger) {
 	if e.ExtraCommands.Enabled {
 		commands.RegisterExtra()
 	}
+	go commands.RunConsole(os.Stdin, log)
 }
 
 // firstStart does nothing in Crossfly Full.

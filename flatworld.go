@@ -1,3 +1,5 @@
+//go:build crossfly_full
+
 package main
 
 import (

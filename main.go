@@ -6,7 +6,6 @@ import (
 	"log/slog"
 	"os"
 
-	"github.com/df-mc/dragonfly/commands"
 	"github.com/df-mc/dragonfly/server"
 	"github.com/df-mc/dragonfly/server/java/javasession"
 	jserver "github.com/df-mc/dragonfly/server/java/protocol/server"
@@ -14,21 +13,12 @@ import (
 	"github.com/pelletier/go-toml"
 )
 
-// fileConfig is config.toml: Dragonfly's settings plus the Java Edition listener, the commands and, in Crossfly
-// Full, its features (Edition: core.go, full.go).
+// fileConfig is config.toml: Dragonfly's settings plus the Java Edition listener and, in Crossfly Full, its
+// features: the commands, the flat world, mobs, Java redstone and capes (Edition: core.go, full.go).
 type fileConfig struct {
 	server.UserConfig
-	Java      javaConfig
-	Commands  commandsConfig
-	FlatWorld flatConfig
+	Java javaConfig
 	Edition
-}
-
-// commandsConfig holds the settings of the commands.
-type commandsConfig struct {
-	// OperatorsFile is the JSON file with the players who may run every command (/op, /deop). The server
-	// console runs every command too: type "op <name>" there to add the first one.
-	OperatorsFile string `comment:"OperatorsFile is the JSON file of the players who may run every command (/op, /deop). The server console runs every command too: type op <name> there to add the first operator."`
 }
 
 // javaConfig holds the settings of the Java Edition listener.
@@ -62,9 +52,7 @@ func defaultConfig() fileConfig {
 			CompressionThreshold: 256,
 			ChunkRadius:          12,
 		},
-		Commands:  commandsConfig{OperatorsFile: "ops.json"},
-		FlatWorld: defaultFlat(),
-		Edition:   defaultEdition(),
+		Edition: defaultEdition(),
 	}
 }
 
@@ -88,25 +76,18 @@ func main() {
 		os.Exit(1)
 	}
 	conf.ShutdownMessage = shutdownTranslation
-	if err := fc.FlatWorld.apply(&conf); err != nil {
+	if err := fc.Edition.configure(&conf); err != nil {
 		log.Error("config.toml", "err", err)
-		os.Exit(1)
-	}
-	fc.Edition.configure(&conf)
-	ops, err := commands.LoadOperators(fc.Commands.OperatorsFile)
-	if err != nil {
-		log.Error("operators", "file", fc.Commands.OperatorsFile, "err", err)
 		os.Exit(1)
 	}
 
 	srv := conf.New()
+	// Ctrl+C (SIGINT) or SIGTERM stops the server, saving the worlds.
 	srv.CloseOnProgramEnd()
-	commands.Register(srv, ops)
 	fc.Edition.start(srv, log)
 	if created {
 		firstStart(log)
 	}
-	go commands.RunConsole(os.Stdin, log)
 	if fc.Java.Enabled {
 		if err := startJava(srv, conf, fc.Java, log); err != nil {
 			log.Error("Java Edition listener", "err", err)

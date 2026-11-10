@@ -1,7 +1,5 @@
-// Package commands holds the commands of the Crossfly server: the basic vanilla commands (/gamemode, /tp, /give,
-// /time, /weather, /kill, /effect, /clear, /say, /list, /kick, /op...) in every build, and the extra commands of
-// Crossfly Full. Operators may run every command; other players only /list, /tell and /me. The server console
-// (standard input) runs commands as an operator.
+//go:build crossfly_full
+
 package commands
 
 import (
