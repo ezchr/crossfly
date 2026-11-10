@@ -35,6 +35,10 @@ func (p Pumpkin) UseOnBlock(pos cube.Pos, face cube.Face, _ mgl64.Vec3, tx *worl
 	p.Facing = user.Rotation().Direction().Opposite()
 
 	place(tx, pos, p, user, ctx)
+	if p.Carved {
+		// A carved pumpkin placed on a golem pattern builds the golem (PumpkinBlock::onPlace).
+		spawnGolem(tx, pos)
+	}
 	return placed(ctx)
 }
 

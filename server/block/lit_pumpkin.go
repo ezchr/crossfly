@@ -29,6 +29,8 @@ func (l LitPumpkin) UseOnBlock(pos cube.Pos, face cube.Face, _ mgl64.Vec3, tx *w
 	l.Facing = user.Rotation().Direction().Opposite()
 
 	place(tx, pos, l, user, ctx)
+	// A jack o'lantern placed on a golem pattern builds the golem (PumpkinBlock::onPlace).
+	spawnGolem(tx, pos)
 	return placed(ctx)
 }
 
