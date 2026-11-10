@@ -20,6 +20,10 @@ type Note struct {
 	Pitch int
 	// Powered is whether the note block was powered during its last redstone update.
 	Powered bool
+
+	// javaInstrument is the instrument Java Edition keeps in the note block state (harp 0 ... pling 15), set from
+	// the block below. It is saved on the server only.
+	javaInstrument uint8
 }
 
 // NoteListener is the optional part of the MobHost that hears note blocks play: an allay likes the
@@ -52,11 +56,11 @@ func (n Note) instrument(pos cube.Pos, tx *world.Tx) sound.Instrument {
 func (n Note) DecodeNBT(data map[string]any) any {
 	n.Pitch = int(nbtconv.Uint8(data, "note"))
 	n.Powered = nbtconv.Bool(data, "powered")
-	return n
+	return n.decodeInstrument(data)
 }
 
 func (n Note) EncodeNBT() map[string]any {
-	return map[string]any{"note": byte(n.Pitch), "powered": boolByte(n.Powered)}
+	return map[string]any{"note": byte(n.Pitch), "powered": boolByte(n.Powered), noteInstrumentKey: n.javaInstrument}
 }
 
 func (n Note) Activate(pos cube.Pos, _ cube.Face, tx *world.Tx, _ item.User, _ *item.UseContext) bool {
