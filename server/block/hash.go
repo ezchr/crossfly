@@ -261,6 +261,7 @@ const (
 	hashWool
 	hashBubbleColumn
 	hashEndGateway
+	hashBell
 	hashCustomBlockBase
 )
 

@@ -270,3 +270,66 @@ func TestDfLecternPagePulse(t *testing.T) {
 		}
 	})
 }
+
+func TestDfBellRingsOnPowerAndNeedsSupport(t *testing.T) {
+	w := dfWorld(t)
+	at := cube.Pos{0, 64, 0}
+	dfDo(w, func(tx *world.Tx) {
+		dfFloor(tx)
+		tx.SetBlock(at, block.Bell{Attach: block.BellStanding, Facing: cube.North}, nil)
+	})
+	w.AdvanceTick()
+	dfDo(w, func(tx *world.Tx) { tx.SetBlock(at.Side(cube.FaceWest), block.RedstoneBlock{}, nil) })
+	for range 3 {
+		w.AdvanceTick()
+	}
+	dfDo(w, func(tx *world.Tx) {
+		if b, ok := tx.Block(at).(block.Bell); !ok || !b.Powered {
+			t.Fatalf("bell next to a redstone block: %#v, want powered", tx.Block(at))
+		}
+		tx.SetBlock(at.Side(cube.FaceWest), block.Air{}, nil)
+	})
+	for range 3 {
+		w.AdvanceTick()
+	}
+	dfDo(w, func(tx *world.Tx) {
+		if b := tx.Block(at).(block.Bell); b.Powered {
+			t.Fatalf("bell still powered after the power went")
+		}
+		// Without the floor it falls off.
+		tx.SetBlock(at.Side(cube.FaceDown), block.Air{}, nil)
+	})
+	for range 2 {
+		w.AdvanceTick()
+	}
+	dfDo(w, func(tx *world.Tx) {
+		if _, ok := tx.Block(at).(block.Bell); ok {
+			t.Fatalf("standing bell stayed without a floor")
+		}
+	})
+}
+
+func TestDfLecternPulseFiresDispenser(t *testing.T) {
+	w := dfWorld(t)
+	at, disp := cube.Pos{0, 64, 0}, cube.Pos{1, 64, 0}
+	dfDo(w, func(tx *world.Tx) {
+		dfFloor(tx)
+		tx.SetBlock(at, block.Lectern{Book: item.NewStack(item.BookAndQuill{Pages: []string{"a", "b"}}, 1)}, nil)
+		d := block.NewDispenser()
+		d.Facing = cube.FaceEast
+		_ = d.Inventory(tx, disp).SetItem(0, item.NewStack(block.Stone{}, 5))
+		tx.SetBlock(disp, d, nil)
+	})
+	w.AdvanceTick()
+	dfDo(w, func(tx *world.Tx) {
+		if err := tx.Block(at).(block.Lectern).TurnPage(at, tx, 1); err != nil {
+			t.Fatal(err)
+		}
+	})
+	for range 12 {
+		w.AdvanceTick()
+	}
+	if n := dfCount(w, dfInvCount(disp)); n != 4 {
+		t.Fatalf("dispenser next to a lectern whose page turned holds %d, want 4", n)
+	}
+}

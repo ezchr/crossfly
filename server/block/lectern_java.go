@@ -9,8 +9,7 @@ import (
 	"github.com/df-mc/dragonfly/server/world"
 )
 
-// JavaRedstoneExtension: a lectern gives a redstone pulse when its page turns only with Java redstone.
-func (Lectern) JavaRedstoneExtension() {}
+// A lectern gives a two tick redstone pulse when its page turns, with both redstone engines (lecternPulses).
 
 // ScheduledTick ends the page turn pulse.
 func (l Lectern) ScheduledTick(pos cube.Pos, tx *world.Tx, _ *rand.Rand) {

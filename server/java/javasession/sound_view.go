@@ -239,6 +239,12 @@ func (s *Session) playSound(pos mgl64.Vec3, t world.Sound, broadcast bool) {
 		s.sound(pos, sndComposterReady, srcBlocks, 1, 1)
 	case sound.PotionBrewed:
 		s.sound(pos, sndBrewingStandBrew, srcBlocks, 1, 1)
+	case sound.BellRing:
+		s.customSound(pos, "minecraft:block.bell.use", 2, 1)
+	case sound.CopperBulbTurnOn:
+		s.customSound(pos, "minecraft:block.copper_bulb.turn_on", 1, 1)
+	case sound.CopperBulbTurnOff:
+		s.customSound(pos, "minecraft:block.copper_bulb.turn_off", 1, 1)
 	case sound.PowerOn: // levers
 		s.sound(pos, sndLeverClick, srcBlocks, 0.3, 0.6)
 	case sound.PowerOff:

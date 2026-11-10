@@ -7,8 +7,7 @@ import (
 	"github.com/df-mc/dragonfly/server/world"
 )
 
-// JavaRedstoneExtension: a playing jukebox powers redstone only with Java redstone.
-func (Jukebox) JavaRedstoneExtension() {}
+// A playing jukebox powers redstone with both redstone engines.
 
 // Playing reports whether the jukebox plays its disc: a disc went in and its song is not over yet.
 func (j Jukebox) Playing() bool {

@@ -29,6 +29,8 @@ func (s *Session) ViewBlockAction(pos cube.Pos, a world.BlockAction) {
 		s.continueCrack(pos, t.BreakTime)
 	case block.StopCrackAction:
 		s.stopCrack(pos)
+	case block.BellRingAction:
+		s.blockEvent(pos, 1, byte(t.Face))
 	case block.DecoratedPotWobbleAction:
 		style := byte(1) // DecoratedPotBlockEntity.WobbleStyle: 0 positive, 1 negative
 		if t.Success {

@@ -38,9 +38,9 @@ func (b CopperBulb) ScheduledTick(pos cube.Pos, tx *world.Tx, _ *rand.Rand) {
 	if powered {
 		b.Lit = !b.Lit
 		if b.Lit {
-			tx.PlaySound(pos.Vec3Centre(), sound.PowerOn{})
+			tx.PlaySound(pos.Vec3Centre(), sound.CopperBulbTurnOn{})
 		} else {
-			tx.PlaySound(pos.Vec3Centre(), sound.PowerOff{})
+			tx.PlaySound(pos.Vec3Centre(), sound.CopperBulbTurnOff{})
 		}
 	}
 	// Only the bulb changes: the power the engine holds for it stays, so it does not look again for this change.

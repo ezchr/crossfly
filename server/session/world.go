@@ -1122,6 +1122,12 @@ func (s *Session) playSound(pos mgl64.Vec3, t world.Sound, disableRelative bool)
 		pk.SoundType = packet.SoundEventComposterFillLayer
 	case sound.ComposterReady:
 		pk.SoundType = packet.SoundEventComposterReady
+	case sound.BellRing:
+		pk.SoundType = packet.SoundEventBell
+	case sound.CopperBulbTurnOn:
+		pk.SoundType = packet.SoundEventCopperBulbTurnOn
+	case sound.CopperBulbTurnOff:
+		pk.SoundType = packet.SoundEventCopperBulbTurnOff
 	case sound.PowerOn:
 		pk.SoundType = packet.SoundEventPowerOn
 	case sound.PowerOff:
@@ -1606,6 +1612,11 @@ func (s *Session) ViewBlockAction(pos cube.Pos, a world.BlockAction) {
 			Position:  vec64To32(pos.Vec3()),
 			EventData: int32(65535 / (t.BreakTime.Seconds() * 20)),
 		})
+	case block.BellRingAction:
+		s.writePacket(&packet.BlockActorData{Position: blockPos, NBTData: map[string]any{
+			"id": "Bell", "x": blockPos.X(), "y": blockPos.Y(), "z": blockPos.Z(),
+			"Ringing": uint8(1), "Ticks": int32(0), "Direction": t.Direction,
+		}})
 	case block.DecoratedPotWobbleAction:
 		nbt := t.DecoratedPot.EncodeNBT()
 		nbt["x"], nbt["y"], nbt["z"] = blockPos.X(), blockPos.Y(), blockPos.Z()

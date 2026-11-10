@@ -76,3 +76,7 @@ func (MovingPiston) Hash() (uint64, uint64) { return hashMovingPiston, 0 }
 func (Target) Hash() (uint64, uint64) { return hashTarget, 0 }
 
 func (r Rail) Hash() (uint64, uint64) { return hashRail, uint64(r.Shape) }
+
+func (b Bell) Hash() (uint64, uint64) {
+	return hashBell, uint64(b.Attach) | uint64(b.Facing)<<2 | uint64(boolByte(b.Powered))<<4
+}
