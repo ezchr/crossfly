@@ -1428,6 +1428,10 @@ func (e *redstoneEngine) powerFrom(pos cube.Pos, tx *Tx, face cube.Face) int {
 		if !isRelayer {
 			continue
 		}
+		if !javaRedstone && s.depth == 0 && !e.relayerPowersInto(tx, s.pos, b, pos, s.from) {
+			// Dust next to pos that does not run towards it gives it nothing, as in the compiled graph.
+			continue
+		}
 		for _, next := range e.redstoneRelayerNeighbourPositions(tx, s.pos, b) {
 			to := redstoneStepFace(s.pos, next)
 			if to == s.from {
@@ -1448,6 +1452,22 @@ func (e *redstoneEngine) powerFrom(pos cube.Pos, tx *Tx, face cube.Face) int {
 	}
 	buf.queue = queue
 	return ClampRedstonePower(power)
+}
+
+// relayerPowersInto reports whether the relayer b at pos gives power to target, which it was reached from through
+// its face from: a relayer powers the block below it, not the one above, and a block beside it only if that block is
+// among its relayer neighbours (dust running towards it).
+func (e *redstoneEngine) relayerPowersInto(tx *Tx, pos cube.Pos, b Block, target cube.Pos, from cube.Face) bool {
+	switch from {
+	case cube.FaceDown:
+		return true
+	case cube.FaceUp:
+		return false
+	}
+	if _, ok := b.(RedstonePowerRelayerNeighbourer); !ok {
+		return true
+	}
+	return slices.Contains(e.redstoneRelayerNeighbourPositions(tx, pos, b), target)
 }
 
 // redstoneStep is a relayer powerFrom walks through.

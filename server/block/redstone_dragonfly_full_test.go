@@ -43,8 +43,8 @@ func dfRedstoneWorld(t *testing.T) (*world.World, func(f func(tx *world.Tx))) {
 	return w, run
 }
 
-// dfTicks advances the world n ticks.
-func dfTicks(w *world.World, n int) {
+// dfrsTicks advances the world n ticks.
+func dfrsTicks(w *world.World, n int) {
 	for range n {
 		w.AdvanceTick()
 	}
@@ -66,26 +66,26 @@ func TestDragonflyRedstoneLampLightsAndTurnsOffAfterTwoRedstoneTicks(t *testing.
 		tx.SetBlock(lamp, RedstoneLamp{}, nil)
 		dfLever(tx, lever, true)
 	})
-	dfTicks(w, 1)
+	dfrsTicks(w, 1)
 	if !lit() {
 		t.Fatal("lamp did not light the tick its lever was switched on")
 	}
 	run(func(tx *world.Tx) { dfLever(tx, lever, false) })
-	dfTicks(w, 3)
+	dfrsTicks(w, 3)
 	if !lit() {
 		t.Fatal("lamp went off before its off delay (4 game ticks, RedstoneLampBlock::onRedstoneUpdate)")
 	}
-	dfTicks(w, 3)
+	dfrsTicks(w, 3)
 	if lit() {
 		t.Fatal("lamp still lit after its off delay")
 	}
 	// A pulse shorter than the delay: the lamp stays lit through it.
 	run(func(tx *world.Tx) { dfLever(tx, lever, true) })
-	dfTicks(w, 1)
+	dfrsTicks(w, 1)
 	run(func(tx *world.Tx) { dfLever(tx, lever, false) })
-	dfTicks(w, 2)
+	dfrsTicks(w, 2)
 	run(func(tx *world.Tx) { dfLever(tx, lever, true) })
-	dfTicks(w, 6)
+	dfrsTicks(w, 6)
 	if !lit() {
 		t.Fatal("lamp went off although its power came back within the off delay")
 	}
@@ -104,30 +104,30 @@ func TestDragonflyRedstoneDoorFollowsPowerChangesOnly(t *testing.T) {
 		tx.SetBlock(bottom, WoodDoor{Wood: OakWood()}, nil)
 		tx.SetBlock(top, WoodDoor{Wood: OakWood(), Top: true}, nil)
 	})
-	dfTicks(w, 2)
+	dfrsTicks(w, 2)
 	run(func(tx *world.Tx) { dfLever(tx, lever, true) })
-	dfTicks(w, 2)
+	dfrsTicks(w, 2)
 	if b, tp := open(); !b || !tp {
 		t.Fatalf("door not opened by power: bottom=%t top=%t", b, tp)
 	}
 	// Closed by hand while powered: it stays closed, as the power does not change.
 	run(func(tx *world.Tx) { tx.Block(bottom).(WoodDoor).Activate(bottom, cube.FaceUp, tx, nil, nil) })
-	dfTicks(w, 5)
+	dfrsTicks(w, 5)
 	if b, tp := open(); b || tp {
 		t.Fatalf("door closed by hand reopened without a power change: bottom=%t top=%t", b, tp)
 	}
 	run(func(tx *world.Tx) { dfLever(tx, lever, false) })
-	dfTicks(w, 3)
+	dfrsTicks(w, 3)
 	if b, _ := open(); b {
 		t.Fatal("door opened when its power went off")
 	}
 	run(func(tx *world.Tx) { dfLever(tx, lever, true) })
-	dfTicks(w, 2)
+	dfrsTicks(w, 2)
 	if b, tp := open(); !b || !tp {
 		t.Fatalf("door not opened by power again: bottom=%t top=%t", b, tp)
 	}
 	run(func(tx *world.Tx) { dfLever(tx, lever, false) })
-	dfTicks(w, 2)
+	dfrsTicks(w, 2)
 	if b, tp := open(); b || tp {
 		t.Fatalf("door not closed when power went off: bottom=%t top=%t", b, tp)
 	}
@@ -135,7 +135,7 @@ func TestDragonflyRedstoneDoorFollowsPowerChangesOnly(t *testing.T) {
 	run(func(tx *world.Tx) {
 		tx.SetBlock(cube.Pos{1, 65, 0}, RedstoneBlock{}, nil)
 	})
-	dfTicks(w, 2)
+	dfrsTicks(w, 2)
 	if b, tp := open(); !b || !tp {
 		t.Fatalf("door not opened by power at its top half: bottom=%t top=%t", b, tp)
 	}
@@ -154,14 +154,14 @@ func TestDragonflyRedstoneTrapdoorAndFenceGateFollowPower(t *testing.T) {
 		tx.SetBlock(trapdoor, WoodTrapdoor{Wood: OakWood()}, nil)
 		tx.SetBlock(gate, WoodFenceGate{Wood: OakWood(), Facing: cube.North}, nil)
 	})
-	dfTicks(w, 2)
+	dfrsTicks(w, 2)
 	run(func(tx *world.Tx) { dfLever(tx, lever, true) })
-	dfTicks(w, 2)
+	dfrsTicks(w, 2)
 	if td, fg := state(); !td || !fg {
 		t.Fatalf("not opened by power: trapdoor=%t gate=%t", td, fg)
 	}
 	run(func(tx *world.Tx) { dfLever(tx, lever, false) })
-	dfTicks(w, 2)
+	dfrsTicks(w, 2)
 	if td, fg := state(); td || fg {
 		t.Fatalf("not closed when power went off: trapdoor=%t gate=%t", td, fg)
 	}
@@ -180,12 +180,12 @@ func TestDragonflyRedstoneHopperLock(t *testing.T) {
 		tx.SetBlock(hopper, h, nil)
 		dfLever(tx, lever, true)
 	})
-	dfTicks(w, 2)
+	dfrsTicks(w, 2)
 	if !powered() {
 		t.Fatal("powered hopper not locked")
 	}
 	run(func(tx *world.Tx) { dfLever(tx, lever, false) })
-	dfTicks(w, 2)
+	dfrsTicks(w, 2)
 	if powered() {
 		t.Fatal("hopper still locked without power")
 	}
@@ -204,7 +204,7 @@ func TestDragonflyRedstoneDustRunningPastAConsumerDoesNotPowerIt(t *testing.T) {
 		tx.SetBlock(end, WoodTrapdoor{Wood: OakWood()}, nil)
 		dfLever(tx, cube.Pos{-1, 64, 0}, true)
 	})
-	dfTicks(w, 3)
+	dfrsTicks(w, 3)
 	var besideOpen, endOpen bool
 	var shape WireConnections
 	run(func(tx *world.Tx) {
@@ -258,18 +258,18 @@ func TestDragonflyRedstoneTorchLoopBurnsOutAfterFifteenSwitches(t *testing.T) {
 	if switches != redstoneTorchTestSwitches {
 		t.Fatalf("torch burned out after %d switches, want %d", switches, redstoneTorchTestSwitches)
 	}
-	dfTicks(w, 100)
+	dfrsTicks(w, 100)
 	if lit, burned := state(); lit || !burned {
 		t.Fatalf("burned-out torch recovered with its loop intact: lit=%t burned=%t", lit, burned)
 	}
 	// Something unrelated beside it does not relight it: the loop is still there.
 	run(func(tx *world.Tx) { tx.SetBlock(torch.Side(cube.FaceEast), Stone{}, nil) })
-	dfTicks(w, 10)
+	dfrsTicks(w, 10)
 	if lit, _ := state(); lit {
 		t.Fatal("burned-out torch relit from an unrelated block beside it")
 	}
 	run(func(tx *world.Tx) { tx.SetBlock(loopWire, Air{}, nil) })
-	dfTicks(w, 5)
+	dfrsTicks(w, 5)
 	if lit, burned := state(); !lit || burned {
 		t.Fatalf("torch did not relight once its loop was broken: lit=%t burned=%t", lit, burned)
 	}
@@ -296,8 +296,32 @@ func TestDragonflyRedstoneEveryComponentSurvivesPower(t *testing.T) {
 			run(func(tx *world.Tx) { tx.SetBlock(pos, b, nil) })
 			for i := range 6 {
 				run(func(tx *world.Tx) { dfLever(tx, lever, i%2 == 0) })
-				dfTicks(w, 5)
+				dfrsTicks(w, 5)
 			}
 		})
+	}
+}
+
+// A lamp beside a line of dust is not powered by it: it neither lights nor stays lit (its off tick reads the power
+// the way the compiled graph does).
+func TestDragonflyRedstoneLampBesideDustLine(t *testing.T) {
+	w, run := dfRedstoneWorld(t)
+	lamp := cube.Pos{1, 64, 1}
+	run(func(tx *world.Tx) {
+		for x := 0; x <= 2; x++ {
+			tx.SetBlock(cube.Pos{x, 64, 0}, RedstoneWire{}, nil)
+		}
+		tx.SetBlock(lamp, RedstoneLamp{Lit: true}, nil)
+		dfLever(tx, cube.Pos{-1, 64, 0}, true)
+	})
+	dfrsTicks(w, 10)
+	var lit bool
+	var power int
+	run(func(tx *world.Tx) {
+		lit = tx.Block(lamp).(RedstoneLamp).Lit
+		power = tx.RedstonePower(lamp)
+	})
+	if lit || power != 0 {
+		t.Fatalf("lamp beside a dust line: lit=%t power=%d, want off and 0", lit, power)
 	}
 }
