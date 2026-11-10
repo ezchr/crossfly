@@ -66,6 +66,9 @@ func (b *Blaze) AiStep(m *javamob.Mob) {
 	}
 }
 
+// FilterDamage: fire immune (its volleys do not hurt other blazes).
+func (b *Blaze) FilterDamage(_ *javamob.Mob, d *mob.Damage) { fireImmune(d) }
+
 // SensitiveToWater is Blaze.isSensitiveToWater.
 func (b *Blaze) SensitiveToWater(*javamob.Mob) bool { return true }
 

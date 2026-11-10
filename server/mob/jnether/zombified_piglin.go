@@ -105,6 +105,9 @@ func (z *ZombifiedPiglin) addBehaviourGoals(m *javamob.Mob) {
 	// game rule, which is off.
 }
 
+// FilterDamage: fire immune.
+func (z *ZombifiedPiglin) FilterDamage(_ *javamob.Mob, d *mob.Damage) { fireImmune(d) }
+
 // FinalizeSpawn is Zombie.finalizeSpawn with ZombifiedPiglin's
 // randomizeReinforcementsChance: never reinforcements.
 func (z *ZombifiedPiglin) FinalizeSpawn(m *javamob.Mob, reason javamob.SpawnReason) {

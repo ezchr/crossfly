@@ -8,6 +8,7 @@ import (
 	"github.com/df-mc/dragonfly/server/entity"
 	"github.com/df-mc/dragonfly/server/entity/effect"
 	"github.com/df-mc/dragonfly/server/item"
+	"github.com/df-mc/dragonfly/server/mob"
 	"github.com/df-mc/dragonfly/server/mob/javamob"
 	"github.com/df-mc/dragonfly/server/mob/javamob/goal"
 	"github.com/df-mc/dragonfly/server/mob/javamob/monster"
@@ -64,6 +65,9 @@ func (w *WitherSkeleton) FinalizeSpawn(m *javamob.Mob, _ javamob.SpawnReason) {
 	m.SyncAttributes()
 	w.ReassessWeaponGoal(m)
 }
+
+// FilterDamage: fire immune.
+func (w *WitherSkeleton) FilterDamage(_ *javamob.Mob, d *mob.Damage) { fireImmune(d) }
 
 // DoHurtTarget is WitherSkeleton.doHurtTarget: Wither I for 10 s.
 func (w *WitherSkeleton) DoHurtTarget(m *javamob.Mob, target world.Entity) bool {
