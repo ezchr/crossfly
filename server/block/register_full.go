@@ -49,6 +49,7 @@ func RegisterJavaRedstone() {
 		registerAll(allDispensers())
 		registerAll(allIronDoors())
 		registerAll(allCopperBulbs())
+		registerAll(allBubbleColumns())
 		for _, d := range cube.Directions() {
 			world.RegisterBlock(Chest{Facing: d, Trapped: true})
 			world.RegisterBlock(Lectern{Facing: d, Powered: true})

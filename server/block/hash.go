@@ -259,6 +259,7 @@ const (
 	hashWoodFenceGate
 	hashWoodTrapdoor
 	hashWool
+	hashBubbleColumn
 	hashCustomBlockBase
 )
 
