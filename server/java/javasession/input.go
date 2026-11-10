@@ -180,8 +180,11 @@ func (s *Session) handleInput(id int32, body []byte) (bool, error) {
 		s.do(func(tx *world.Tx, c session.Controllable) {
 			e, ok := s.entityByID(tx, target)
 			if !ok {
-				s.log.Debug("attack: unknown target", "id", target)
-				return
+				// A Java client attacks the ender dragon through its part entities.
+				if e, ok = s.dragonPartHit(tx, target); !ok {
+					s.log.Debug("attack: unknown target", "id", target)
+					return
+				}
 			}
 			// AttackEntity swings the arm itself when the attack is valid.
 			hit := c.AttackEntity(e)

@@ -8,6 +8,7 @@ import (
 
 	"github.com/df-mc/dragonfly/server/block"
 	"github.com/df-mc/dragonfly/server/block/cube"
+	"github.com/df-mc/dragonfly/server/block/cube/trace"
 	"github.com/df-mc/dragonfly/server/entity"
 	"github.com/df-mc/dragonfly/server/mob"
 	"github.com/df-mc/dragonfly/server/mob/component/combat/sense"
@@ -73,8 +74,11 @@ type Dragon struct {
 	crystals map[*world.EntityHandle]mgl64.Vec3
 	inWall   bool
 
-	// Parts are the hit boxes of the body parts, updated every tick.
+	// Parts are the hit boxes of the body parts, updated every tick
+	// (ActorCollision sub-AABBs: head 1, neck 3, body 5x3x5, three tail
+	// segments 2, wings 4x3x4).
 	Head, Neck, Body, Wing1, Wing2 cube.BBox
+	Tail                           [3]cube.BBox
 
 	dying     bool
 	deathTime int
@@ -524,6 +528,120 @@ func (d *Dragon) updateParts(m *mob.Mob) {
 	u, v := sinDeg(yaw-d.YRotA*0.01), cosDeg(yaw-d.YRotA*0.01)
 	d.Head = boxAt(mgl64.Vec3{pos[0] + u*6.5*p, pos[1] + headY + hh + q*6.5, pos[2] - v*6.5*p}, 1, 1)
 	d.Neck = boxAt(mgl64.Vec3{pos[0] + u*5.5*p, pos[1] + headY + hh + q*5.5, pos[2] - v*5.5*p}, 3, 3)
+	// The tail: segment k follows the flight history 2k+4 ticks back, 2(k+1)
+	// behind the body (BDS adds no half height here).
+	yaw5, _ := d.latency(5)
+	for k := range d.Tail {
+		ly, lyY := d.latency(2*k + 4)
+		ang := yaw + wrapDegrees(ly-yaw5)
+		sm, cm := sinDeg(ang), cosDeg(ang)
+		dist := float64(k+1) * 2
+		d.Tail[k] = boxAt(mgl64.Vec3{
+			pos[0] - (dist*sm+s*1.5)*p,
+			lyY - y5 + pos[1] - (dist+1.5)*q + 1.5,
+			pos[2] + (dist*cm+t*1.5)*p,
+		}, 2, 2)
+	}
+}
+
+// Dragon parts in the order of the BDS sub-AABBs and of Java's
+// EnderDragon.subEntities (the part entity ids follow the dragon's in it).
+const (
+	PartHead = iota
+	PartNeck
+	PartBody
+	PartTail1
+	PartTail2
+	PartTail3
+	PartWing1
+	PartWing2
+	partCount
+)
+
+// Part returns the hit box of part i (PartHead...PartWing2).
+func (d *Dragon) Part(i int) cube.BBox {
+	switch i {
+	case PartHead:
+		return d.Head
+	case PartNeck:
+		return d.Neck
+	case PartBody:
+		return d.Body
+	case PartTail1, PartTail2, PartTail3:
+		return d.Tail[i-PartTail1]
+	case PartWing1:
+		return d.Wing1
+	case PartWing2:
+		return d.Wing2
+	}
+	return cube.BBox{}
+}
+
+// rayPart is the part of the dragon the ray from start to end meets first,
+// each box grown by grow, or -1.
+func (d *Dragon) rayPart(start, end mgl64.Vec3, grow float64) int {
+	best, bestD := -1, math.Inf(1)
+	for i := range partCount {
+		box := d.Part(i)
+		if box == (cube.BBox{}) {
+			continue
+		}
+		box = box.Grow(grow)
+		if box.Vec3Within(start) {
+			return i
+		}
+		r, ok := trace.BBoxIntercept(box, start, end)
+		if !ok {
+			continue
+		}
+		if dd := r.Position().Sub(start).LenSqr(); dd < bestD {
+			best, bestD = i, dd
+		}
+	}
+	return best
+}
+
+// hitPart is the part a hit struck (Actor::setLastHitBB): a Java client
+// names the part it attacked; a projectile's path is clipped against the
+// parts grown by 0.3 (ProjectileSystem); a melee hit follows the attacker's
+// line of sight (HitDetection::searchActors, parts grown by 0.01). Other
+// damage hits no part, which BDS leaves at the last box hit.
+func (d *Dragon) hitPart(m *mob.Mob, dmg *mob.Damage) int {
+	if part, ok := m.TakeHitPart(); ok && part >= 0 && part < partCount {
+		if _, melee := dmg.Source.(entity.AttackDamageSource); melee {
+			return part
+		}
+	}
+	switch src := dmg.Source.(type) {
+	case entity.ProjectileDamageSource:
+		if src.Projectile == nil {
+			return -1
+		}
+		pos := src.Projectile.Position()
+		var vel mgl64.Vec3
+		if v, ok := src.Projectile.(interface{ Velocity() mgl64.Vec3 }); ok {
+			vel = v.Velocity()
+		}
+		if vel.LenSqr() < 1e-8 {
+			// No path: the part the projectile stands in.
+			return d.rayPart(pos, pos, 0.3)
+		}
+		// The projectile hit the dragon's collision box; follow its path on
+		// through the body to the first part it meets.
+		return d.rayPart(pos.Sub(vel), pos.Add(vel.Normalize().Mul(24)), 0.3)
+	case entity.AttackDamageSource:
+		if src.Attacker == nil {
+			return -1
+		}
+		r, ok := src.Attacker.(interface{ Rotation() cube.Rotation })
+		if !ok {
+			return -1
+		}
+		eye := sense.EyePos(src.Attacker)
+		dir := dirOf(r.Rotation()[0], r.Rotation()[1])
+		return d.rayPart(eye, eye.Add(dir.Mul(8)), 0.01)
+	}
+	return -1
 }
 
 // knockBack is EnderDragon::_knockBack: players and mobs under a wing are
@@ -694,41 +812,11 @@ func (d *Dragon) crystalDestroyed(m *mob.Mob, pos mgl64.Vec3, healing bool) {
 // CrystalHealing returns the crystal healing the dragon, if any.
 func (d *Dragon) CrystalHealing() *world.EntityHandle { return d.crystal }
 
-// isHeadHit reports whether damage hit the head or neck: a player's line of
-// sight or a projectile meets them.
-func (d *Dragon) isHeadHit(m *mob.Mob, dmg *mob.Damage) bool {
-	head := d.Head.Grow(0.5)
-	neck := d.Neck.Grow(0.25)
-	switch src := dmg.Source.(type) {
-	case entity.ProjectileDamageSource:
-		if src.Projectile != nil {
-			p := src.Projectile.Position()
-			return head.Grow(1).Vec3Within(p) || neck.Grow(1).Vec3Within(p)
-		}
-	case entity.AttackDamageSource:
-		if src.Attacker == nil {
-			return false
-		}
-		eye := sense.EyePos(src.Attacker)
-		r, ok := src.Attacker.(interface{ Rotation() cube.Rotation })
-		if !ok {
-			return false
-		}
-		dir := dirOf(r.Rotation()[0], r.Rotation()[1])
-		for t := 0.0; t <= 8; t += 0.25 {
-			p := eye.Add(dir.Mul(t))
-			if head.Vec3Within(p) || neck.Vec3Within(p) {
-				return true
-			}
-		}
-	}
-	return false
-}
-
-// modifyDamage is EnderDragon::_hurt: arrows bounce off a sitting dragon
-// (they burn), hits off the head and neck deal min(d,1)+d/4, and only
-// players and explosions hurt it. A lethal hit leaves 1 health and starts
-// the death (on_death).
+// modifyDamage is EnderDragon::_hurt(AABB*): arrows bounce off a sitting
+// dragon (they burn), a hit on any part but the head and neck deals
+// min(d,1)+d/4, and only players (their hits, projectiles and explosions
+// credited to them) and block explosions (beds, respawn anchors) hurt it.
+// A lethal hit leaves 1 health and starts the death (on_death).
 func (d *Dragon) modifyDamage(m *mob.Mob, dmg *mob.Damage) {
 	if d.dying || m.Health() <= 0 || m.HasComponent("minecraft:behavior.dragondeath") {
 		if _, void := dmg.Source.(entity.VoidDamageSource); !void {
@@ -750,13 +838,14 @@ func (d *Dragon) modifyDamage(m *mob.Mob, dmg *mob.Damage) {
 			return
 		}
 	}
-	_, explosion := dmg.Source.(entity.ExplosionDamageSource)
-	if !explosion && (dmg.Attacker == nil || !sense.IsPlayer(dmg.Attacker)) {
+	if !dragonHurtBy(dmg) {
 		dmg.Cancel = true
 		return
 	}
-	if !d.headHit && !d.isHeadHit(m, dmg) {
-		dmg.Amount = math.Min(dmg.Amount, 1) + dmg.Amount*0.25
+	if !d.headHit {
+		if part := d.hitPart(m, dmg); part != PartHead && part != PartNeck {
+			dmg.Amount = math.Min(dmg.Amount, 1) + dmg.Amount*0.25
+		}
 	}
 	if dmg.Amount < 0.01 {
 		dmg.Cancel = true
@@ -766,6 +855,26 @@ func (d *Dragon) modifyDamage(m *mob.Mob, dmg *mob.Damage) {
 		dmg.Amount = math.Max(m.Health()-1, 0)
 		d.pendingDeath = true
 	}
+}
+
+// dragonHurtBy is the source check of EnderDragon::_hurt: the damage
+// source's entity is a player (a projectile's or explosion's owner counts),
+// or the cause is a block explosion.
+func dragonHurtBy(dmg *mob.Damage) bool {
+	if dmg.Attacker != nil && sense.IsPlayer(dmg.Attacker) {
+		return true
+	}
+	if ex, ok := dmg.Source.(entity.ExplosionDamageSource); ok {
+		switch src := ex.Source.(type) {
+		case world.EntityExplosionSource:
+			return src.Entity != nil && sense.IsPlayer(src.Entity)
+		case world.Entity:
+			return sense.IsPlayer(src)
+		case world.BlockExplosionSource, *world.BlockExplosionSource:
+			return true
+		}
+	}
+	return false
 }
 
 // onHurt counts the damage a sitting dragon takes: past a quarter of its

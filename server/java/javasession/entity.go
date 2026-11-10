@@ -42,8 +42,18 @@ func (s *Session) addEntityID(e world.Entity) int32 {
 	if s.nextEntityID == selfEntityID {
 		s.nextEntityID++
 	}
-	s.entityIDs[e.H()] = s.nextEntityID
-	return s.nextEntityID
+	id := s.nextEntityID
+	s.entityIDs[e.H()] = id
+	if e.H().Type().EncodeEntity() == dragonID {
+		// The client numbers the dragon's part entities after it (EnderDragon.setId):
+		// no other entity may get those ids, or attacking a part would hit it.
+		for range dragonParts {
+			if s.nextEntityID++; s.nextEntityID == selfEntityID {
+				s.nextEntityID++
+			}
+		}
+	}
+	return id
 }
 
 func (s *Session) removeEntityID(e world.Entity) (int32, bool) {
