@@ -10,6 +10,7 @@ import (
 	"github.com/df-mc/dragonfly/server/block/cube"
 	"github.com/df-mc/dragonfly/server/entity"
 	"github.com/df-mc/dragonfly/server/item"
+	"github.com/df-mc/dragonfly/server/mob/component/core"
 	"github.com/df-mc/dragonfly/server/mob/internal/mobtest"
 	"github.com/df-mc/dragonfly/server/mob/javamob"
 	"github.com/df-mc/dragonfly/server/player"
@@ -463,4 +464,67 @@ func TestPandaBamboo(t *testing.T) {
 			t.Fatalf("panda not sitting and eating: flags %v eat %v held %v", pd.flags, pd.eatCounter, itemName(m.ItemBySlot(javamob.SlotMainHand)))
 		}
 	})
+}
+
+// TestDonkeyChest: a tamed donkey takes a chest; its window then has the
+// saddle and armour slots and 15 chest slots, and the chest and its items
+// drop when it dies.
+func TestDonkeyChest(t *testing.T) {
+	w := mobtest.New(t, mobtest.Options{})
+	arena(w)
+	r := spawnJava(t, w, "minecraft:donkey", mgl64.Vec3{0.5, 1, 0.5})
+	p := w.AddPlayer("tester", mgl64.Vec3{2.5, 1, 0.5})
+	withMob(t, w, r, func(m *javamob.Mob) {
+		m.Behaviour().(*Equine).tameWithName(m, mustPlayer(t, w, p, m.Tx()).(*player.Player))
+	})
+	p.Interact(r, stackOf(t, "minecraft:chest", 1))
+	withMob(t, w, r, func(m *javamob.Mob) {
+		h := m.Behaviour().(*Equine)
+		if !h.Chest || !m.Meta().Chested {
+			t.Fatal("no chest on the donkey")
+		}
+		win, ok := h.Window(m, mustPlayer(t, w, p, m.Tx()), entity.WindowLayoutJava)
+		if !ok || win.ChestSlots != 15 || win.Inventory.Size() != 17 {
+			t.Fatalf("window: ok %v chest %v size %v", ok, win.ChestSlots, win.Inventory.Size())
+		}
+		_ = win.Inventory.SetItem(2, stackOf(t, "minecraft:diamond", 3))
+		if it, _ := h.inv.Item(0); itemName(it) != "minecraft:diamond" {
+			t.Fatal("window slot not written to the chest")
+		}
+	})
+}
+
+// TestLlamaStrengthColumns: a chested llama has 3 x strength slots.
+func TestLlamaStrengthColumns(t *testing.T) {
+	w := mobtest.New(t, mobtest.Options{})
+	arena(w)
+	r := spawnJava(t, w, "minecraft:llama", mgl64.Vec3{0.5, 1, 0.5})
+	withMob(t, w, r, func(m *javamob.Mob) {
+		h := m.Behaviour().(*Equine)
+		if h.llama.Strength < 1 || h.llama.Strength > 5 {
+			t.Fatalf("strength %v", h.llama.Strength)
+		}
+		h.setChest(m, true)
+		if h.inv.Size() != 3*h.llama.Strength {
+			t.Fatalf("llama inventory %v for strength %v", h.inv.Size(), h.llama.Strength)
+		}
+	})
+}
+
+// TestLlamaCaravan: a free llama near a leashed one joins it as a caravan
+// and follows.
+func TestLlamaCaravan(t *testing.T) {
+	w := mobtest.New(t, mobtest.Options{})
+	arena(w)
+	lead := spawnJava(t, w, "minecraft:llama", mgl64.Vec3{0.5, 1, 0.5})
+	tail := spawnJava(t, w, "minecraft:llama", mgl64.Vec3{5.5, 1, 0.5})
+	p := w.AddPlayer("tester", mgl64.Vec3{-2.5, 1, 0.5})
+	withMob(t, w, lead, func(m *javamob.Mob) { core.Leash(m.Mob, mustPlayer(t, w, p, m.Tx())) })
+	if _, ok := w.TickUntil(400, func(tx *world.Tx) bool {
+		bm, _ := tail.Mob(tx)
+		jm, _ := javamob.Of(bm)
+		return jm.Behaviour().(*Equine).llama.inCaravan()
+	}); !ok {
+		t.Fatal("the free llama did not join the leashed one")
+	}
 }
