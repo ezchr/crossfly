@@ -1,6 +1,6 @@
 //go:build crossfly_full
 
-package nether
+package jnether
 
 import (
 	"iter"
@@ -146,11 +146,11 @@ type javaProjectile struct {
 	lastDeflectedBy *world.EntityHandle
 
 	// Shulker bullet steering (ShulkerBullet).
-	target                  *world.EntityHandle
-	moveDir                 cube.Face
-	hasMoveDir              bool
-	flightSteps             int
-	targetDelta             mgl64.Vec3
+	target      *world.EntityHandle
+	moveDir     cube.Face
+	hasMoveDir  bool
+	flightSteps int
+	targetDelta mgl64.Vec3
 }
 
 func newProjectile(t ProjectileType, owner *world.EntityHandle) *javaProjectile {
@@ -373,10 +373,10 @@ type entityHit struct {
 	face cube.Face
 }
 
-func (h entityHit) BBox() cube.BBox       { return h.bb }
-func (h entityHit) Position() mgl64.Vec3  { return h.pos }
-func (h entityHit) Face() cube.Face       { return h.face }
-func (h entityHit) Entity() world.Entity  { return h.e }
+func (h entityHit) BBox() cube.BBox      { return h.bb }
+func (h entityHit) Position() mgl64.Vec3 { return h.pos }
+func (h entityHit) Face() cube.Face      { return h.face }
+func (h entityHit) Entity() world.Entity { return h.e }
 
 // candidates yields the entities in box the projectile may hit
 // (canHitEntity).

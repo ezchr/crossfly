@@ -1,6 +1,6 @@
 //go:build crossfly_full
 
-package nether
+package jnether
 
 import (
 	"time"
