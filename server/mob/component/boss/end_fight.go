@@ -763,4 +763,6 @@ func (f *EndFight) PreviouslyKilled() bool { return f.prevKilled }
 
 // JavaDragonKilled is EnderDragonFight.setDragonKilled for the Java dragon: the exit portal opens, a gateway appears and
 // the first dragon lays its egg.
-func (f *EndFight) JavaDragonKilled(tx *world.Tx, dragon world.Entity) { f.onDragonKilled(tx, dragon.H()) }
+func (f *EndFight) JavaDragonKilled(tx *world.Tx, dragon world.Entity) {
+	f.onDragonKilled(tx, dragon.H())
+}
