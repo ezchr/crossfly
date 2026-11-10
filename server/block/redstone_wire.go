@@ -449,7 +449,7 @@ func redstoneWireCanTransmitDown(src world.BlockSource, pos cube.Pos) bool {
 // connect to dust.
 func redstoneWireDirectConnection(src world.BlockSource, pos cube.Pos, face cube.Face) bool {
 	b := src.Block(pos)
-	if world.JavaRedstoneInactive(b) {
+	if world.RedstoneInactive(b) {
 		return false
 	}
 	if world.JavaRedstone() {

@@ -45,6 +45,7 @@ positions (through conductors and along dust) into a graph, works out the power 
 | `RedstoneAnalogWatcher.RedstoneAnalogCheck(pos, tx)` | once a tick, after block entities ticked, for watchers that are block entities; and on `tx.Redstone().AnalogChanged` | comparators reading containers |
 | `RedstoneAnalogOutputter.RedstoneAnalogOutput(pos, tx)` | by the comparator | the reading of a block (0-15) not in the block package's list |
 | `RedstoneNonConductive` | | a full solid block that does not conduct (TNT) |
+| `RedstoneComponentSwitch.RedstoneComponent()` | when the engine first sees the runtime ID | a block that is a component in some states or modes only (with Dragonfly redstone only trapped chests are) |
 
 `RedstoneUpdate` tells why: `OldPower`/`NewPower` (the engine remembers the last power it saw at the position),
 `PowerChanged()`, `Rising()`, `Falling()`, and `SelfCaused()` (the update comes from the component's own output
@@ -72,6 +73,11 @@ nothing if a tick is already waiting) or `tx.ScheduleBlockUpdate` with `world.Re
 `ScheduledTick` read the live block and inputs again, then write the new state with
 `tx.Redstone().SetOutput(pos, newState)`. `SetOutput` keeps the power the block takes in and has the engine
 evaluate around it in its next phase, so the change propagates within the same tick.
+
+**Component state**. What a component remembers between ticks that its block state does not hold (the delay line of
+a repeater, the last readings of a comparator): `tx.Redstone().State(pos)`, `SetState(pos, v uint64)`,
+`ClearState(pos)`. The engine drops it when the block at pos is set without `KeepRedstonePower` (`SetOutput` keeps
+it) and when the chunk unloads. It is not saved: rebuild it from the block when it is missing.
 
 **Pulse sources** (buttons, pressure plates, tripwire hooks, target, lectern page turns). Turn on with
 `SetOutput`, schedule the end with `Delay`/`ScheduleBlockUpdate`, turn off with `SetOutput` in `ScheduledTick`

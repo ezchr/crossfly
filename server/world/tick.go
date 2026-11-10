@@ -73,7 +73,7 @@ func (t ticker) tick(tx *Tx) {
 		}
 	}
 
-	if javaRedstone {
+	if fullBuild {
 		w.updateWeatherIntensity()
 	}
 	rain, thunder, tick, tim, cycle := w.set.Raining, w.set.Thundering && w.set.Raining, w.set.CurrentTick, int(w.set.Time), w.set.TimeCycle

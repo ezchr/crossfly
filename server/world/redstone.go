@@ -170,6 +170,8 @@ type redstoneEngine struct {
 	evaluating        map[cube.Pos]struct{}
 	suppressedSources map[cube.Pos]int
 	torchBurnout      map[cube.Pos]redstoneTorchBurnout
+	// states is the transient state components keep by position (RedstoneTransaction.SetState).
+	states map[cube.Pos]uint64
 	// compileState is the graph compilation state kept for the next compilation.
 	compileState *redstoneCompile
 	// lists are what compilations found around positions, kept until a block near them changes.
@@ -409,6 +411,9 @@ func (e *redstoneEngine) removeChunk(chunkPos ChunkPos) {
 	maps.DeleteFunc(e.torchBurnout, func(pos cube.Pos, _ redstoneTorchBurnout) bool {
 		return chunkPosFromBlockPos(pos) == chunkPos
 	})
+	maps.DeleteFunc(e.states, func(pos cube.Pos, _ uint64) bool {
+		return chunkPosFromBlockPos(pos) == chunkPos
+	})
 }
 
 // forget clears cached redstone input and output power for pos.
@@ -419,6 +424,7 @@ func (e *redstoneEngine) forget(pos cube.Pos) {
 	delete(e.power, pos)
 	delete(e.output, pos)
 	delete(e.evaluating, pos)
+	delete(e.states, pos)
 }
 
 // tick evaluates all dirty redstone positions for the current world tick.
@@ -1721,7 +1727,7 @@ func redstoneStepFace(from, to cube.Pos) cube.Face {
 
 // classifyRedstoneBlock reports the redstone capabilities implemented by b.
 func classifyRedstoneBlock(b Block) (source, consumer, action, relayer bool) {
-	if JavaRedstoneInactive(b) {
+	if RedstoneInactive(b) {
 		// Its redstone methods do nothing without Java redstone.
 		return
 	}

@@ -66,5 +66,6 @@ func (Chest) notifyTrappedBelow(pos cube.Pos, tx *world.Tx) {
 	}
 }
 
-// JavaRedstoneExtension: chests are redstone components (trapped chests give power) only with Java redstone.
-func (Chest) JavaRedstoneExtension() {}
+// RedstoneComponent: with Java redstone every chest is a redstone component, as before; with Dragonfly's redstone only
+// a trapped chest is (a plain chest stays out of the circuits and dust does not connect to it).
+func (c Chest) RedstoneComponent() bool { return c.Trapped || world.JavaRedstone() }

@@ -325,3 +325,59 @@ func TestDragonflyRedstoneLampBesideDustLine(t *testing.T) {
 		t.Fatalf("lamp beside a dust line: lit=%t power=%d, want off and 0", lit, power)
 	}
 }
+
+// Only trapped chests are redstone components with Dragonfly redstone; with Java redstone every chest stays one.
+func TestDragonflyRedstoneOnlyTrappedChestsAreComponents(t *testing.T) {
+	if world.RedstoneInactive(Chest{}) || world.RedstoneInactive(Chest{Trapped: true}) {
+		t.Fatal("a chest is passed by with Java redstone")
+	}
+	dragonflyRedstone(t)
+	if !world.RedstoneInactive(Chest{}) {
+		t.Fatal("a plain chest is a redstone component with Dragonfly redstone")
+	}
+	if world.RedstoneInactive(Chest{Trapped: true}) {
+		t.Fatal("a trapped chest is no redstone component with Dragonfly redstone")
+	}
+}
+
+// The transient state a component keeps stays while it writes its own output and goes when its block is replaced.
+func TestDragonflyRedstoneComponentState(t *testing.T) {
+	_, run := dfRedstoneWorld(t)
+	pos := cube.Pos{0, 64, 0}
+	run(func(tx *world.Tx) {
+		tx.SetBlock(pos, RedstoneTorch{Facing: cube.FaceDown, Lit: true}, nil)
+		r := tx.Redstone()
+		if _, ok := r.State(pos); ok {
+			t.Fatal("state before any was set")
+		}
+		r.SetState(pos, 42)
+		r.SetOutput(pos, RedstoneTorch{Facing: cube.FaceDown})
+		if v, ok := r.State(pos); !ok || v != 42 {
+			t.Fatalf("state after SetOutput = %d, %t, want 42", v, ok)
+		}
+		tx.SetBlock(pos, Stone{}, nil)
+		if _, ok := r.State(pos); ok {
+			t.Fatal("state kept after the block was replaced")
+		}
+		r.SetState(pos, 7)
+		r.ClearState(pos)
+		if _, ok := r.State(pos); ok {
+			t.Fatal("state kept after ClearState")
+		}
+	})
+}
+
+// Delay schedules a tick unless one waits, with Dragonfly redstone as well.
+func TestDragonflyRedstoneDelay(t *testing.T) {
+	_, run := dfRedstoneWorld(t)
+	pos := cube.Pos{0, 64, 0}
+	run(func(tx *world.Tx) {
+		torch := RedstoneTorch{Facing: cube.FaceDown, Lit: true}
+		tx.SetBlock(pos, torch, nil)
+		r := tx.Redstone()
+		r.Delay(pos, torch, 3)
+		if r.Delay(pos, torch, 3) {
+			t.Fatal("Delay scheduled a second tick while one waits")
+		}
+	})
+}

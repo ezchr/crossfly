@@ -259,6 +259,23 @@ func JavaRedstoneInactive(b Block) bool {
 	return ok
 }
 
+// RedstoneComponentSwitch may be implemented by blocks that are redstone components in some states or modes only: a
+// trapped chest is one with Dragonfly's redstone, a plain chest is not. RedstoneComponent must depend only on the
+// block's state and the redstone mode: the engine keeps the answer by runtime ID.
+type RedstoneComponentSwitch interface {
+	RedstoneComponent() bool
+}
+
+// RedstoneInactive reports whether the redstone methods of b are to be passed by: b is a JavaRedstoneExtension while
+// Java redstone is off, or a RedstoneComponentSwitch that is off.
+func RedstoneInactive(b Block) bool {
+	if JavaRedstoneInactive(b) {
+		return true
+	}
+	s, ok := b.(RedstoneComponentSwitch)
+	return ok && !s.RedstoneComponent()
+}
+
 // CoreRedstoneOnly is implemented by blocks that are redstone components only without Java redstone (TNT, which in
 // Java Edition reacts to block updates instead).
 type CoreRedstoneOnly interface {

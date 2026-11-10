@@ -95,6 +95,28 @@ func RedstoneTicks(n int) time.Duration {
 // sortRedstonePositions sorts positions in the engine's deterministic order.
 func sortRedstonePositions(p []cube.Pos) { slices.SortFunc(p, compareBlockPos) }
 
+// State returns the transient state the redstone component at pos keeps (SetState), and whether it has any.
+func (r RedstoneTransaction) State(pos cube.Pos) (v uint64, ok bool) {
+	v, ok = r.tx.World().redstone.states[pos]
+	return v, ok
+}
+
+// SetState stores transient state for the redstone component at pos: what it remembers between ticks that its block
+// state does not hold, such as the inputs a repeater has yet to pass on. The engine drops it when the block at pos
+// is set without SetOpts.KeepRedstonePower (SetOutput keeps it) and when the chunk unloads; it is not saved.
+func (r RedstoneTransaction) SetState(pos cube.Pos, v uint64) {
+	e := r.tx.World().redstone
+	if e.states == nil {
+		e.states = make(map[cube.Pos]uint64)
+	}
+	e.states[pos] = v
+}
+
+// ClearState removes the transient state of the redstone component at pos.
+func (r RedstoneTransaction) ClearState(pos cube.Pos) {
+	delete(r.tx.World().redstone.states, pos)
+}
+
 // Torch returns a transaction-scoped handle for transient redstone torch state at pos.
 func (r RedstoneTransaction) Torch(pos cube.Pos) RedstoneTorchTransaction {
 	return RedstoneTorchTransaction{tx: r.tx, pos: pos}

@@ -533,7 +533,7 @@ func (tx *Tx) setBlock(pos cube.Pos, b Block, opts *SetOpts) {
 		}
 	}
 
-	if javaRedstone && oldFiltering != max(w.conf.Blocks.FilteringBlock(c.Block(x, y, z, 0)), w.conf.Blocks.FilteringBlock(c.Block(x, y, z, 1))) {
+	if fullBuild && oldFiltering != max(w.conf.Blocks.FilteringBlock(c.Block(x, y, z, 0)), w.conf.Blocks.FilteringBlock(c.Block(x, y, z, 1))) {
 		w.invalidateCurrentSky(chunkPosFromBlockPos(pos))
 	}
 	if !opts.KeepRedstonePower && (redstoneAfterRelevant || (needOldBlock && isRedstoneRelevant(oldBlock))) {
@@ -719,7 +719,7 @@ func (tx *Tx) buildStructure(pos cube.Pos, s Structure) {
 			c.SetBlock(0, 0, 0, 0, c.Block(0, 0, 0, 0)) // Make sure the heightmap is recalculated.
 			c.modified = true
 			w.everyBlockChanged()
-			if javaRedstone {
+			if fullBuild {
 				w.invalidateCurrentSky(chunkPos)
 			}
 
@@ -778,7 +778,7 @@ func (tx *Tx) setLiquid(pos cube.Pos, b Liquid) {
 	}
 	chunkPos := chunkPosFromBlockPos(pos)
 	c := tx.chunk(chunkPos)
-	if javaRedstone {
+	if fullBuild {
 		w.invalidateCurrentSky(chunkPos)
 	}
 	if b == nil {
