@@ -465,6 +465,11 @@ func redstoneWireDirectConnection(src world.BlockSource, pos cube.Pos, face cube
 		// are, which dragonfly does not implement for them yet.
 		return true
 	}
+	if world.JavaRedstone() {
+		// Java Edition's shouldConnectTo: wire connects only to wire and signal sources, never to a block that only
+		// takes power, such as an extended or moving piston beside it.
+		return false
+	}
 	return redstoneWireNonSolidComponent(pos, b, src, face)
 }
 
