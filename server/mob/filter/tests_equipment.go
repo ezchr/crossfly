@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/df-mc/dragonfly/server/item"
+	"github.com/df-mc/dragonfly/server/item/recipe"
 )
 
 // Equipment tests. has_equipment follows ActorHasEquipmentTest: it collects
@@ -101,7 +102,9 @@ func hasTag(it Item, tag string) bool {
 			return true
 		}
 	}
-	return false
+	// The item tags of the Bedrock item registry (sulfur cube archetypes,
+	// is_food, logs...): Item::hasTag.
+	return recipe.NewItemTag(ns(tag), 1).Contains(ns(it.Name))
 }
 
 func hasEnchant(it Item, e string) bool {
