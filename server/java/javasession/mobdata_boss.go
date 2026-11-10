@@ -190,6 +190,10 @@ func init() {
 		if mobBool(e, mobSitting.Sitting) {
 			phase = 6
 		}
+		if p, ok := mobAs[interface{ DragonPhase() int32 }](e); ok {
+			// The Java mob mode dragon knows its real phase.
+			phase = p.DragonPhase()
+		}
 		d.varInt(16, phase)
 	}})
 	set("warden", mobKind{extra: func(_ *Session, d *mobData, e world.Entity, _ string) {

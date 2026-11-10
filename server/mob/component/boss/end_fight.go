@@ -14,6 +14,7 @@ import (
 	"github.com/df-mc/dragonfly/server/entity"
 	"github.com/df-mc/dragonfly/server/mob"
 	"github.com/df-mc/dragonfly/server/world"
+	"github.com/go-gl/mathgl/mgl64"
 )
 
 // EndFight is BDS EndDragonFight, one per End world: the dragon appears when
@@ -229,6 +230,13 @@ func (f *EndFight) findOrCreateDragon(tx *world.Tx) {
 		if e.H().Type().EncodeEntity() != DragonID {
 			continue
 		}
+		if JavaDragon != nil {
+			if JavaDragon.Attach(e, f) {
+				f.adoptDragon(e.H())
+				return
+			}
+			continue
+		}
 		if m, ok := mob.Of(e); ok {
 			f.initializeDragon(m)
 			return
@@ -248,6 +256,12 @@ func (f *EndFight) findOrCreateDragon(tx *world.Tx) {
 // way.
 func (f *EndFight) createNewDragon(tx *world.Tx) {
 	yaw := rand.Float64() * 360
+	if JavaDragon != nil {
+		if e := JavaDragon.Spawn(tx, dragonSpawnPos.Vec3(), yaw); e != nil && JavaDragon.Attach(e, f) {
+			f.adoptDragon(e.H())
+		}
+		return
+	}
 	m, err := mob.Spawn(tx, DragonID, dragonSpawnPos.Vec3(), mob.SpawnOptions{Rotation: cube.Rotation{yaw, 0}})
 	if err != nil {
 		slog.Default().Warn("mob: the End fight could not make a dragon", "err", err)
@@ -261,9 +275,14 @@ func (f *EndFight) createNewDragon(tx *world.Tx) {
 func (f *EndFight) initializeDragon(m *mob.Mob) {
 	d := DragonOf(m)
 	d.fight, d.prevKilled = f, f.prevKilled
-	id := handleID(m.H())
+	f.adoptDragon(m.H())
+}
+
+// adoptDragon makes h the fight's dragon.
+func (f *EndFight) adoptDragon(h *world.EntityHandle) {
+	id := handleID(h)
 	changed := f.dragonID != id || !f.dragonSpawned
-	f.dragon, f.dragonID, f.dragonSpawned = m.H(), id, true
+	f.dragon, f.dragonID, f.dragonSpawned = h, id, true
 	if changed {
 		f.save()
 	}
@@ -272,8 +291,8 @@ func (f *EndFight) initializeDragon(m *mob.Mob) {
 // onDragonKilled is the dragon killed callback set in _initializeDragon, run
 // when the death animation ends: the exit portal opens, a gateway pair
 // appears, and the first dragon of the world lays its egg on the portal.
-func (f *EndFight) onDragonKilled(tx *world.Tx, m *mob.Mob) {
-	if handleID(m.H()) != f.dragonID {
+func (f *EndFight) onDragonKilled(tx *world.Tx, h *world.EntityHandle) {
+	if handleID(h) != f.dragonID {
 		return
 	}
 	f.spawnExitPortal(tx, true)
@@ -331,7 +350,7 @@ func (f *EndFight) updateCrystalCount(tx *world.Tx) {
 		n += len(crystalsIn(tx, s.topBox()))
 	}
 	f.numCrystals = n
-	if f.dragon != nil {
+	if f.dragon != nil && JavaDragon == nil {
 		if e, ok := f.dragon.Entity(tx); ok {
 			if m, ok := mob.Of(e); ok {
 				DragonOf(m).NumCrystals = n
@@ -719,6 +738,29 @@ func (f *EndFight) save() {
 // ended.
 func (d *Dragon) dragonDied(m *mob.Mob) {
 	if d.fight != nil {
-		d.fight.onDragonKilled(m.Tx(), m)
+		d.fight.onDragonKilled(m.Tx(), m.H())
 	}
 }
+
+// JavaDragonHooks let the End fight run the Java ender dragon (Java mob mode, package jnether) instead of the
+// Bedrock one.
+type JavaDragonHooks interface {
+	// Spawn adds a new dragon at pos facing yaw (EnderDragonFight.createNewDragon) and returns it.
+	Spawn(tx *world.Tx, pos mgl64.Vec3, yaw float64) world.Entity
+	// Attach tells e that it is the fight's dragon. It returns false if e is not a Java dragon.
+	Attach(e world.Entity, f *EndFight) bool
+}
+
+// JavaDragon, when set before any End world ticks, makes the End fight use the Java dragon. Nil (the default) keeps
+// the Bedrock dragon.
+var JavaDragon JavaDragonHooks
+
+// AliveCrystals is EnderDragonFight.aliveCrystals: the crystals standing on the spikes, counted every 100 ticks.
+func (f *EndFight) AliveCrystals() int { return f.numCrystals }
+
+// PreviouslyKilled reports whether a dragon died in this world before.
+func (f *EndFight) PreviouslyKilled() bool { return f.prevKilled }
+
+// JavaDragonKilled is EnderDragonFight.setDragonKilled for the Java dragon: the exit portal opens, a gateway appears and
+// the first dragon lays its egg.
+func (f *EndFight) JavaDragonKilled(tx *world.Tx, dragon world.Entity) { f.onDragonKilled(tx, dragon.H()) }
