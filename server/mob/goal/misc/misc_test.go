@@ -316,6 +316,16 @@ func TestTargetWhenPushed(t *testing.T) {
 	g := w.Spawn("minecraft:iron_golem", mgl64.Vec3{0.5, 1, 0.5})
 	pig := w.Spawn("minecraft:pig", mgl64.Vec3{0.9, 1, 0.5})
 	swap(w, g, "pushed", goal(t, "minecraft:behavior.target_when_pushed", `{"percent_chance": 100, "entity_types": [{"filters": {"test": "is_family", "subject": "other", "value": "pig"}}]}`), true)
+	// swap ticks 3 times first, and in those ticks the two may already have
+	// pushed each other apart: put the pig back into the golem now that the
+	// goal is there.
+	w.Do(func(tx *world.Tx) {
+		for r, pos := range map[*mobtest.Ref]mgl64.Vec3{g: {0.5, 1, 0.5}, pig: {0.9, 1, 0.5}} {
+			m, _ := r.Mob(tx)
+			m.SetPosition(pos)
+			m.SetVelocity(mgl64.Vec3{})
+		}
+	})
 	if _, ok := w.TickUntil(20, func(tx *world.Tx) bool {
 		m, _ := g.Mob(tx)
 		t, _ := m.Target()
