@@ -38,6 +38,7 @@ const (
 	hashCandle
 	hashCarpet
 	hashCarrot
+	hashCaveVines
 	hashChest
 	hashChiseledQuartz
 	hashCinnabar
@@ -1211,4 +1212,8 @@ func (s SnifferEgg) Hash() (uint64, uint64) {
 
 func (b SweetBerryBush) Hash() (uint64, uint64) {
 	return hashSweetBerryBush, uint64(b.Age)
+}
+
+func (c CaveVines) Hash() (uint64, uint64) {
+	return hashCaveVines, uint64(c.Age) | uint64(boolByte(c.Berries))<<5 | uint64(boolByte(c.Body))<<6
 }
