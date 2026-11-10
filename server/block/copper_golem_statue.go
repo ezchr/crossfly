@@ -34,9 +34,12 @@ func (c CopperGolemStatue) BreakInfo() BreakInfo {
 }
 
 // Activate ...
-func (c CopperGolemStatue) Activate(pos cube.Pos, _ cube.Face, tx *world.Tx, u item.User, _ *item.UseContext) bool {
+func (c CopperGolemStatue) Activate(pos cube.Pos, _ cube.Face, tx *world.Tx, u item.User, ctx *item.UseContext) bool {
 	held, _ := u.HeldItems()
 	if !held.Empty() {
+		if _, axe := held.Item().(item.Axe); axe {
+			return c.revive(pos, tx, ctx)
+		}
 		// copper golems can't be activated while holding an item.
 		return false
 	}
@@ -47,6 +50,27 @@ func (c CopperGolemStatue) Activate(pos cube.Pos, _ cube.Face, tx *world.Tx, u i
 	}
 	c.Pose = poses[nextIndex]
 	tx.SetBlock(pos, c, nil)
+	return true
+}
+
+// revive turns an unwaxed, unoxidised statue that an axe is used on back into a copper golem (26.60
+// CopperGolemStatueBlock use, 0x14908f420; Java's CopperGolemStatueBlock does the same): the statue goes, the golem
+// stands where it stood looking the statue's way and gets minecraft:from_serialized_entity, the axe takes one damage
+// and the scrape particles show. Statues hold no saved golem here, so the golem is a new one. Any other statue is
+// left to the axe (wax off, scrape), as are all statues without mobs.
+func (c CopperGolemStatue) revive(pos cube.Pos, tx *world.Tx, ctx *item.UseContext) bool {
+	if c.Waxed || c.Oxidation != UnoxidisedOxidation() {
+		return false
+	}
+	at := mgl64.Vec3{float64(pos[0]) + 0.5, float64(pos[1]), float64(pos[2]) + 0.5}
+	if _, ok := SpawnMob(tx, "minecraft:copper_golem", at, MobSpawnOptions{Yaw: golemYaw(c.Facing), Event: "minecraft:from_serialized_entity"}); !ok {
+		return false
+	}
+	tx.SetBlock(pos, nil, nil)
+	tx.PlaySound(pos.Vec3Centre(), sound.CopperScraped{})
+	if ctx != nil {
+		ctx.DamageItem(1)
+	}
 	return true
 }
 
