@@ -210,7 +210,7 @@ func (t *EntityTracker) VisibleBy(tx *world.Tx, mem *Memories) bool {
 		return false
 	}
 	v, ok := Get(mem, MemNearestVisibleLivingEntities)
-	return ok && v.Contains(t.Handle)
+	return ok && v.Contains(tx, t.Handle)
 }
 
 // IsLiving reports whether e is a LivingEntity in Java's sense. The mob
@@ -237,20 +237,21 @@ type WalkTarget struct {
 
 // VisibleEntities is Java's NearestVisibleLivingEntities: the nearby living
 // entities sorted by distance and a cached visibility test
-// (Sensor.isEntityTargetable) evaluated on demand.
+// (Sensor.isEntityTargetable) evaluated on demand. The memory outlives the
+// tick it was made in, so every query takes the current transaction.
 type VisibleEntities struct {
 	Nearby []*world.EntityHandle
-	test   func(h *world.EntityHandle) bool
+	test   func(tx *world.Tx, h *world.EntityHandle) bool
 	cache  map[*world.EntityHandle]bool
 }
 
 // NewVisibleEntities wraps nearby (closest first) with the visibility test.
-func NewVisibleEntities(nearby []*world.EntityHandle, test func(h *world.EntityHandle) bool) *VisibleEntities {
+func NewVisibleEntities(nearby []*world.EntityHandle, test func(tx *world.Tx, h *world.EntityHandle) bool) *VisibleEntities {
 	return &VisibleEntities{Nearby: nearby, test: test}
 }
 
-func (v *VisibleEntities) visible(h *world.EntityHandle) bool {
-	if v.test == nil {
+func (v *VisibleEntities) visible(tx *world.Tx, h *world.EntityHandle) bool {
+	if v.test == nil || tx == nil {
 		return false
 	}
 	if r, ok := v.cache[h]; ok {
@@ -259,18 +260,18 @@ func (v *VisibleEntities) visible(h *world.EntityHandle) bool {
 	if v.cache == nil {
 		v.cache = make(map[*world.EntityHandle]bool, len(v.Nearby))
 	}
-	r := v.test(h)
+	r := v.test(tx, h)
 	v.cache[h] = r
 	return r
 }
 
 // FindClosest is findClosest: the first entity passing filter and visible.
-func (v *VisibleEntities) FindClosest(filter func(h *world.EntityHandle) bool) (*world.EntityHandle, bool) {
+func (v *VisibleEntities) FindClosest(tx *world.Tx, filter func(h *world.EntityHandle) bool) (*world.EntityHandle, bool) {
 	if v == nil {
 		return nil, false
 	}
 	for _, h := range v.Nearby {
-		if filter(h) && v.visible(h) {
+		if filter(h) && v.visible(tx, h) {
 			return h, true
 		}
 	}
@@ -278,13 +279,13 @@ func (v *VisibleEntities) FindClosest(filter func(h *world.EntityHandle) bool) (
 }
 
 // FindAll is findAll.
-func (v *VisibleEntities) FindAll(filter func(h *world.EntityHandle) bool) []*world.EntityHandle {
+func (v *VisibleEntities) FindAll(tx *world.Tx, filter func(h *world.EntityHandle) bool) []*world.EntityHandle {
 	if v == nil {
 		return nil
 	}
 	var out []*world.EntityHandle
 	for _, h := range v.Nearby {
-		if filter(h) && v.visible(h) {
+		if filter(h) && v.visible(tx, h) {
 			out = append(out, h)
 		}
 	}
@@ -292,20 +293,20 @@ func (v *VisibleEntities) FindAll(filter func(h *world.EntityHandle) bool) []*wo
 }
 
 // Contains is contains(entity).
-func (v *VisibleEntities) Contains(h *world.EntityHandle) bool {
+func (v *VisibleEntities) Contains(tx *world.Tx, h *world.EntityHandle) bool {
 	if v == nil {
 		return false
 	}
 	for _, x := range v.Nearby {
 		if x == h {
-			return v.visible(h)
+			return v.visible(tx, h)
 		}
 	}
 	return false
 }
 
 // ContainsMatch is contains(predicate).
-func (v *VisibleEntities) ContainsMatch(filter func(h *world.EntityHandle) bool) bool {
-	_, ok := v.FindClosest(filter)
+func (v *VisibleEntities) ContainsMatch(tx *world.Tx, filter func(h *world.EntityHandle) bool) bool {
+	_, ok := v.FindClosest(tx, filter)
 	return ok
 }

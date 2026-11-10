@@ -493,6 +493,40 @@ func (m *Manager) FindClosest(tx *world.Tx, pred func(*Type) bool, filter func(c
 	return Found{Type: best.Type, Pos: best.Pos}, true
 }
 
+// FindNearest is PoiAccess.findNearestPoiPositions (Paper, used by
+// AcquirePoi): up to limit records within radius and maxDistSq, closest
+// first. filter may have side effects (AcquirePoi's retry markers); it is
+// asked about every candidate in range.
+func (m *Manager) FindNearest(tx *world.Tx, pred func(*Type) bool, filter func(cube.Pos) bool, center cube.Pos, radius int, maxDistSq float64, occ Occupancy, limit int) []Found {
+	recs := m.search(tx, pred, nil, center, radius, maxDistSq, occ, math.MaxInt)
+	sort.SliceStable(recs, func(i, j int) bool { return distSq(recs[i].Pos, center) < distSq(recs[j].Pos, center) })
+	var out []Found
+	for _, r := range recs {
+		if len(out) >= limit {
+			break
+		}
+		if filter != nil && !filter(r.Pos) {
+			continue
+		}
+		out = append(out, Found{Type: r.Type, Pos: r.Pos})
+	}
+	return out
+}
+
+// FindAllWithType is PoiManager.findAllWithType.
+func (m *Manager) FindAllWithType(tx *world.Tx, pred func(*Type) bool, filter func(cube.Pos) bool, center cube.Pos, radius int, occ Occupancy) []Found {
+	var f func(*Type, cube.Pos) bool
+	if filter != nil {
+		f = func(_ *Type, p cube.Pos) bool { return filter(p) }
+	}
+	recs := m.search(tx, pred, f, center, radius, float64(radius)*float64(radius), occ, math.MaxInt)
+	out := make([]Found, len(recs))
+	for i, r := range recs {
+		out[i] = Found{Type: r.Type, Pos: r.Pos}
+	}
+	return out
+}
+
 // Take is PoiManager.take: claim a ticket of the first record with space
 // that passes filter.
 func (m *Manager) Take(tx *world.Tx, pred func(*Type) bool, filter func(*Type, cube.Pos) bool, center cube.Pos, radius int) (cube.Pos, bool) {
