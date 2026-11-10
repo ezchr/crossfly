@@ -10399,19 +10399,19 @@ B	honey_block -	honey_block -	geyser
 	-	-
 B	honeycomb_block -	honeycomb_block -	geyser
 	-	-
-B	hopper facing_direction toggle_bit	hopper enabled facing	geyser
-	0 0	false down
-	0 1	true down
-	1 0	false down
-	1 1	true down
-	2 0	false north
-	2 1	true north
-	3 0	false south
-	3 1	true south
-	4 0	false west
-	4 1	true west
-	5 0	false east
-	5 1	true east
+B	hopper facing_direction toggle_bit	hopper enabled facing	hand
+	0 0	true down
+	0 1	false down
+	1 0	true down
+	1 1	false down
+	2 0	true north
+	2 1	false north
+	3 0	true south
+	3 1	false south
+	4 0	true west
+	4 1	false west
+	5 0	true east
+	5 1	false east
 B	horn_coral -	horn_coral waterlogged	geyser
 	-	false
 B	horn_coral_block -	horn_coral_block -	geyser

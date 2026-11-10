@@ -21,9 +21,9 @@ Inputs: previous decisions for Java 26.3 (decisions.txt), the Mojang 26.3 report
 | Items | count |
 |---|---:|
 | Java 26.3 items | 1658 |
-| Dragonfly items (name, meta) | 1461 |
+| Dragonfly items (name, meta) | 1472 |
 | ... resolved by (name, meta) | 32 |
-| ... resolved by name | 1429 |
+| ... resolved by name | 1440 |
 | ... unmapped (barrier) | 0 |
 | table entries (incl. Bedrock names Dragonfly lacks) | 1655 |
 | **new decisions** | **0** |
@@ -134,7 +134,7 @@ black_banner, black_bed, black_wall_banner, blue_banner, blue_bed, blue_wall_ban
    replaced by one that is a Java default state. `NeighbourDependent` is carried over; for Java blocks the
    previous tables never produced, properties no Bedrock state varies are added.
 
-Origins of all block decisions (kept across updates): auto:siblings 1872, geyser 22058, miss 30.
+Origins of all block decisions (kept across updates): auto:siblings 1872, geyser 22046, hand 12, miss 30.
 
 ### Java state not determined by the Bedrock state (`javamap.NeighbourDependent()`)
 
