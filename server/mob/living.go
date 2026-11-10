@@ -176,6 +176,9 @@ func (m *Mob) Hurt(dmg float64, src world.DamageSource) (float64, world.HurtResu
 		s.immune = hurtImmunity
 	}
 	s.lastDamage = total
+	if m.absorbWithArmour(d.Raw, src) {
+		dealt = 0 // Worn wolf armour took the hit (body_armour.go).
+	}
 	s.health.AddHealth(-dealt)
 	s.noAction = 0
 	m.viewHealth()
