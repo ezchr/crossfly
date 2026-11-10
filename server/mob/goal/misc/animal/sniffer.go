@@ -177,7 +177,9 @@ func (g *randomSearchAndDig) Tick(m *mob.Mob) {
 		g.timer++
 		if !g.found && g.timer >= g.itemAfter {
 			g.found = true
-			pos := m.Position().Add(forward(m).Mul(g.itemOffset)).Add(mgl64.Vec3{0, 0.5, 0})
+			// RandomSearchAndDigGoal::_digUpItems: at the sniffer's feet,
+			// spawn_item_pos_offset ahead.
+			pos := m.Position().Add(forward(m).Mul(g.itemOffset))
 			dropAt(tx, m, pos, rollLoot(m, g.table))
 			g.onFound.Fire(m, nil)
 		}
