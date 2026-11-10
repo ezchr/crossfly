@@ -19,7 +19,7 @@ type DragonEgg struct {
 
 // NeighbourUpdateTick ...
 func (d DragonEgg) NeighbourUpdateTick(pos, _ cube.Pos, tx *world.Tx) {
-	d.fall(d, pos, tx)
+	d.gravityUpdate(d, pos, tx)
 }
 
 // SideClosed ...

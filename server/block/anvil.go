@@ -52,7 +52,7 @@ func (a Anvil) UseOnBlock(pos cube.Pos, face cube.Face, _ mgl64.Vec3, tx *world.
 
 // NeighbourUpdateTick ...
 func (a Anvil) NeighbourUpdateTick(pos, _ cube.Pos, tx *world.Tx) {
-	a.fall(a, pos, tx)
+	a.gravityUpdate(a, pos, tx)
 }
 
 // Damage returns the damage per block fallen of the anvil and the maximum damage the anvil can deal.

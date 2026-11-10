@@ -26,7 +26,7 @@ func (g Gravel) SoilFor(block world.Block) bool {
 
 // NeighbourUpdateTick ...
 func (g Gravel) NeighbourUpdateTick(pos, _ cube.Pos, tx *world.Tx) {
-	g.fall(g, pos, tx)
+	g.gravityUpdate(g, pos, tx)
 }
 
 // BreakInfo ...

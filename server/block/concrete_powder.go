@@ -25,13 +25,21 @@ func (c ConcretePowder) Solidifies(pos cube.Pos, tx *world.Tx) bool {
 
 // NeighbourUpdateTick ...
 func (c ConcretePowder) NeighbourUpdateTick(pos, _ cube.Pos, tx *world.Tx) {
+	if c.harden(pos, tx) {
+		return
+	}
+	c.gravityUpdate(c, pos, tx)
+}
+
+// harden turns the concrete powder into concrete if water is beside it.
+func (c ConcretePowder) harden(pos cube.Pos, tx *world.Tx) bool {
 	for i := cube.Face(0); i < 6; i++ {
 		if _, ok := tx.Block(pos.Side(i)).(Water); ok {
 			tx.SetBlock(pos, Concrete{Colour: c.Colour}, nil)
-			return
+			return true
 		}
 	}
-	c.fall(c, pos, tx)
+	return false
 }
 
 // BreakInfo ...
