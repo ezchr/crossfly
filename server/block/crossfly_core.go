@@ -23,3 +23,4 @@ func (Chest) updateTrappedPower(cube.Pos, *world.Tx)                {}
 func (Chest) notifyTrappedBelow(cube.Pos, *world.Tx)                {}
 func javaWireConnection(world.Block, cube.Face) (connects, ok bool) { return false, false }
 func tripwireHookFacing(world.Block, cube.Face) bool                { return false }
+func (Hopper) javaTick(int64, cube.Pos, *world.Tx)                  {}

@@ -27,22 +27,11 @@ func (d Dispenser) dropperDispense(slot int, stack item.Stack, pos cube.Pos, tx 
 		}
 		return true // Full or rejecting containers retain the item silently; they never cause world ejection.
 	}
-	if into, ok := target.(Container); ok {
-		inv := into.Inventory(tx, targetPos)
-		empty := true
-		for _, it := range inv.Slots() {
-			if !it.Empty() {
-				empty = false
-				break
-			}
-		}
-		added, _ := inv.AddItem(stack.Grow(1 - stack.Count()))
-		if added == 1 {
+	// DropperBlock.dispenseFrom: a container in front (a block, or else a chest or hopper minecart) takes the item
+	// the way a hopper puts it in; a full or rejecting one keeps it in the dropper.
+	if dest, ok := javaContainerAt(tx, targetPos); ok && dest.inv != nil {
+		if javaAddItem(nil, dest, stack.Grow(1-stack.Count()), tx).Empty() {
 			_ = d.inventory.SetItem(slot, stack.Grow(-1))
-			if h, ok := target.(Hopper); ok && empty {
-				h.TransferCooldown = 8
-				tx.SetBlockEntity(targetPos, h)
-			}
 		}
 		return true
 	}

@@ -9,6 +9,7 @@ import (
 
 	"github.com/df-mc/dragonfly/server/block"
 	"github.com/df-mc/dragonfly/server/block/cube"
+	"github.com/df-mc/dragonfly/server/item"
 	"github.com/df-mc/dragonfly/server/world"
 	"github.com/go-gl/mathgl/mgl64"
 )
@@ -109,11 +110,6 @@ func (i *ItemBehaviour) javaTick(e *Ent, tx *world.Tx) *Movement {
 	j.water, j.lava = applyFluidCurrents(e, tx)
 
 	if i.pickupDelay == 0 && i.javaCollect(e, tx) {
-		return nil
-	}
-	// Interim: until hoppers suck items in themselves (Java's HopperBlockEntity.suckInItems), the item still drops
-	// into a hopper under it here, at the end of its tick, where Java's hopper would take it in its own tick.
-	if i.intoHopperBelow(e, tx) {
 		return nil
 	}
 	if j.age >= 6000 {
@@ -310,4 +306,31 @@ func vecIndex(a cube.Axis) int {
 		return 1
 	}
 	return 2
+}
+
+func init() {
+	// Java hoppers take item entities themselves (HopperBlockEntity.suckInItems), whatever their pickup delay.
+	block.RegisterHopperItemEntity(func(tx *world.Tx, e world.Entity) (item.Stack, func(item.Stack), bool) {
+		ent, ok := e.(*Ent)
+		if !ok || ent.H().Type() != ItemType {
+			return item.Stack{}, nil, false
+		}
+		b, ok := ent.Behaviour().(*ItemBehaviour)
+		if !ok || b.i.Empty() {
+			return item.Stack{}, nil, false
+		}
+		return b.i, func(s item.Stack) {
+			if s.Empty() {
+				b.i = item.Stack{}
+				_ = ent.Close()
+				return
+			}
+			b.i = s
+			for _, v := range tx.Viewers(ent.data.Pos) {
+				// Item entities show their stack only when they are spawned.
+				v.HideEntity(ent)
+				v.ViewEntity(ent)
+			}
+		}, true
+	})
 }

@@ -33,6 +33,9 @@ type Hopper struct {
 	// CollectCooldown is the duration in ticks until the hopper can collect items again.
 	CollectCooldown int64
 
+	// tickedAt is the world tick the hopper last ticked in (Java Edition hoppers: tickedGameTime).
+	tickedAt int64
+
 	inventory *inventory.Inventory
 	viewerMu  *sync.RWMutex
 	viewers   map[ContainerViewer]struct{}
@@ -134,7 +137,11 @@ func (h Hopper) UseOnBlock(pos cube.Pos, face cube.Face, _ mgl64.Vec3, tx *world
 }
 
 // Tick ...
-func (h Hopper) Tick(_ int64, pos cube.Pos, tx *world.Tx) {
+func (h Hopper) Tick(currentTick int64, pos cube.Pos, tx *world.Tx) {
+	if world.JavaRedstone() {
+		h.javaTick(currentTick, pos, tx)
+		return
+	}
 	cooldownChanged := h.TransferCooldown > 0 || h.CollectCooldown > 0
 	if h.TransferCooldown > 0 {
 		h.TransferCooldown--
@@ -291,4 +298,13 @@ func allHoppers() (hoppers []world.Block) {
 		hoppers = append(hoppers, Hopper{Facing: f, Powered: true})
 	}
 	return hoppers
+}
+
+// hopperItemEntity gives a hopper the item stack of an item entity and a way to change it (an empty stack removes the
+// entity). The entity package sets it.
+var hopperItemEntity func(tx *world.Tx, e world.Entity) (stack item.Stack, set func(item.Stack), ok bool)
+
+// RegisterHopperItemEntity sets how hoppers read and change item entities: the entity package calls it.
+func RegisterHopperItemEntity(f func(tx *world.Tx, e world.Entity) (stack item.Stack, set func(item.Stack), ok bool)) {
+	hopperItemEntity = f
 }
