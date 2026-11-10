@@ -81,7 +81,7 @@ func (d CopperDoor) NeighbourUpdateTick(pos, changedNeighbour cube.Pos, tx *worl
 		} else if d.Oxidation != b.Oxidation || d.Waxed != b.Waxed {
 			d.Oxidation = b.Oxidation
 			d.Waxed = b.Waxed
-			tx.SetBlock(pos, d, nil)
+			tx.SetBlock(pos, d, openerSetOpts())
 		}
 	} else if solid := tx.Block(pos.Side(cube.FaceDown)).Model().FaceSolid(pos.Side(cube.FaceDown), cube.FaceUp, tx); !solid {
 		// CopperDoor is pickaxeHarvestable, so don't use breakBlock() here.
@@ -92,7 +92,7 @@ func (d CopperDoor) NeighbourUpdateTick(pos, changedNeighbour cube.Pos, tx *worl
 	} else if d.Oxidation != b.Oxidation || d.Waxed != b.Waxed {
 		d.Oxidation = b.Oxidation
 		d.Waxed = b.Waxed
-		tx.SetBlock(pos, d, nil)
+		tx.SetBlock(pos, d, openerSetOpts())
 	}
 }
 
@@ -115,13 +115,13 @@ func (d CopperDoor) UseOnBlock(pos cube.Pos, face cube.Face, _ mgl64.Vec3, tx *w
 
 func (d CopperDoor) Activate(pos cube.Pos, _ cube.Face, tx *world.Tx, u item.User, _ *item.UseContext) bool {
 	d.Open = !d.Open
-	tx.SetBlock(pos, d, nil)
+	tx.SetBlock(pos, d, openerSetOpts())
 
 	otherPos := pos.Side(cube.Face(boolByte(!d.Top)))
 	other := tx.Block(otherPos)
 	if door, ok := other.(CopperDoor); ok {
 		door.Open = d.Open
-		tx.SetBlock(otherPos, door, nil)
+		tx.SetBlock(otherPos, door, openerSetOpts())
 	}
 	postToggle(tx, pos, d.Open, u)
 	if d.Open {

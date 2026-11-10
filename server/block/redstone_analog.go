@@ -90,6 +90,8 @@ func redstoneAnalogOutput(pos cube.Pos, b world.Block, tx *world.Tx) (int, bool)
 		Inventory(*world.Tx, cube.Pos) *inventory.Inventory
 	}:
 		return containerSignal(b.Inventory(tx, pos)), true
+	case world.RedstoneAnalogOutputter:
+		return world.ClampRedstonePower(b.RedstoneAnalogOutput(pos, tx)), true
 	}
 	return 0, false
 }

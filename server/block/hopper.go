@@ -158,7 +158,7 @@ func (h Hopper) Tick(currentTick int64, pos cube.Pos, tx *world.Tx) {
 		extracted := h.extractItem(pos, tx)
 		if inserted || extracted {
 			h.TransferCooldown = 8
-			tx.SetBlock(pos, h, nil)
+			tx.SetBlock(pos, h, hopperItemSetOpts)
 			return
 		}
 	}
@@ -166,6 +166,22 @@ func (h Hopper) Tick(currentTick int64, pos cube.Pos, tx *world.Tx) {
 	if cooldownChanged {
 		tx.SetBlockEntity(pos, h)
 	}
+}
+
+// hopperItemSetOpts are the options a hopper is set with when items move (Dragonfly's redstone): the move changes
+// neither the power the hopper takes in nor its lock, so the redstone engine is left out. Comparators reading it
+// look every tick.
+var hopperItemSetOpts = &world.SetOpts{DisableRedstoneUpdates: true, KeepRedstonePower: true}
+
+// RedstonePowerUpdate locks the hopper while it is powered, in both redstone modes: Bedrock Edition sets its
+// toggle_bit to whether it is powered whenever its power changes, as Java Edition's enabled state.
+func (h Hopper) RedstonePowerUpdate(_ cube.Pos, _ *world.Tx, power int) (world.Block, bool) {
+	powered := power > 0
+	if h.Powered == powered {
+		return h, false
+	}
+	h.Powered = powered
+	return h, true
 }
 
 // HopperInsertable represents a block that can have its contents inserted into by a hopper.
@@ -199,7 +215,7 @@ func (h Hopper) insertItem(pos cube.Pos, tx *world.Tx) bool {
 
 			if hopper, ok := dest.(Hopper); ok {
 				hopper.TransferCooldown = 8
-				tx.SetBlock(destPos, hopper, nil)
+				tx.SetBlock(destPos, hopper, hopperItemSetOpts)
 			}
 
 			return true
@@ -240,7 +256,7 @@ func (h Hopper) extractItem(pos cube.Pos, tx *world.Tx) bool {
 
 			if hopper, ok := origin.(Hopper); ok {
 				hopper.TransferCooldown = 8
-				tx.SetBlock(originPos, hopper, nil)
+				tx.SetBlock(originPos, hopper, hopperItemSetOpts)
 			}
 
 			return true

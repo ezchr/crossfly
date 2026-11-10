@@ -13,22 +13,6 @@ import (
 
 var _ world.RedstonePowerConsumer = Hopper{}
 
-// JavaRedstoneExtension: power locks a hopper only with Java redstone.
-func (Hopper) JavaRedstoneExtension() {}
-
-// RedstonePowerUpdate updates the hopper's locked state to match the power it receives.
-func (h Hopper) RedstonePowerUpdate(_ cube.Pos, _ *world.Tx, power int) (world.Block, bool) {
-	if !world.JavaRedstone() {
-		return h, false
-	}
-	powered := power > 0
-	if h.Powered == powered {
-		return h, false
-	}
-	h.Powered = powered
-	return h, true
-}
-
 // javaTick is Java's HopperBlockEntity.pushItemsTick: the cooldown counts down every tick; once it is over, an
 // unlocked hopper pushes one item into the container it faces, then takes one in from the container above (or
 // item entities over it), and waits 8 ticks if either moved.

@@ -723,34 +723,6 @@ func TestBurnedOutRedstoneTorchRecoversFromExternalScheduledUpdate(t *testing.T)
 	}
 }
 
-func TestBurnedOutRedstoneTorchDoesNotRecoverFromInputWirePowerDrop(t *testing.T) {
-	w := world.Config{Synchronous: true}.New()
-	defer w.Close()
-
-	torchPos := cube.Pos{1, 64, 0}
-	attachmentPos := torchPos.Side(cube.FaceWest)
-	inputPos := attachmentPos.Side(cube.FaceNorth)
-	var lit bool
-	var burnedOut bool
-	runWorld(w, func(tx *world.Tx) {
-		tx.SetBlock(attachmentPos, Stone{}, nil)
-		tx.SetBlock(torchPos, RedstoneTorch{Facing: cube.FaceWest, Lit: true}, nil)
-
-		redstoneTorchBurnoutTestToggle(tx, torchPos, inputPos, RedstoneWire{}, true)
-
-		tx.SetBlock(inputPos, RedstoneWire{}, nil)
-		torch := tx.Block(torchPos).(RedstoneTorch)
-		torch.RedstonePowerActionUpdate(torchPos, tx, world.RedstoneUpdate{ChangedNeighbour: inputPos, HasChangedNeighbour: true})
-		tx.Block(torchPos).(RedstoneTorch).ScheduledTick(torchPos, tx, nil)
-		lit = tx.Block(torchPos).(RedstoneTorch).Lit
-		burnedOut, _ = tx.Redstone().Torch(torchPos).BurnoutStatus()
-	})
-
-	if lit || !burnedOut {
-		t.Fatalf("burned-out redstone torch recovered from wire power drop; lit=%t burnedOut=%t", lit, burnedOut)
-	}
-}
-
 func TestBurnedOutRedstoneTorchRecoversFromZeroPositionInputUpdate(t *testing.T) {
 	w := world.Config{Synchronous: true}.New()
 	defer w.Close()
@@ -774,73 +746,6 @@ func TestBurnedOutRedstoneTorchRecoversFromZeroPositionInputUpdate(t *testing.T)
 
 	if !lit {
 		t.Fatal("burned-out redstone torch did not recover from a valid zero-position input update")
-	}
-}
-
-func TestBurnedOutRedstoneTorchDoesNotRelightFromDisconnectedUpdate(t *testing.T) {
-	w := world.Config{Synchronous: true}.New()
-	defer w.Close()
-	loader := world.NewLoader(1, w, world.NopViewer{})
-	runWorld(w, func(tx *world.Tx) {
-		loader.Load(tx, 1)
-	})
-	defer func() {
-		runWorld(w, func(tx *world.Tx) {
-			loader.Close(tx)
-		})
-	}()
-
-	torchPos := cube.Pos{1, 64, 0}
-	attachmentPos := torchPos.Side(cube.FaceWest)
-	inputPos := attachmentPos.Side(cube.FaceNorth)
-	var lit, recoverable bool
-	var burnedOutTick int64
-	runWorld(w, func(tx *world.Tx) {
-		tx.SetBlock(attachmentPos, Stone{}, nil)
-		tx.SetBlock(torchPos, RedstoneTorch{Facing: cube.FaceWest, Lit: true}, nil)
-
-		redstoneTorchBurnoutTestToggle(tx, torchPos, inputPos, nil, true)
-
-		burnedOutTick = tx.CurrentTick()
-	})
-	redstoneWireTestWaitTick(t, w, burnedOutTick)
-	runWorld(w, func(tx *world.Tx) {
-		tx.SetBlock(inputPos, nil, &world.SetOpts{DisableBlockUpdates: true, DisableRedstoneUpdates: true})
-		torch := tx.Block(torchPos).(RedstoneTorch)
-		torch.RedstonePowerActionUpdate(torchPos, tx, world.RedstoneUpdate{ChangedNeighbour: inputPos.Side(cube.FaceNorth).Side(cube.FaceNorth), HasChangedNeighbour: true})
-		tx.Block(torchPos).(RedstoneTorch).ScheduledTick(torchPos, tx, nil)
-		lit = tx.Block(torchPos).(RedstoneTorch).Lit
-		_, recoverable = tx.Redstone().Torch(torchPos).BurnoutStatus()
-	})
-
-	if lit || recoverable {
-		t.Fatalf("burned-out redstone torch recovered from a disconnected update; lit=%t recoverable=%t", lit, recoverable)
-	}
-}
-
-func TestBurnedOutRedstoneTorchDoesNotSelfRecoverWhenLoopUnpowersInput(t *testing.T) {
-	w := world.Config{Synchronous: true}.New()
-	defer w.Close()
-
-	torchPos := cube.Pos{1, 64, 0}
-	attachmentPos := torchPos.Side(cube.FaceWest)
-	inputPos := attachmentPos.Side(cube.FaceNorth)
-	var lit bool
-	runWorld(w, func(tx *world.Tx) {
-		tx.SetBlock(attachmentPos, Stone{}, nil)
-		tx.SetBlock(torchPos, RedstoneTorch{Facing: cube.FaceWest, Lit: true}, nil)
-
-		redstoneTorchBurnoutTestToggle(tx, torchPos, inputPos, nil, true)
-
-		tx.SetBlock(inputPos, nil, nil)
-		torch := tx.Block(torchPos).(RedstoneTorch)
-		torch.RedstonePowerActionUpdate(torchPos, tx, world.RedstoneUpdate{ChangedNeighbour: torchPos, HasChangedNeighbour: true, Cause: world.RedstoneUpdateCauseScheduledTick})
-		tx.Block(torchPos).(RedstoneTorch).ScheduledTick(torchPos, tx, nil)
-		lit = tx.Block(torchPos).(RedstoneTorch).Lit
-	})
-
-	if lit {
-		t.Fatal("burned-out redstone torch self-recovered after its own loop unpowered the input")
 	}
 }
 
@@ -1120,42 +1025,37 @@ func TestBurnedOutRedstoneTorchRecoveryUpdates(t *testing.T) {
 	unrelatedWire := cube.Pos{10, 64, 10}
 
 	tests := []struct {
-		name            string
-		dustPositions   []cube.Pos
-		waitRecoverable bool
-		wantRecover     bool
-		setup           func(tx *world.Tx, opts *world.SetOpts)
-		update          func(tx *world.Tx)
+		name          string
+		dustPositions []cube.Pos
+		wantRecover   bool
+		setup         func(tx *world.Tx, opts *world.SetOpts)
+		update        func(tx *world.Tx)
 	}{
 		{
-			name:            "TestBurnedOutRedstoneTorchRecoversFromAdjacentBlockUpdate",
-			waitRecoverable: true,
-			wantRecover:     true,
+			name:        "TestBurnedOutRedstoneTorchRecoversFromAdjacentBlockUpdate",
+			wantRecover: true,
 			update: func(tx *world.Tx) {
 				tx.SetBlock(east, Stone{}, nil)
 			},
 		},
 		{
-			name:            "TestBurnedOutRedstoneTorchRecoversFromVerticalBlockUpdate/up",
-			waitRecoverable: true,
-			wantRecover:     true,
+			name:        "TestBurnedOutRedstoneTorchRecoversFromVerticalBlockUpdate/up",
+			wantRecover: true,
 			update: func(tx *world.Tx) {
 				tx.SetBlock(torchPos.Side(cube.FaceUp), Stone{}, nil)
 			},
 		},
 		{
-			name:            "TestBurnedOutRedstoneTorchRecoversFromVerticalBlockUpdate/down",
-			waitRecoverable: true,
-			wantRecover:     true,
+			name:        "TestBurnedOutRedstoneTorchRecoversFromVerticalBlockUpdate/down",
+			wantRecover: true,
 			update: func(tx *world.Tx) {
 				tx.SetBlock(torchPos.Side(cube.FaceDown), Stone{}, nil)
 			},
 		},
 		{
-			name:            "TestBurnedOutRedstoneTorchRecoversFromWireNeighbourUpdate",
-			dustPositions:   []cube.Pos{east},
-			waitRecoverable: true,
-			wantRecover:     true,
+			name:          "TestBurnedOutRedstoneTorchRecoversFromWireNeighbourUpdate",
+			dustPositions: []cube.Pos{east},
+			wantRecover:   true,
 			setup: func(tx *world.Tx, opts *world.SetOpts) {
 				tx.SetBlock(east.Side(cube.FaceDown), Stone{}, opts)
 				tx.SetBlock(east, RedstoneWire{}, opts)
@@ -1165,9 +1065,9 @@ func TestBurnedOutRedstoneTorchRecoveryUpdates(t *testing.T) {
 			},
 		},
 		{
-			name:            "TestBurnedOutRedstoneTorchDoesNotRecoverFromRedstoneDustPastAdjacentWire",
-			dustPositions:   []cube.Pos{east, eastTwo},
-			waitRecoverable: true,
+			name:          "TestBurnedOutRedstoneTorchRecoversWithoutLoopFromRedstoneDustPastAdjacentWire",
+			wantRecover:   true,
+			dustPositions: []cube.Pos{east, eastTwo},
 			setup: func(tx *world.Tx, opts *world.SetOpts) {
 				tx.SetBlock(east.Side(cube.FaceDown), Stone{}, opts)
 				tx.SetBlock(eastTwo.Side(cube.FaceDown), Stone{}, opts)
@@ -1178,9 +1078,9 @@ func TestBurnedOutRedstoneTorchRecoveryUpdates(t *testing.T) {
 			},
 		},
 		{
-			name:            "TestBurnedOutRedstoneTorchDoesNotRecoverFromDistantPathWireNeighbourUpdate",
-			dustPositions:   []cube.Pos{east, eastTwo, eastThree},
-			waitRecoverable: true,
+			name:          "TestBurnedOutRedstoneTorchRecoversWithoutLoopFromDistantPathWireNeighbourUpdate",
+			wantRecover:   true,
+			dustPositions: []cube.Pos{east, eastTwo, eastThree},
 			setup: func(tx *world.Tx, opts *world.SetOpts) {
 				for _, pos := range []cube.Pos{east, eastTwo, eastThree} {
 					tx.SetBlock(pos.Side(cube.FaceDown), Stone{}, opts)
@@ -1192,9 +1092,9 @@ func TestBurnedOutRedstoneTorchRecoveryUpdates(t *testing.T) {
 			},
 		},
 		{
-			name:            "TestBurnedOutRedstoneTorchDoesNotRecoverFromDistantWireUpdate",
-			dustPositions:   []cube.Pos{east},
-			waitRecoverable: true,
+			name:          "TestBurnedOutRedstoneTorchRecoversWithoutLoopFromDistantWireUpdate",
+			wantRecover:   true,
+			dustPositions: []cube.Pos{east},
 			setup: func(tx *world.Tx, opts *world.SetOpts) {
 				tx.SetBlock(east.Side(cube.FaceDown), Stone{}, opts)
 				tx.SetBlock(east, RedstoneWire{}, opts)
@@ -1204,7 +1104,8 @@ func TestBurnedOutRedstoneTorchRecoveryUpdates(t *testing.T) {
 			},
 		},
 		{
-			name:          "TestBurnedOutRedstoneTorchDoesNotRecoverFromDistantPathWireBreak",
+			name:          "TestBurnedOutRedstoneTorchRecoversWithoutLoopFromDistantPathWireBreak",
+			wantRecover:   true,
 			dustPositions: []cube.Pos{east, eastTwo, eastThree},
 			setup: func(tx *world.Tx, opts *world.SetOpts) {
 				for _, pos := range []cube.Pos{east, eastTwo, eastThree} {
@@ -1257,24 +1158,12 @@ func TestBurnedOutRedstoneTorchRecoveryUpdates(t *testing.T) {
 			var currentTick int64
 			dustPower := make(map[cube.Pos]int, len(test.dustPositions))
 
-			if test.waitRecoverable {
-				redstoneTorchBurnoutTestWaitFor(t, w, func() bool {
-					runWorld(w, func(tx *world.Tx) {
-						currentTick = tx.CurrentTick()
-						burnedOut, recoverable = tx.Redstone().Torch(torchPos).BurnoutStatus()
-					})
-					return burnedOut && recoverable
-				}, func() string {
-					return fmt.Sprintf("torch did not become recoverable; tick=%d burnedOut=%t recoverable=%t", currentTick, burnedOut, recoverable)
-				})
-			} else {
-				runWorld(w, func(tx *world.Tx) {
-					currentTick = tx.CurrentTick()
-					burnedOut, recoverable = tx.Redstone().Torch(torchPos).BurnoutStatus()
-				})
-				if !burnedOut || recoverable {
-					t.Fatalf("torch was not in immediate burnout window; tick=%d burnedOut=%t recoverable=%t", currentTick, burnedOut, recoverable)
-				}
+			runWorld(w, func(tx *world.Tx) {
+				currentTick = tx.CurrentTick()
+				burnedOut, recoverable = tx.Redstone().Torch(torchPos).BurnoutStatus()
+			})
+			if !burnedOut || recoverable {
+				t.Fatalf("torch not burned out; tick=%d burnedOut=%t recoverable=%t", currentTick, burnedOut, recoverable)
 			}
 
 			var updateTick int64
@@ -1326,9 +1215,8 @@ func redstoneTorchBurnoutTestSnapshot(w *world.World, torchPos cube.Pos, dustPos
 }
 
 func redstoneTorchBurnoutTestForceBurnedOut(tx *world.Tx, pos cube.Pos) {
-	for range 10 {
-		tx.Redstone().Torch(pos).MarkSelfTriggered()
-		tx.Redstone().Torch(pos).RecordTurnOff()
+	for range 16 {
+		tx.Redstone().Torch(pos).RecordToggle(true)
 	}
 }
 
@@ -1347,10 +1235,13 @@ func redstoneTorchBurnoutTestToggle(tx *world.Tx, torchPos, inputPos cube.Pos, u
 		setPoweredInput()
 		tick()
 		tx.SetBlock(inputPos, unpoweredInput, nil)
-		tx.Block(torchPos).(RedstoneTorch).ScheduledTick(torchPos, tx, nil)
+		tick()
 	}
-	setPoweredInput()
-	tick()
+	if !selfTriggered {
+		// Sixteen switches caused by something else: no burnout, and the torch ends powered and off.
+		setPoweredInput()
+		tick()
+	}
 }
 
 func redstoneTorchBurnoutTestWaitFor(t *testing.T, w *world.World, ready func() bool, fail func() string) {

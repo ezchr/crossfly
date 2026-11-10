@@ -30,6 +30,21 @@ func javaWireConnection(b world.Block, face cube.Face) (connects, ok bool) {
 	return false, false
 }
 
+// bedrockWireConnection reports whether Bedrock Edition's dust connects to b through face, the face of b towards the
+// dust, if b is a component that connects only on some faces: a repeater along its axis, an observer at its output.
+// Pistons count as dust connections in Bedrock Edition (a PistonConsumer is a power flow direction for dust).
+func bedrockWireConnection(b world.Block, face cube.Face) (connects, ok bool) {
+	switch v := b.(type) {
+	case Observer:
+		return v.Facing == face.Opposite(), true
+	case RedstoneRepeater:
+		return v.Facing.Face().Axis() == face.Axis(), true
+	case Piston:
+		return true, true
+	}
+	return false, false
+}
+
 // EncodeNBT ...
 func (r RedstoneWire) EncodeNBT() map[string]any {
 	return map[string]any{"df_dust_dot": boolByte(r.Dot)}

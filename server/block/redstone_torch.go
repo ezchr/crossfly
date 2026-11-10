@@ -92,12 +92,8 @@ func (t RedstoneTorch) NeighbourUpdateTick(pos, changed cube.Pos, tx *world.Tx) 
 		breakBlock(t, pos, tx)
 		return
 	}
-	torch := tx.Redstone().Torch(pos)
-	if burnedOut, recoverable := torch.BurnoutStatus(); burnedOut {
-		if t.recoverBurnout(pos, changed, tx, recoverable, false, t.attachmentPowered(pos, tx)) {
-			torch.ClearBurnout()
-			tx.ScheduleBlockUpdate(pos, t, redstoneTicks(1))
-		}
+	if burnedOut, _ := tx.Redstone().Torch(pos).BurnoutStatus(); burnedOut {
+		t.tryRecover(pos, tx)
 		return
 	}
 	tx.ScheduleBlockUpdate(pos, t, redstoneTicks(1))
@@ -118,24 +114,33 @@ func (t RedstoneTorch) ScheduledTick(pos cube.Pos, tx *world.Tx, _ *rand.Rand) {
 	}
 	redstone := tx.Redstone()
 	torch := redstone.Torch(pos)
-	selfTriggered := torch.ConsumeSelfTriggered()
+	self := torch.ConsumeSelfTriggered()
 	if burnedOut, _ := torch.BurnoutStatus(); burnedOut {
-		return
-	}
-	attachmentPowered := t.attachmentPowered(pos, tx)
-	lit := !attachmentPowered
-	if t.Lit != lit {
-		if !lit && selfTriggered && torch.RecordTurnOff() {
-			t.Lit = false
-			tx.PlaySound(pos.Vec3Centre(), sound.Fizz{})
-			tx.SetBlock(pos, t, &world.SetOpts{DisableRedstoneUpdates: true})
-			redstone.ScheduleUpdate(pos)
+		// A burned-out torch relights once its own output no longer runs back into its input, as Bedrock Edition
+		// finds when its strongest input is not the torch itself: the loop through dust is broken, or something
+		// else powers the block it hangs on (the torch then stays off for that, and switches again when it goes).
+		// This runs a redstone tick after the update that asked for it, when the power the loop held is gone.
+		if !t.attachmentPowered(pos, tx) && t.loopsBack(pos, tx) {
 			return
 		}
-		t.Lit = lit
-		tx.SetBlock(pos, t, &world.SetOpts{DisableRedstoneUpdates: true})
-		redstone.ScheduleUpdate(pos)
+		torch.ClearBurnout()
+		self = false
 	}
+	lit := !t.attachmentPowered(pos, tx)
+	if t.Lit == lit {
+		return
+	}
+	// Bedrock Edition's torch (RedstoneTorchCapacitor) counts the switches in a row its own output caused, through
+	// dust back into the block it hangs on; at the sixteenth it goes out and stays out until the loop is gone.
+	if torch.RecordToggle(self) {
+		tx.PlaySound(pos.Vec3Centre(), sound.Fizz{})
+		if !t.Lit {
+			return
+		}
+		lit = false
+	}
+	t.Lit = lit
+	redstone.SetOutput(pos, t)
 }
 
 // redstoneTorchAt returns the live redstone torch at pos. Scheduled tick callers may carry stale block state, so
@@ -174,23 +179,80 @@ func (t RedstoneTorch) RedstonePowerActionUpdate(pos cube.Pos, tx *world.Tx, upd
 		return
 	}
 	torch := tx.Redstone().Torch(pos)
-	if burnedOut, recoverable := torch.BurnoutStatus(); burnedOut {
-		attachmentPowered := update.NewPower > 0 && t.attachmentPowered(pos, tx)
-		if !update.HasChangedNeighbour || redstoneTorchSelfTriggered(pos, update) || !t.recoverBurnout(pos, update.ChangedNeighbour, tx, recoverable, update.ChangedRedstoneRelevant, attachmentPowered) {
-			return
+	self := update.SelfCaused()
+	if burnedOut, _ := torch.BurnoutStatus(); burnedOut {
+		if !self {
+			t.tryRecover(pos, tx)
 		}
-		torch.ClearBurnout()
-		tx.ScheduleBlockUpdate(pos, t, redstoneTicks(1))
 		return
 	}
-	attachmentPowered := t.attachmentPowered(pos, tx)
-	if t.Lit == !attachmentPowered {
+	if t.Lit == !t.attachmentPowered(pos, tx) {
 		return
 	}
-	if attachmentPowered && redstoneTorchSelfTriggered(pos, update) {
+	if self {
 		torch.MarkSelfTriggered()
 	}
 	tx.ScheduleBlockUpdate(pos, t, redstoneTicks(1))
+}
+
+// tryRecover has a burned-out torch check, a redstone tick later, whether it may relight (ScheduledTick).
+func (t RedstoneTorch) tryRecover(pos cube.Pos, tx *world.Tx) {
+	tx.ScheduleBlockUpdate(pos, t, redstoneTicks(1))
+}
+
+// loopsBack reports whether the torch at pos, lit, would power the block it hangs on through redstone dust: the
+// loop that burns a torch out. It follows the dust the torch powers (beside it, below it, and beside the block above
+// it, which it powers strongly) as far as the signal reaches.
+func (t RedstoneTorch) loopsBack(pos cube.Pos, tx *world.Tx) bool {
+	attached := pos.Side(t.facing())
+	type step struct {
+		pos   cube.Pos
+		power int
+	}
+	var queue []step
+	seen := map[cube.Pos]int{}
+	add := func(p cube.Pos, power int) {
+		if power <= 0 || p.OutOfBounds(tx.Range()) {
+			return
+		}
+		if old, ok := seen[p]; ok && old >= power {
+			return
+		}
+		if b, ok := tx.BlockLoaded(p); ok {
+			if _, ok := b.(RedstoneWire); ok {
+				seen[p] = power
+				queue = append(queue, step{p, power})
+			}
+		}
+	}
+	for _, face := range cube.Faces() {
+		if face != t.facing() && face != cube.FaceUp {
+			add(pos.Side(face), 15)
+		}
+	}
+	if above := pos.Side(cube.FaceUp); world.RedstoneFullPowerConductor(above, tx.Block(above), tx) {
+		for _, face := range cube.Faces() {
+			if face != cube.FaceDown {
+				add(above.Side(face), 15)
+			}
+		}
+	}
+	src := loadedSource{tx: tx}
+	for head := 0; head < len(queue); head++ {
+		s := queue[head]
+		if s.pos == attached.Side(cube.FaceUp) {
+			return true
+		}
+		for i, face := range cube.HorizontalFaces() {
+			if s.pos.Side(face) == attached && redstoneWirePoweredFaces(s.pos, src)[i] {
+				return true
+			}
+		}
+		for _, next := range (RedstoneWire{}).RedstoneRelayerNeighbours(s.pos, tx) {
+			add(next, s.power-1)
+		}
+	}
+	return false
 }
 
 // attachmentPowered reports whether the block the torch is attached to is powered.
@@ -208,61 +270,6 @@ func (t RedstoneTorch) attachmentPowered(pos cube.Pos, tx *world.Tx) bool {
 		}
 	}
 	return world.RedstoneFullPowerConductor(attached, attachedBlock, tx) && tx.RedstoneConductivePower(attached) > 0
-}
-
-// recoverBurnout reports whether an update should relight a burned-out torch.
-func (t RedstoneTorch) recoverBurnout(pos, changed cube.Pos, tx *world.Tx, recoverable, changedRedstoneRelevant, attachmentPowered bool) bool {
-	if changed == pos || attachmentPowered {
-		return false
-	}
-	touchesRecoveryArea := t.changeTouchesRecoveryArea(pos, changed, tx)
-	if changedRedstoneRelevant {
-		return touchesRecoveryArea
-	}
-	if changed == pos.Side(t.facing()) {
-		return true
-	}
-	return recoverable && touchesRecoveryArea
-}
-
-// changeTouchesRecoveryArea reports whether changed is close enough to the torch, its input, or an output wire directly
-// beside it to count as a real neighbour update. A dust line extending straight away from the torch is not local.
-func (t RedstoneTorch) changeTouchesRecoveryArea(pos, changed cube.Pos, tx *world.Tx) bool {
-	inputPos := pos.Side(t.facing())
-	if changed == inputPos {
-		return true
-	}
-	for _, face := range cube.Faces() {
-		if changed == pos.Side(face) || changed == inputPos.Side(face) {
-			return true
-		}
-	}
-	for _, face := range cube.HorizontalFaces() {
-		neighbour := pos.Side(face)
-		if _, ok := tx.Block(neighbour).(RedstoneWire); !ok {
-			continue
-		}
-		for _, wireFace := range cube.HorizontalFaces() {
-			if wireFace == face || wireFace == face.Opposite() {
-				continue
-			}
-			if changed == neighbour.Side(wireFace) {
-				return true
-			}
-		}
-	}
-	return false
-}
-
-// redstoneTorchSelfTriggered reports whether this update came from the torch's own scheduled output propagation.
-func redstoneTorchSelfTriggered(pos cube.Pos, update world.RedstoneUpdate) bool {
-	if update.Cause != world.RedstoneUpdateCauseScheduledTick {
-		return false
-	}
-	if update.HasSource {
-		return update.Source == pos
-	}
-	return update.HasChangedNeighbour && update.ChangedNeighbour == pos
 }
 
 func (RedstoneTorch) EncodeItem() (name string, meta int16) {

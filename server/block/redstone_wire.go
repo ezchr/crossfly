@@ -456,6 +456,8 @@ func redstoneWireDirectConnection(src world.BlockSource, pos cube.Pos, face cube
 		if connects, ok := javaWireConnection(b, face); ok {
 			return connects
 		}
+	} else if connects, ok := bedrockWireConnection(b, face); ok {
+		return connects
 	}
 	switch b.(type) {
 	case RedstoneWire, world.RedstonePowerSource, world.RedstoneStrongPowerSource, world.RedstonePowerRelayer:
@@ -465,25 +467,10 @@ func redstoneWireDirectConnection(src world.BlockSource, pos cube.Pos, face cube
 		// are, which dragonfly does not implement for them yet.
 		return true
 	}
-	if world.JavaRedstone() {
-		// Java Edition's shouldConnectTo: wire connects only to wire and signal sources, never to a block that only
-		// takes power, such as an extended or moving piston beside it.
-		return false
-	}
-	return redstoneWireNonSolidComponent(pos, b, src, face)
-}
-
-// redstoneWireNonSolidComponent reports whether a non-solid block is a redstone
-// endpoint.
-func redstoneWireNonSolidComponent(pos cube.Pos, b world.Block, src world.BlockSource, face cube.Face) bool {
-	model := b.Model()
-	if model == nil || model.FaceSolid(pos, face, src) {
-		return false
-	}
-	switch b.(type) {
-	case world.RedstonePowerConsumer, world.RedstonePowerAction, world.RedstonePowerContextAction:
-		return true
-	}
+	// Java Edition's shouldConnectTo: wire connects only to wire and signal sources, never to a block that only takes
+	// power, such as an extended or moving piston beside it. Bedrock Edition's dust (TransporterComponent) carries
+	// power towards dust, power sources and pistons (bedrockWireConnection) but not towards other consumers (a lamp, a
+	// door): dust running past them does not power them, while dust that ends at them, or a dot, does.
 	return false
 }
 

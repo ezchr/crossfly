@@ -25,12 +25,13 @@ func RegisterMobBlocks() {
 	})
 }
 
-// RegisterJavaRedstone registers the redstone components of Crossfly Full (pistons, observers, repeaters,
-// comparators, buttons, pressure plates, dispensers, droppers, rails, lamps, targets, daylight detectors, tripwire
-// hooks, copper bulbs, iron doors, trapped chests, coral fans) and the redstone states of lecterns. Call it once Java
-// redstone is on (world.SetJavaRedstone), before the server is configured: the block registry is finalised then.
-// Without it these blocks stay unknown blocks, kept as they are in worlds that have them.
-func RegisterJavaRedstone() {
+// RegisterRedstone registers the redstone components of Crossfly Full (pistons, observers, repeaters, comparators,
+// buttons, pressure plates, dispensers, droppers, rails, lamps, targets, daylight detectors, tripwire hooks, copper
+// bulbs, iron doors, trapped chests, coral fans) and the redstone states of lecterns. They exist in both redstone
+// modes: each block chooses what it does by world.JavaRedstone. Call it after world.SetJavaRedstone, before the
+// server is configured: the block registry is finalised then. Without it these blocks stay unknown blocks, kept as
+// they are in worlds that have them.
+func RegisterRedstone() {
 	registerJavaRedstone.Do(func() {
 		registerAll(allButtons())
 		registerAll(allCoralFans())
@@ -88,3 +89,6 @@ func RegisterJavaRedstone() {
 		}
 	})
 }
+
+// RegisterJavaRedstone is RegisterRedstone, by its older name.
+func RegisterJavaRedstone() { RegisterRedstone() }

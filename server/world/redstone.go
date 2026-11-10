@@ -50,6 +50,35 @@ type RedstoneUpdate struct {
 	Cause RedstoneUpdateCause
 }
 
+// PowerChanged reports whether the power at Pos changed with this update. Bedrock Edition's components react to their
+// input only when it changes: a door opened by hand while powered stays open until its power changes.
+func (u RedstoneUpdate) PowerChanged() bool { return u.OldPower != u.NewPower }
+
+// Rising reports whether the update turns the power at Pos on: from 0 to more.
+func (u RedstoneUpdate) Rising() bool { return u.OldPower == 0 && u.NewPower > 0 }
+
+// Falling reports whether the update turns the power at Pos off: from more than 0 to 0.
+func (u RedstoneUpdate) Falling() bool { return u.OldPower > 0 && u.NewPower == 0 }
+
+// SelfCaused reports whether the update comes from a change the component at Pos made itself: the engine evaluated
+// the circuit again because of the component's own output change (RedstoneTransaction.SetOutput or ScheduleUpdate),
+// such as a torch whose output runs back into its input.
+func (u RedstoneUpdate) SelfCaused() bool {
+	if u.Cause != RedstoneUpdateCauseScheduledTick {
+		return false
+	}
+	if u.HasSource {
+		return u.Source == u.Pos
+	}
+	return u.HasChangedNeighbour && u.ChangedNeighbour == u.Pos
+}
+
+// RedstoneAnalogOutputter may be implemented by blocks that give comparators a reading (0-15) without a block of
+// their own in the block package's list, such as the blocks of a plugin.
+type RedstoneAnalogOutputter interface {
+	RedstoneAnalogOutput(pos cube.Pos, tx *Tx) int
+}
+
 // RedstonePowerSource is implemented by blocks that emit redstone power. The face passed is the face of the source
 // block that power is being read from.
 type RedstonePowerSource interface {
@@ -165,17 +194,17 @@ type redstoneDirty struct {
 	cause                   RedstoneUpdateCause
 }
 
-// redstoneTorchBurnout tracks a torch's recent turn-off history and whether it is currently burned out.
+// redstoneTorchBurnout is the burnout state of a redstone torch, as Bedrock Edition's RedstoneTorchCapacitor keeps it:
+// how many times in a row the torch switched because of its own output, and whether that burned it out.
 type redstoneTorchBurnout struct {
-	offTicks             []int64
+	toggles              int
 	burnedOut            bool
 	pendingSelfTriggered bool
 }
 
-const (
-	redstoneTorchBurnoutThreshold   = 8
-	redstoneTorchBurnoutWindowTicks = 60
-)
+// redstoneTorchBurnoutToggles is the number of switches in a row caused by a torch's own output after which it
+// burns out: Bedrock Edition's torch switches fifteen times and stays off at the sixteenth.
+const redstoneTorchBurnoutToggles = 16
 
 // redstoneGraph is the immediate-power network compiled for one engine tick. Edges are signal loss between relayers
 // only — never delay, direction locking, or mechanical state — so delayed or directional components stay as graph
@@ -1456,33 +1485,46 @@ func (e *redstoneEngine) putStepBuffer(b *redstoneStepBuffer) {
 	e.stepBuffers = append(e.stepBuffers, b)
 }
 
-// torchBurnoutStatus returns whether the torch at pos is burned out and whether it can recover at currentTick.
-func (e *redstoneEngine) torchBurnoutStatus(pos cube.Pos, currentTick int64) (burnedOut, recoverable bool) {
-	data, ok := e.pruneTorchBurnout(pos, currentTick)
-	if !ok {
+// torchBurnoutStatus returns whether the torch at pos is burned out. A burned-out torch only recovers when the loop
+// through its own output is gone (Bedrock Edition has no timer), so recoverable is false while it is burned out.
+func (e *redstoneEngine) torchBurnoutStatus(pos cube.Pos) (burnedOut, recoverable bool) {
+	if e == nil || !e.torchBurnout[pos].burnedOut {
 		return false, true
 	}
-	if !data.burnedOut {
-		return false, true
-	}
-	return true, len(data.offTicks) < redstoneTorchBurnoutThreshold
+	return true, false
 }
 
-// recordTorchTurnOff records a torch being forced off and reports whether that torch should burn out.
-func (e *redstoneEngine) recordTorchTurnOff(pos cube.Pos, currentTick int64) bool {
-	if e.torchBurnout == nil {
-		e.torchBurnout = make(map[cube.Pos]redstoneTorchBurnout)
+// recordTorchToggle records a switch of the torch at pos and reports whether the torch burns out with it: the
+// count of switches in a row its own output caused reaches redstoneTorchBurnoutToggles. A switch with another cause
+// starts the count again.
+func (e *redstoneEngine) recordTorchToggle(pos cube.Pos, self bool) bool {
+	data := e.torchBurnout[pos]
+	if !self {
+		if !data.burnedOut && !data.pendingSelfTriggered {
+			delete(e.torchBurnout, pos)
+			return false
+		}
+		data.toggles = 0
+		e.setTorchBurnout(pos, data)
+		return data.burnedOut
 	}
-	data, _ := e.pruneTorchBurnout(pos, currentTick)
-	data.offTicks = append(data.offTicks, currentTick)
-	if len(data.offTicks) >= redstoneTorchBurnoutThreshold {
+	data.toggles++
+	if data.toggles >= redstoneTorchBurnoutToggles {
 		data.burnedOut = true
 	}
-	e.torchBurnout[pos] = data
+	e.setTorchBurnout(pos, data)
 	return data.burnedOut
 }
 
-// clearTorchBurnout removes transient burnout state for a redstone torch.
+// setTorchBurnout stores data for the torch at pos.
+func (e *redstoneEngine) setTorchBurnout(pos cube.Pos, data redstoneTorchBurnout) {
+	if e.torchBurnout == nil {
+		e.torchBurnout = make(map[cube.Pos]redstoneTorchBurnout)
+	}
+	e.torchBurnout[pos] = data
+}
+
+// clearTorchBurnout removes the burnout state of a redstone torch.
 func (e *redstoneEngine) clearTorchBurnout(pos cube.Pos) {
 	if e == nil {
 		return
@@ -1490,56 +1532,33 @@ func (e *redstoneEngine) clearTorchBurnout(pos cube.Pos) {
 	delete(e.torchBurnout, pos)
 }
 
-// markTorchSelfTriggered records that the next torch turn-off at pos was caused by that torch's own output loop.
+// markTorchSelfTriggered records that the next switch of the torch at pos is caused by its own output.
 func (e *redstoneEngine) markTorchSelfTriggered(pos cube.Pos) {
 	if e == nil {
 		return
 	}
-	if e.torchBurnout == nil {
-		e.torchBurnout = make(map[cube.Pos]redstoneTorchBurnout)
-	}
 	data := e.torchBurnout[pos]
 	data.pendingSelfTriggered = true
-	e.torchBurnout[pos] = data
+	e.setTorchBurnout(pos, data)
 }
 
-// consumeTorchSelfTriggered reports and clears whether the next torch turn-off at pos was self-triggered.
+// consumeTorchSelfTriggered reports and clears whether the next switch of the torch at pos is caused by its own output.
 func (e *redstoneEngine) consumeTorchSelfTriggered(pos cube.Pos) bool {
-	if e == nil || e.torchBurnout == nil {
+	if e == nil {
 		return false
 	}
 	data, ok := e.torchBurnout[pos]
 	if !ok {
 		return false
 	}
-	selfTriggered := data.pendingSelfTriggered
+	self := data.pendingSelfTriggered
 	data.pendingSelfTriggered = false
-	if len(data.offTicks) == 0 && !data.burnedOut {
+	if data.toggles == 0 && !data.burnedOut {
 		delete(e.torchBurnout, pos)
 	} else {
 		e.torchBurnout[pos] = data
 	}
-	return selfTriggered
-}
-
-// pruneTorchBurnout removes expired turn-off entries and returns the remaining burnout data.
-func (e *redstoneEngine) pruneTorchBurnout(pos cube.Pos, currentTick int64) (redstoneTorchBurnout, bool) {
-	if e == nil || e.torchBurnout == nil {
-		return redstoneTorchBurnout{}, false
-	}
-	data, ok := e.torchBurnout[pos]
-	if !ok {
-		return redstoneTorchBurnout{}, false
-	}
-	data.offTicks = slices.DeleteFunc(data.offTicks, func(tick int64) bool {
-		return currentTick-tick >= redstoneTorchBurnoutWindowTicks
-	})
-	if len(data.offTicks) == 0 && !data.burnedOut && !data.pendingSelfTriggered {
-		delete(e.torchBurnout, pos)
-		return redstoneTorchBurnout{}, false
-	}
-	e.torchBurnout[pos] = data
-	return data, true
+	return self
 }
 
 // redstonePower reads source power while guarding against recursive source evaluation.

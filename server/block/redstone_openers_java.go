@@ -9,17 +9,11 @@ import (
 )
 
 // Doors, trapdoors and fence gates that redstone opens and closes, as in Java Edition (Crossfly Full, Java
-// redstone).
+// redstone). RedstonePowerActionUpdate (redstone_openers.go) calls these with Java redstone.
 
-func (WoodDoor) JavaRedstoneExtension()       {}
-func (CopperDoor) JavaRedstoneExtension()     {}
-func (WoodTrapdoor) JavaRedstoneExtension()   {}
-func (CopperTrapdoor) JavaRedstoneExtension() {}
-func (WoodFenceGate) JavaRedstoneExtension()  {}
-
-// RedstonePowerActionUpdate opens or closes the door when its power switches on or off, as Java Edition's DoorBlock:
+// javaRedstoneUpdate opens or closes the door when its power switches on or off, as Java Edition's DoorBlock:
 // the door is powered when either half is, and a player may still open or close it by hand while it stays powered.
-func (d WoodDoor) RedstonePowerActionUpdate(pos cube.Pos, tx *world.Tx, u world.RedstoneUpdate) {
+func (d WoodDoor) javaRedstoneUpdate(pos cube.Pos, tx *world.Tx, u world.RedstoneUpdate) {
 	if !world.JavaRedstone() || (u.OldPower > 0) == (u.NewPower > 0) {
 		return
 	}
@@ -45,9 +39,9 @@ func (d WoodDoor) RedstonePowerActionUpdate(pos cube.Pos, tx *world.Tx, u world.
 	postToggle(tx, pos, powered, nil)
 }
 
-// RedstonePowerActionUpdate opens or closes the door when its power switches on or off, as Java Edition's DoorBlock:
+// javaRedstoneUpdate opens or closes the door when its power switches on or off, as Java Edition's DoorBlock:
 // the door is powered when either half is, and a player may still open or close it by hand while it stays powered.
-func (d CopperDoor) RedstonePowerActionUpdate(pos cube.Pos, tx *world.Tx, u world.RedstoneUpdate) {
+func (d CopperDoor) javaRedstoneUpdate(pos cube.Pos, tx *world.Tx, u world.RedstoneUpdate) {
 	if !world.JavaRedstone() || (u.OldPower > 0) == (u.NewPower > 0) {
 		return
 	}
@@ -73,9 +67,9 @@ func (d CopperDoor) RedstonePowerActionUpdate(pos cube.Pos, tx *world.Tx, u worl
 	postToggle(tx, pos, powered, nil)
 }
 
-// RedstonePowerActionUpdate opens or closes the trapdoor when its power switches on or off, as Java Edition's TrapDoorBlock:
+// javaRedstoneUpdate opens or closes the trapdoor when its power switches on or off, as Java Edition's TrapDoorBlock:
 // a player may still open or close it by hand while it stays powered.
-func (t CopperTrapdoor) RedstonePowerActionUpdate(pos cube.Pos, tx *world.Tx, u world.RedstoneUpdate) {
+func (t CopperTrapdoor) javaRedstoneUpdate(pos cube.Pos, tx *world.Tx, u world.RedstoneUpdate) {
 	if !world.JavaRedstone() || (u.OldPower > 0) == (u.NewPower > 0) {
 		return
 	}
@@ -93,9 +87,9 @@ func (t CopperTrapdoor) RedstonePowerActionUpdate(pos cube.Pos, tx *world.Tx, u 
 	postToggle(tx, pos, powered, nil)
 }
 
-// RedstonePowerActionUpdate opens or closes the trapdoor when its power switches on or off, as Java Edition's TrapDoorBlock:
+// javaRedstoneUpdate opens or closes the trapdoor when its power switches on or off, as Java Edition's TrapDoorBlock:
 // a player may still open or close it by hand while it stays powered.
-func (t WoodTrapdoor) RedstonePowerActionUpdate(pos cube.Pos, tx *world.Tx, u world.RedstoneUpdate) {
+func (t WoodTrapdoor) javaRedstoneUpdate(pos cube.Pos, tx *world.Tx, u world.RedstoneUpdate) {
 	if !world.JavaRedstone() || (u.OldPower > 0) == (u.NewPower > 0) {
 		return
 	}
@@ -113,9 +107,9 @@ func (t WoodTrapdoor) RedstonePowerActionUpdate(pos cube.Pos, tx *world.Tx, u wo
 	postToggle(tx, pos, powered, nil)
 }
 
-// RedstonePowerActionUpdate opens or closes the fence gate when its power switches on or off, as Java Edition's FenceGateBlock:
+// javaRedstoneUpdate opens or closes the fence gate when its power switches on or off, as Java Edition's FenceGateBlock:
 // a player may still open or close it by hand while it stays powered.
-func (f WoodFenceGate) RedstonePowerActionUpdate(pos cube.Pos, tx *world.Tx, u world.RedstoneUpdate) {
+func (f WoodFenceGate) javaRedstoneUpdate(pos cube.Pos, tx *world.Tx, u world.RedstoneUpdate) {
 	if !world.JavaRedstone() || (u.OldPower > 0) == (u.NewPower > 0) {
 		return
 	}

@@ -53,8 +53,9 @@ type mobsConfig struct {
 
 // redstoneConfig holds the settings of redstone.
 type redstoneConfig struct {
-	// Behaviour is how redstone works: "java" as in Java Edition, "dragonfly" is Dragonfly's own redstone.
-	Behaviour string `comment:"Behaviour is how redstone works: java works as in Java Edition (its tick order and update rules; pistons, observers, repeaters, comparators, dispensers, droppers, rails, minecarts, lamps, buttons and pressure plates; liquids and TNT as in Java Edition), dragonfly is Dragonfly's own redstone (dust, torches, levers and TNT)."`
+	// Behaviour is how redstone works: "java" as in Java Edition, "dragonfly" is Dragonfly's own redstone engine
+	// (per tick, only what changed) with the rules of Bedrock Edition. Both have every redstone block.
+	Behaviour string `comment:"Behaviour is how redstone works: java works as in Java Edition (its tick order and update rules; pistons, observers, repeaters, comparators, dispensers, droppers, rails, minecarts, lamps, buttons and pressure plates; liquids and TNT as in Java Edition), dragonfly is Dragonfly's own redstone engine with the rules of Bedrock Edition (every redstone block; no quasi-connectivity)."`
 	// AllowPistonDuplication lets pistons duplicate TNT, rails and carpets as in vanilla Java Edition.
 	AllowPistonDuplication bool `comment:"AllowPistonDuplication lets pistons duplicate TNT, rails and carpets as in vanilla Java Edition. Off, as on Paper servers. Only with Behaviour java."`
 	// EntitiesCreatePortals lets entities other than players create nether portals, as in vanilla Java Edition.
@@ -105,10 +106,9 @@ func (e *Edition) register(log *slog.Logger) error {
 		return fmt.Errorf("Redstone.Behaviour %q is not \"java\" or \"dragonfly\"", e.Redstone.Behaviour)
 	}
 	world.SetJavaRedstone(e.javaRedstone())
-	if e.javaRedstone() {
-		block.RegisterJavaRedstone()
-		item.RegisterJavaRedstone()
-	}
+	// Every redstone block exists in both modes: what it does is chosen by the mode (world.JavaRedstone).
+	block.RegisterRedstone()
+	item.RegisterRedstone()
 	if e.mobs() {
 		entity.SetMobs(true)
 		block.RegisterMobBlocks()
@@ -149,9 +149,9 @@ func (e Edition) configure(conf *server.Config) error {
 	operators = ops
 	c := entity.DefaultRegistry.Config()
 	types := entity.DefaultRegistry.Types()
+	c = entity.WithJavaRedstone(c)
+	types = append(types, entity.JavaRedstoneTypes()...)
 	if e.javaRedstone() {
-		c = entity.WithJavaRedstone(c)
-		types = append(types, entity.JavaRedstoneTypes()...)
 		conf.AllowPistonDuplication = e.Redstone.AllowPistonDuplication
 		conf.EntitiesCreatePortals = e.Redstone.EntitiesCreatePortals
 	}

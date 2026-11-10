@@ -110,6 +110,8 @@ func (t ticker) tick(tx *Tx) {
 			h(tx)
 		}
 		w.scheduledUpdates.tick(tx, tick)
+		// Block events queued by components (Crossfly Full) run once a tick, after the scheduled ticks.
+		w.runBlockEvents(tx, nil)
 		t.tickBlocksRandomly(tx, loaders, tick)
 		t.performNeighbourUpdates(tx)
 		w.redstone.tick(tx, tick)
@@ -251,9 +253,25 @@ func (t ticker) tickBlocksRandomly(tx *Tx, loaders []*Loader, tick int64) {
 		}
 	}
 	if !javaRedstone {
+		w := tx.World()
+		w.analogWatchers = w.analogWatchers[:0]
 		for _, pos := range blockEntities {
-			if tb, ok := tx.Block(pos).(TickerBlock); ok {
+			b := tx.Block(pos)
+			if tb, ok := b.(TickerBlock); ok {
 				tb.Tick(tick, pos, tx)
+			}
+			if _, ok := b.(RedstoneAnalogWatcher); ok {
+				w.analogWatchers = append(w.analogWatchers, pos)
+			}
+		}
+		// Then the comparators among them look at what they read (how full a container is changes without a block
+		// update), in a fixed order.
+		if len(w.analogWatchers) > 0 {
+			sortRedstonePositions(w.analogWatchers)
+			for _, pos := range w.analogWatchers {
+				if aw, ok := tx.Block(pos).(RedstoneAnalogWatcher); ok {
+					aw.RedstoneAnalogCheck(pos, tx)
+				}
 			}
 		}
 		return

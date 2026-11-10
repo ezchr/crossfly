@@ -76,23 +76,31 @@ func TestRedstoneStepFace(t *testing.T) {
 	}
 }
 
-func TestRedstoneTorchBurnoutRecoveryUsesRollingWindow(t *testing.T) {
+func TestRedstoneTorchBurnoutCountsSelfTogglesInARow(t *testing.T) {
 	e := newRedstoneEngine(0)
 	pos := cube.Pos{1, 64, 1}
-	for tick := int64(0); tick < redstoneTorchBurnoutThreshold; tick++ {
-		burnedOut := e.recordTorchTurnOff(pos, tick)
-		if burnedOut != (tick == redstoneTorchBurnoutThreshold-1) {
-			t.Fatalf("recordTorchTurnOff after %d turn-offs burnedOut=%t", tick+1, burnedOut)
+	for i := 1; i < redstoneTorchBurnoutToggles; i++ {
+		if e.recordTorchToggle(pos, true) {
+			t.Fatalf("burned out after %d self toggles, want %d", i, redstoneTorchBurnoutToggles)
 		}
 	}
-
-	burnedOut, recoverable := e.torchBurnoutStatus(pos, redstoneTorchBurnoutWindowTicks-1)
-	if !burnedOut || recoverable {
-		t.Fatalf("burnout status with all eight turn-offs still inside the rolling window = burnedOut:%t recoverable:%t, want burnedOut:true recoverable:false", burnedOut, recoverable)
+	// A toggle with another cause starts the count again (Bedrock Edition resets it when the torch is not its own
+	// strongest input).
+	e.recordTorchToggle(pos, false)
+	for i := 1; i < redstoneTorchBurnoutToggles; i++ {
+		if e.recordTorchToggle(pos, true) {
+			t.Fatalf("burned out after %d self toggles following a reset", i)
+		}
 	}
-	burnedOut, recoverable = e.torchBurnoutStatus(pos, redstoneTorchBurnoutWindowTicks)
-	if !burnedOut || !recoverable {
-		t.Fatalf("burnout status after earliest turn-off has aged out of the rolling window = burnedOut:%t recoverable:%t, want burnedOut:true recoverable:true", burnedOut, recoverable)
+	if !e.recordTorchToggle(pos, true) {
+		t.Fatalf("not burned out after %d self toggles in a row", redstoneTorchBurnoutToggles)
+	}
+	if burnedOut, recoverable := e.torchBurnoutStatus(pos); !burnedOut || recoverable {
+		t.Fatalf("status = %t, %t, want burned out and not recoverable (no timer)", burnedOut, recoverable)
+	}
+	e.clearTorchBurnout(pos)
+	if burnedOut, _ := e.torchBurnoutStatus(pos); burnedOut {
+		t.Fatal("still burned out after clearing")
 	}
 }
 

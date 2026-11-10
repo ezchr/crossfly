@@ -851,9 +851,8 @@ func redstoneTorchBurnoutTestSnapshot(w *world.World, torchPos cube.Pos, dustPos
 }
 
 func redstoneTorchBurnoutTestForceBurnedOut(tx *world.Tx, pos cube.Pos) {
-	for range 10 {
-		tx.Redstone().Torch(pos).MarkSelfTriggered()
-		tx.Redstone().Torch(pos).RecordTurnOff()
+	for range 16 {
+		tx.Redstone().Torch(pos).RecordToggle(true)
 	}
 }
 
@@ -872,10 +871,13 @@ func redstoneTorchBurnoutTestToggle(tx *world.Tx, torchPos, inputPos cube.Pos, u
 		setPoweredInput()
 		tick()
 		tx.SetBlock(inputPos, unpoweredInput, nil)
-		tx.Block(torchPos).(RedstoneTorch).ScheduledTick(torchPos, tx, nil)
+		tick()
 	}
-	setPoweredInput()
-	tick()
+	if !selfTriggered {
+		// Sixteen switches caused by something else: no burnout, and the torch ends powered and off.
+		setPoweredInput()
+		tick()
+	}
 }
 
 func redstoneTorchBurnoutTestWaitFor(t *testing.T, w *world.World, ready func() bool, fail func() string) {

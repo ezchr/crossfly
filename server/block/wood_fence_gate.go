@@ -65,7 +65,7 @@ func (f WoodFenceGate) UseOnBlock(pos cube.Pos, face cube.Face, _ mgl64.Vec3, tx
 func (f WoodFenceGate) NeighbourUpdateTick(pos, _ cube.Pos, tx *world.Tx) {
 	if f.shouldBeLowered(pos, tx) != f.Lowered {
 		f.Lowered = !f.Lowered
-		tx.SetBlock(pos, f, nil)
+		tx.SetBlock(pos, f, openerSetOpts())
 	}
 }
 
@@ -83,7 +83,7 @@ func (f WoodFenceGate) Activate(pos cube.Pos, _ cube.Face, tx *world.Tx, u item.
 	if f.Open && f.Facing.Opposite() == u.Rotation().Direction() {
 		f.Facing = f.Facing.Opposite()
 	}
-	tx.SetBlock(pos, f, nil)
+	tx.SetBlock(pos, f, openerSetOpts())
 	postToggle(tx, pos, f.Open, u)
 	if f.Open {
 		tx.PlaySound(pos.Vec3Centre(), sound.FenceGateOpen{Block: f})

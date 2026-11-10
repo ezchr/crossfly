@@ -84,13 +84,13 @@ func (d WoodDoor) UseOnBlock(pos cube.Pos, face cube.Face, _ mgl64.Vec3, tx *wor
 // Activate ...
 func (d WoodDoor) Activate(pos cube.Pos, _ cube.Face, tx *world.Tx, u item.User, _ *item.UseContext) bool {
 	d.Open = !d.Open
-	tx.SetBlock(pos, d, nil)
+	tx.SetBlock(pos, d, openerSetOpts())
 
 	otherPos := pos.Side(cube.Face(boolByte(!d.Top)))
 	other := tx.Block(otherPos)
 	if door, ok := other.(WoodDoor); ok {
 		door.Open = d.Open
-		tx.SetBlock(otherPos, door, nil)
+		tx.SetBlock(otherPos, door, openerSetOpts())
 	}
 	postToggle(tx, pos, d.Open, u)
 	if d.Open {
