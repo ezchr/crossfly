@@ -15,6 +15,7 @@ import (
 	"github.com/df-mc/dragonfly/server/java/javasession"
 	"github.com/df-mc/dragonfly/server/mob"
 	javamobs "github.com/df-mc/dragonfly/server/mob/javamob/vanilla"
+	"github.com/df-mc/dragonfly/server/mob/jnether"
 	"github.com/df-mc/dragonfly/server/mob/spawn"
 	"github.com/df-mc/dragonfly/server/mob/vanilla"
 	"github.com/df-mc/dragonfly/server/world"
@@ -122,6 +123,8 @@ func (e *Edition) register(log *slog.Logger) error {
 		if e.javaMobs() {
 			// After the Bedrock types: the Java types replace the ones they port.
 			javamobs.Install()
+			// Zombified piglins from nether portals (package mob/jnether).
+			jnether.Install()
 		}
 		item.RegisterSpawnEggs(mob.Identifiers(), mob.EggSpawner{})
 	}

@@ -7,18 +7,13 @@ import (
 	"math/rand/v2"
 	"testing"
 
-	"github.com/df-mc/dragonfly/server/block"
 	"github.com/df-mc/dragonfly/server/item"
 	"github.com/df-mc/dragonfly/server/item/enchantment"
 	"github.com/df-mc/dragonfly/server/item/potion"
 )
 
-// The server registers the mob blocks and items (the dried ghast) before
-// any world exists; so do the tests.
-func init() {
-	block.RegisterMobBlocks()
-	item.RegisterMobItems()
-}
+// The mob blocks and items (the dried ghast) are registered by mobtest's
+// init, as the server does before any world exists.
 
 // TestBarterOdds: every entry of the table comes out as often as its weight
 // says (out of 469) with counts in its range.

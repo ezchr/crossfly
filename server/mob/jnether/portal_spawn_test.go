@@ -52,11 +52,11 @@ func runPortalTicks(t *testing.T, dim world.Dimension, diff world.Difficulty, fl
 		SpawnZombifiedPiglin: s.spawn,
 		PlayerNear:           func(*world.Tx, cube.Pos) bool { return near },
 	})
-	t.Cleanup(func() { block.PortalRandomTick = nil; portalHooks = PortalSpawnHooks{} })
+	t.Cleanup(func() { portalHooks = PortalSpawnHooks{} })
 	r := rand.New(rand.NewPCG(7, 11))
 	w.do(func(tx *world.Tx) {
 		for range n {
-			tx.Block(cube.Pos{0, 6, 0}).(world.RandomTicker).RandomTick(cube.Pos{0, 6, 0}, tx, r)
+			portalRandomTick(cube.Pos{0, 6, 0}, tx, r)
 		}
 	})
 	return s
@@ -96,7 +96,7 @@ func TestPortalSpawnCooldown(t *testing.T) {
 	portalColumn(w, block.Obsidian{})
 	s := &itemSpawner{}
 	InstallPortalSpawning(PortalSpawnHooks{SpawnZombifiedPiglin: s.spawn, PlayerNear: func(*world.Tx, cube.Pos) bool { return true }})
-	t.Cleanup(func() { block.PortalRandomTick = nil; portalHooks = PortalSpawnHooks{} })
+	t.Cleanup(func() { portalHooks = PortalSpawnHooks{} })
 	r := rand.New(rand.NewPCG(3, 4))
 	w.do(func(tx *world.Tx) {
 		for s.n == 0 {

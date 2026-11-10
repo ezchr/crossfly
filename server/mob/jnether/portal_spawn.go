@@ -3,13 +3,16 @@
 package jnether
 
 import (
+	"math"
 	"math/rand/v2"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/df-mc/dragonfly/server/block"
 	"github.com/df-mc/dragonfly/server/block/cube"
 	"github.com/df-mc/dragonfly/server/entity"
+	"github.com/df-mc/dragonfly/server/mob/jpoi"
 	"github.com/df-mc/dragonfly/server/world"
 	"github.com/go-gl/mathgl/mgl64"
 )
@@ -24,6 +27,13 @@ import (
 // valid spawn for it, provided a player is within 128 blocks of the chunk.
 // The piglin and its vehicle get the portal cooldown (300 ticks), so they do
 // not walk straight back through the portal: gold farms rely on that.
+//
+// Crossfly's core random ticks are left alone (HARD RULE 2: portal blocks
+// are not random tickers outside Java mob mode): a world tick hook,
+// registered only by Install, gives every nether portal block (the
+// nether_portal points of interest, jpoi) within 128 blocks of a player the
+// chance a vanilla random tick would have (randomTickSpeed 3 of 4096 blocks
+// a section a tick), rolled every 20 ticks.
 
 // PortalCooldown is Entity.getDimensionChangingDelay for non-players: 300
 // ticks.
@@ -51,13 +61,76 @@ type PortalSpawnHooks struct {
 	PlayerNear func(tx *world.Tx, pos cube.Pos) bool
 }
 
-var portalHooks PortalSpawnHooks
+var (
+	portalHooks    PortalSpawnHooks
+	portalHookOnce sync.Once
+)
 
-// InstallPortalSpawning makes nether portal blocks spawn zombified piglins
-// (block.PortalRandomTick). Call it once before any world ticks.
+// InstallPortalSpawning makes nether portal blocks spawn zombified piglins.
+// Call it once before any world ticks (it registers a world tick hook).
 func InstallPortalSpawning(h PortalSpawnHooks) {
 	portalHooks = h
-	block.PortalRandomTick = portalRandomTick
+	portalHookOnce.Do(func() { world.RegisterTickHook(portalTick) })
+}
+
+// portalTickInterval is how often the portal blocks near players are rolled.
+const portalTickInterval = 20
+
+// randomTickChance is the chance that a given block gets a random tick in
+// one game tick: randomTickSpeed (3) picks in a 16x16x16 section.
+const randomTickChance = 3.0 / 4096
+
+// portalTick rolls the random ticks of the portal blocks within 128 blocks
+// of a player (beyond that the spawn needs a nearer player anyway), once
+// every 20 ticks with the chance of 20 ticks of random ticks.
+func portalTick(tx *world.Tx) {
+	if portalHooks.SpawnZombifiedPiglin == nil || tx.World().Dimension() != world.Overworld {
+		return
+	}
+	if tx.CurrentTick()%portalTickInterval != 0 || difficultyID(tx) == 0 {
+		return
+	}
+	chance := 1 - math.Pow(1-randomTickChance, portalTickInterval)
+	r := portalRand(tx)
+	for _, pos := range portalCandidates(tx) {
+		if r.Float64() < chance {
+			portalRandomTick(pos, tx, r)
+		}
+	}
+}
+
+// portalCandidates are the nether portal blocks within 128 blocks of a
+// player (each once).
+func portalCandidates(tx *world.Tx) []cube.Pos {
+	var out []cube.Pos
+	var seen map[cube.Pos]struct{}
+	pois := jpoi.For(tx)
+	isPortal := func(t *jpoi.Type) bool { return t == jpoi.NetherPortal }
+	for p := range tx.Players() {
+		for _, pos := range pois.FindAll(tx, isPortal, nil, cube.PosFromVec3(p.Position()), 128, jpoi.AnyOccupancy) {
+			if seen == nil {
+				seen = map[cube.Pos]struct{}{}
+			}
+			if _, ok := seen[pos]; ok {
+				continue
+			}
+			seen[pos] = struct{}{}
+			out = append(out, pos)
+		}
+	}
+	return out
+}
+
+// portalRands are the random sources of the portal hook, per world.
+var portalRands sync.Map
+
+func portalRand(tx *world.Tx) *rand.Rand {
+	if v, ok := portalRands.Load(tx.World()); ok {
+		return v.(*rand.Rand)
+	}
+	seed := uint64(time.Now().UnixNano())
+	v, _ := portalRands.LoadOrStore(tx.World(), rand.New(rand.NewPCG(seed, seed>>7|1)))
+	return v.(*rand.Rand)
 }
 
 // portalRandomTick is NetherPortalBlock.randomTick.

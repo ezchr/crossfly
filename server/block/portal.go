@@ -1,8 +1,6 @@
 package block
 
 import (
-	"math/rand/v2"
-
 	"github.com/df-mc/dragonfly/server/block/cube"
 	"github.com/df-mc/dragonfly/server/block/model"
 	"github.com/df-mc/dragonfly/server/world"
@@ -67,17 +65,5 @@ func (p Portal) NeighbourUpdateTick(pos, neighbour cube.Pos, tx *world.Tx) {
 func (p Portal) EntityInside(_ cube.Pos, tx *world.Tx, e world.Entity) {
 	if t, ok := e.(portalTraveller); ok {
 		t.TravelThroughPortal(tx, p.Portal())
-	}
-}
-
-// PortalRandomTick, when set, runs on every random tick of a nether portal block. Java mob mode sets it to
-// NetherPortalBlock.randomTick (zombified piglins spawning from portals in the Overworld). Set it only before any
-// world ticks; nil (the default) does nothing.
-var PortalRandomTick func(pos cube.Pos, tx *world.Tx, r *rand.Rand)
-
-// RandomTick ...
-func (p Portal) RandomTick(pos cube.Pos, tx *world.Tx, r *rand.Rand) {
-	if f := PortalRandomTick; f != nil {
-		f(pos, tx, r)
 	}
 }
