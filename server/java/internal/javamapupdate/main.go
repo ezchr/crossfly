@@ -111,6 +111,7 @@ func main() {
 	ri := runInfo{javaVer: *javaVer, prevJava: prev.java, prevSource: prev.source, geyserDir: *geyserDir}
 	if !*dryRun {
 		writeBlocks(*outDir, *javaVer, jd, br)
+		writeJavaDefaults(*outDir, *javaVer, jd)
 		writeItems(*outDir, *javaVer, reg, ir)
 		writeBiomes(*outDir, *javaVer, bi)
 		writeDecisions(filepath.Join(*outDir, decisionsFile), decisionsOf(*javaVer, jd, br, ir, bi))

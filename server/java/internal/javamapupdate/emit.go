@@ -55,6 +55,28 @@ func writeBlocks(dir, javaVer string, jd *javaData, br *blocksResult) {
 	writeGoFile(dir, "blocks_gen.go", b.Bytes())
 }
 
+// writeJavaDefaults writes the default state of every Java block: Java's block state syntax
+// (minecraft:repeater[delay=2], as /setblock takes it) leaves the properties it does not name at these.
+func writeJavaDefaults(dir, javaVer string, jd *javaData) {
+	defs := make([]int, 0, len(jd.blocks))
+	for _, b := range jd.blocks {
+		defs = append(defs, b.def)
+	}
+	sort.Ints(defs)
+	var b bytes.Buffer
+	b.WriteString("//go:build crossfly_full\n\n")
+	b.WriteString(genHeader(javaVer))
+	fmt.Fprintf(&b, "// javaDefaultStates holds the default state id of every Java %s block, sorted.\nvar javaDefaultStates = [...]int32{\n", javaVer)
+	for i, d := range defs {
+		fmt.Fprintf(&b, "%d,", d)
+		if i%16 == 15 {
+			b.WriteByte('\n')
+		}
+	}
+	b.WriteString("\n}\n")
+	writeGoFile(dir, "java_block_defaults_gen.go", b.Bytes())
+}
+
 func writeItems(dir, javaVer string, reg javaRegistries, ir *itemsResult) {
 	var b bytes.Buffer
 	b.WriteString(genHeader(javaVer))
