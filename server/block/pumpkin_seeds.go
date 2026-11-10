@@ -29,7 +29,8 @@ func (p PumpkinSeeds) NeighbourUpdateTick(pos, _ cube.Pos, tx *world.Tx) {
 		breakBlock(p, pos, tx)
 	} else if p.Direction != cube.FaceDown {
 		if pumpkin, ok := tx.Block(pos.Side(p.Direction)).(Pumpkin); !ok || pumpkin.Carved {
-			p.Direction = cube.FaceDown
+			// The stem lets go of its fruit fully grown, as Java's AttachedStemBlock.updateShape (age 7).
+			p.Direction, p.Growth = cube.FaceDown, 7
 			tx.SetBlock(pos, p, nil)
 		}
 	}

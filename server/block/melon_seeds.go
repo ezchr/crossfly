@@ -29,7 +29,8 @@ func (m MelonSeeds) NeighbourUpdateTick(pos, _ cube.Pos, tx *world.Tx) {
 		breakBlock(m, pos, tx)
 	} else if m.Direction != cube.FaceDown {
 		if _, ok := tx.Block(pos.Side(m.Direction)).(Melon); !ok {
-			m.Direction = cube.FaceDown
+			// The stem lets go of its fruit fully grown, as Java's AttachedStemBlock.updateShape (age 7).
+			m.Direction, m.Growth = cube.FaceDown, 7
 			tx.SetBlock(pos, m, nil)
 		}
 	}
