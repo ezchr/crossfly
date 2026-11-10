@@ -157,86 +157,9 @@ func wakeOffsets(n int) []int {
 	return out
 }
 
-// SilverfishWakeGoal returns the silverfish's wake-up-friends goal (it is
-// shared with the hurt hook).
-func SilverfishWakeGoal(m *mob.Mob) mob.Goal { return &silverfishOf(m).wake }
-
-// silverfishMergeGoal is Silverfish.SilverfishMergeWithStoneGoal (priority 5,
-// MOVE): with no target and no path, now and then (1 in 5 checks, with
-// mobGriefing) the silverfish hides in a host block next to it (a random
-// side, at half its height): the block becomes infested and the silverfish
-// disappears with a poof. Otherwise it strolls (the base's RandomStrollGoal,
-// speed 1, interval 10).
-type silverfishMergeGoal struct {
-	stroll    mob.Goal
-	direction cube.Face
-	doMerge   bool
-}
-
-func (g *silverfishMergeGoal) Flags() mob.ControlFlags { return mob.FlagMove }
-
-func (g *silverfishMergeGoal) CanUse(m *mob.Mob) bool {
-	if _, ok := m.Target(); ok {
-		return false
-	}
-	if !m.Navigation().Done() {
-		return false
-	}
-	r := m.Rand()
-	if MobGriefing(m.Tx()) && nextInt(r, reducedTickDelay(10)) == 0 {
-		g.direction = cube.Face(nextInt(r, 6)) // Direction.getRandom
-		if _, ok := infestedByHost(m.Tx().Block(g.mergePos(m))); ok {
-			g.doMerge = true
-			return true
-		}
-	}
-	g.doMerge = false
-	return g.stroll != nil && g.stroll.CanUse(m)
-}
-
-// mergePos is BlockPos.containing(x, y + 0.5, z).relative(direction).
-func (g *silverfishMergeGoal) mergePos(m *mob.Mob) cube.Pos {
-	return blockPos(m.Pos().Add(mgl64.Vec3{0, 0.5})).Side(g.direction)
-}
-
-func (g *silverfishMergeGoal) CanContinueToUse(m *mob.Mob) bool {
-	if g.doMerge || g.stroll == nil {
-		return false
-	}
-	if c, ok := g.stroll.(mob.GoalContinuer); ok {
-		return c.CanContinueToUse(m)
-	}
-	return g.stroll.CanUse(m)
-}
-
-func (g *silverfishMergeGoal) Start(m *mob.Mob) {
-	if !g.doMerge {
-		if s, ok := g.stroll.(mob.GoalStarter); ok {
-			s.Start(m)
-		}
-		return
-	}
-	tx := m.Tx()
-	at := g.mergePos(m)
-	inf, ok := infestedByHost(tx.Block(at))
-	if !ok {
-		return
-	}
-	tx.SetBlock(at, inf, nil)
-	SpawnAnim(m)
-	_ = m.Close()
-}
-
-func (g *silverfishMergeGoal) Stop(m *mob.Mob) {
-	if s, ok := g.stroll.(mob.GoalStopper); ok {
-		s.Stop(m)
-	}
-}
-
-func (g *silverfishMergeGoal) Tick(m *mob.Mob) {
-	if t, ok := g.stroll.(mob.GoalTicker); ok {
-		t.Tick(m)
-	}
+// mergePos is BlockPos.containing(x, y + 0.5, z).relative(dir).
+func mergePos(m *mob.Mob, dir cube.Face) cube.Pos {
+	return blockPos(m.Pos().Add(mgl64.Vec3{0, 0.5})).Side(dir)
 }
 
 // SpawnAnim is Mob.spawnAnim: the poof of particles (entity event 20); the

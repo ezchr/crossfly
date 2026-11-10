@@ -4,11 +4,13 @@ package hostile
 
 import (
 	"math"
+	"strings"
 
 	"github.com/df-mc/dragonfly/server/entity"
 	"github.com/df-mc/dragonfly/server/entity/effect"
 	"github.com/df-mc/dragonfly/server/mob"
 	"github.com/df-mc/dragonfly/server/mob/component/combat/sense"
+	"github.com/df-mc/dragonfly/server/mob/javamob"
 	"github.com/df-mc/dragonfly/server/world"
 	"github.com/go-gl/mathgl/mgl64"
 )
@@ -41,8 +43,13 @@ var Hooks = struct {
 	// the last 10 ticks, by anything).
 	HurtRecently func(m *mob.Mob) bool
 }{
-	PlaySound:   func(m *mob.Mob, name string, volume, pitch float64) {},
-	LineOfSight: func(m *mob.Mob, target world.Entity) bool { return sense.CanSee(m, target) },
+	PlaySound: func(m *mob.Mob, name string, volume, pitch float64) { m.PlaySound(bedrockSoundEvent(name)) },
+	LineOfSight: func(m *mob.Mob, target world.Entity) bool {
+		if jm, ok := javamob.Of(m); ok {
+			return jm.HasLineOfSight(target)
+		}
+		return sense.CanSee(m, target)
+	},
 	MobAttack: func(m *mob.Mob, target world.Entity, dmg float64) bool {
 		l, ok := target.(interface {
 			Hurt(float64, world.DamageSource) (float64, world.HurtResult)
@@ -58,6 +65,9 @@ var Hooks = struct {
 		return delta
 	},
 	HurtRecently: func(m *mob.Mob) bool {
+		if jm, ok := javamob.Of(m); ok {
+			return jm.HurtTime() > 0
+		}
 		_, tick, ok := m.LastHurtBy()
 		return ok && m.Ticks()-tick < 10
 	},
@@ -65,8 +75,21 @@ var Hooks = struct {
 
 func init() {
 	Hooks.DoHurtTarget = func(m *mob.Mob, target world.Entity) bool {
+		if jm, ok := javamob.Of(m); ok {
+			return jm.DoHurtTarget(target)
+		}
 		return Hooks.MobAttack(m, target, m.Attr(mob.AttrAttackDamage))
 	}
+}
+
+// bedrockSoundEvent turns a Java sound event name (entity.slime.squish_small)
+// into the Bedrock level sound event the sessions play for the mob's type
+// (squish): javasession turns it back into the Java sound of the type.
+func bedrockSoundEvent(name string) string {
+	if i := strings.LastIndexByte(name, '.'); i >= 0 {
+		name = name[i+1:]
+	}
+	return strings.TrimSuffix(name, "_small")
 }
 
 // playSound is Entity.playSound through Hooks.
