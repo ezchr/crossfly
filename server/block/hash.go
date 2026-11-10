@@ -244,6 +244,7 @@ const (
 	hashTorch
 	hashTuff
 	hashTuffBricks
+	hashTurtleEgg
 	hashVines
 	hashWall
 	hashWater
@@ -1191,4 +1192,8 @@ func (h Beehive) Hash() (uint64, uint64) {
 
 func (d DriedGhast) Hash() (uint64, uint64) {
 	return hashDriedGhast, uint64(d.Facing) | uint64(d.Hydration)<<2
+}
+
+func (t TurtleEgg) Hash() (uint64, uint64) {
+	return hashTurtleEgg, uint64(t.AdditionalCount) | uint64(t.Cracks)<<2
 }

@@ -12,6 +12,7 @@ import (
 	cmisc "github.com/df-mc/dragonfly/server/mob/component/misc"
 	"github.com/df-mc/dragonfly/server/mob/goal/misc/kit"
 	"github.com/df-mc/dragonfly/server/world"
+	"github.com/df-mc/dragonfly/server/world/particle"
 	"github.com/go-gl/mathgl/mgl64"
 	"github.com/sandertv/gophertunnel/minecraft/protocol"
 )
@@ -419,10 +420,11 @@ func (g *jumpToBlock) Stop(m *mob.Mob) {
 // when it is pregnant) walks to a target_blocks block within
 // search_range/search_height that has target_materials_above_block above
 // it (air by default; from below too with allow_laying_from_below), lays
-// for lay_seconds there (actor flag laying_egg with use_default_animation),
-// places egg_type above the block, plays lay_egg_sound and fires on_lay.
-// Dragonfly has neither turtle eggs nor frog spawn: when egg_type is not a
-// known block nothing is placed, the rest happens.
+// for lay_seconds there (actor flag laying_egg with use_default_animation,
+// which also kicks up particles of the block every 5 ticks), places egg_type
+// above the block (LayEggGoal::_layEgg: turtle eggs with a random count of
+// 1-4), plays lay_egg_sound and fires on_lay. When egg_type is not a known
+// block nothing is placed, the rest happens.
 //
 //	search_range 0, search_height 1, goal_radius 0.5, speed_multiplier 1,
 //	target_blocks [minecraft:sand], egg_type minecraft:turtle_egg,
@@ -444,6 +446,23 @@ type layEgg struct {
 	laying   int
 	done     bool
 	nextScan int64
+
+	eggBlock    world.Block
+	eggResolved bool
+}
+
+// eggTypeBlock resolves egg_type to the default state of its block once the
+// block registry is final. It returns nil for a name that is no block.
+func (g *layEgg) eggTypeBlock() world.Block {
+	if !g.eggResolved {
+		g.eggResolved = true
+		n := cmisc.NormaliseBlockName(g.egg)
+		props, _ := world.DefaultBlockRegistry.DefaultProperties(n)
+		if b, ok := world.BlockByName(n, props); ok {
+			g.eggBlock = b
+		}
+	}
+	return g.eggBlock
 }
 
 func newLayEgg(spec mob.GoalSpec) (mob.Goal, error) {
@@ -555,12 +574,25 @@ func (g *layEgg) Tick(m *mob.Mob) {
 		return
 	}
 	kit.Stop(m)
+	tx := m.Tx()
 	if g.laying++; g.laying < g.layTicks {
+		if g.anim && g.laying%5 == 0 {
+			if b := tx.Block(g.target); g.targets.Has(b) {
+				tx.AddParticle(g.target.Side(cube.FaceUp).Vec3(), particle.BlockBreak{Block: b})
+			}
+		}
 		return
 	}
-	tx := m.Tx()
-	if b, ok := world.BlockByName(cmisc.NormaliseBlockName(g.egg), nil); ok {
-		tx.SetBlock(g.target.Side(cube.FaceUp), b, nil)
+	if b := g.eggTypeBlock(); b != nil {
+		if egg, ok := b.(block.TurtleEgg); ok {
+			egg.AdditionalCount = m.Rand().IntN(4)
+			b = egg
+		}
+		pos := g.target.Side(cube.FaceUp)
+		tx.SetBlock(pos, b, nil)
+		if p, ok := b.(interface{ OnPlace(cube.Pos, *world.Tx) }); ok {
+			p.OnPlace(pos, tx)
+		}
 	}
 	kit.Sound(m, g.sound)
 	g.done = true
