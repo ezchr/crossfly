@@ -92,9 +92,9 @@ var mobKinds = map[string]*mobKind{}
 func init() {
 	plain := []string{
 		"allay", "bat", "breeze", "cod", "creaking", "elder_guardian",
-		"endermite", "ender_dragon", "giant", "guardian", "illusioner", "iron_golem",
-		"parched", "phantom", "piglin_brute", "pufferfish", "ravager", "silverfish",
-		"stray", "tadpole", "vex", "vindicator", "warden", "wither", "wither_skeleton",
+		"endermite", "ender_dragon", "giant", "guardian", "iron_golem",
+		"parched", "phantom", "piglin_brute", "pufferfish", "silverfish",
+		"stray", "tadpole", "vex", "warden", "wither", "wither_skeleton",
 	}
 	for _, n := range plain {
 		mobKinds["minecraft:"+n] = &mobKind{}
@@ -280,18 +280,20 @@ func init() {
 	set("enderman", mobKind{extra: endermanData})
 	set("pillager", mobKind{extra: pillagerData})
 	set("evoker", mobKind{extra: spellData})
+	set("illusioner", mobKind{extra: spellData})
+	set("vindicator", mobKind{extra: raiderData})
+	set("ravager", mobKind{extra: raiderData})
 	set("bee", mobKind{ageable: true, extra: func(_ *Session, d *mobData, e world.Entity, _ string) {
 		d.long(19, angerEndTime(e))
 	}})
-	set("piglin", mobKind{extra: func(_ *Session, d *mobData, e world.Entity, _ string) {
-		d.boolean(17, mobBool(e, mobBaby.Baby))
-	}})
+	set("piglin", mobKind{extra: piglinData})
 	set("zoglin", mobKind{extra: func(_ *Session, d *mobData, e world.Entity, _ string) {
 		d.boolean(16, mobBool(e, mobBaby.Baby))
 	}})
 	set("ghast", mobKind{extra: ghastData})
 	set("blaze", mobKind{extra: blazeData})
 	set("witch", mobKind{extra: func(_ *Session, d *mobData, e world.Entity, _ string) {
+		raiderData(nil, d, e, "")
 		d.boolean(17, mobBool(e, mobUsing.UsingItem)) // drinking a potion
 	}})
 

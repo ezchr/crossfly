@@ -81,9 +81,17 @@ invisible, 0x80 glide), J6 pose, J8 hand state (0x01 using item). Fixed: the fir
 | snow_golem | J16 0x10 pumpkin unless Sheared |
 | strider | J19 Shaking |
 | enderman | J17 screaming = Angry |
-| piglin / zoglin | J17 / J16 baby |
+| piglin | J17 baby, J18 charging crossbow = UsingItem, J19 dancing = celebrating flag |
+| zoglin | J16 baby |
+| vindicator, ravager, pillager, evoker, illusioner, witch | J16 IS_CELEBRATING = celebrating flag (raiders) |
+| pillager | J17 charging crossbow = UsingItem |
+| evoker, illusioner | J17 spell from the casting flag and spell colour |
 | ghast | J16 charging = Charged |
 | witch | J17 drinking = UsingItem |
+
+Arm poses: the aggressive mob flag (J15 0x04, Aggressive or Angry) gives IllagerArmPose.ATTACKING
+(vindicator, melee pillager), BOW_AND_ARROW (illusioner) and PiglinArmPose.ATTACKING_WITH_MELEE_WEAPON
+(piglin, piglin brute, with a tool in the main hand).
 | wither_skull | J8 dangerous for `wither_skull_dangerous` |
 | painting | J9 PAINTING_VARIANT = registry id + 1 from the snake-cased motive |
 

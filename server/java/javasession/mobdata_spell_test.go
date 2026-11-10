@@ -22,10 +22,10 @@ func TestEvokerSpellData(t *testing.T) {
 		e    *bossFake
 		want string
 	}{
-		{"idle", &bossFake{fakeMob: newFakeMob("minecraft:evocation_illager"), data: colour(0xFF664D59)}, mob(10, 0).b(17, 0).end()},
-		{"fangs", &bossFake{fakeMob: newFakeMob("minecraft:evocation_illager"), data: colour(0xFF664D59), flags: casting}, mob(10, 0).b(17, 2).end()},
-		{"vexes", &bossFake{fakeMob: newFakeMob("minecraft:evocation_illager"), data: colour(0xFFB3B3CC), flags: casting}, mob(10, 0).b(17, 1).end()},
-		{"wololo", &bossFake{fakeMob: newFakeMob("minecraft:evocation_illager"), data: colour(0xFFB38033), flags: casting}, mob(10, 0).b(17, 3).end()},
+		{"idle", &bossFake{fakeMob: newFakeMob("minecraft:evocation_illager"), data: colour(0xFF664D59)}, mob(10, 0).z(16, false).b(17, 0).end()},
+		{"fangs", &bossFake{fakeMob: newFakeMob("minecraft:evocation_illager"), data: colour(0xFF664D59), flags: casting}, mob(10, 0).z(16, false).b(17, 2).end()},
+		{"vexes", &bossFake{fakeMob: newFakeMob("minecraft:evocation_illager"), data: colour(0xFFB3B3CC), flags: casting}, mob(10, 0).z(16, false).b(17, 1).end()},
+		{"wololo", &bossFake{fakeMob: newFakeMob("minecraft:evocation_illager"), data: colour(0xFFB38033), flags: casting}, mob(10, 0).z(16, false).b(17, 3).end()},
 	}
 	for i, tc := range tests {
 		s.viewMobData(tc.e, 7)
