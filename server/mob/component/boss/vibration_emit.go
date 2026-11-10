@@ -2,7 +2,10 @@
 
 package boss
 
-import "github.com/df-mc/dragonfly/server/mob"
+import (
+	"github.com/df-mc/dragonfly/server/mob"
+	"github.com/df-mc/dragonfly/server/world/gameevent"
+)
 
 // Game events mobs emit through the emit_vibration event response
 // (creaking, armadillo), with their VibrationListenerUtils::
@@ -18,17 +21,11 @@ func init() {
 	mob.RegisterVibrationHook(emitVibration)
 }
 
-// emitVibration offers a game event a mob emitted to the vibration
-// listeners within 16 blocks of it.
+// emitVibration posts a game event a mob emitted (EmitVibrationResponse).
 func emitVibration(m *mob.Mob, event string) {
-	tx := m.Tx()
-	for e := range tx.EntitiesWithin(m.BBox().Grow(16)) {
-		lm, ok := mob.Of(e)
-		if !ok || lm.H() == m.H() {
-			continue
-		}
-		if l, ok := ListenerOf(lm); ok {
-			l.Hear(lm, Vibration{Event: event, Pos: m.Position(), Source: m.H()})
-		}
+	ev, ok := map[string]gameevent.Event{VibrationAct: gameevent.EntityAct, VibrationDie: gameevent.EntityDie}[event]
+	if !ok {
+		return
 	}
+	gameevent.PostContext(m.Tx(), ev, m.Position(), gameevent.Context{Source: m, Damped: m.HasComponent("minecraft:vibration_damper")})
 }

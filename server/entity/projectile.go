@@ -1,6 +1,7 @@
 package entity
 
 import (
+	"github.com/df-mc/dragonfly/server/world/gameevent"
 	"iter"
 	"math"
 	"math/rand/v2"
@@ -137,6 +138,8 @@ type ProjectileBehaviour struct {
 
 	collidedEntities []*world.EntityHandle
 	portalTravel     bool
+	// shot is set once projectile_shoot was posted for the projectile.
+	shot bool
 }
 
 // Owner returns the owner of the projectile.
@@ -201,6 +204,10 @@ func (lt *ProjectileBehaviour) Tick(e *Ent, tx *world.Tx) *Movement {
 		_ = e.Close()
 		return nil
 	}
+	if !lt.shot {
+		lt.shot = true
+		lt.postGameEvent(e, tx, gameevent.ProjectileShoot, e.Position())
+	}
 	m, result := lt.tickMovement(e, tx)
 	e.data.Pos, e.data.Vel, e.data.Rot = m.pos, m.vel, m.rot
 
@@ -237,6 +244,7 @@ func (lt *ProjectileBehaviour) Tick(e *Ent, tx *world.Tx) *Movement {
 			}
 		}
 		if lt.conf.SurviveBlockCollision {
+			lt.postGameEvent(e, tx, gameevent.ProjectileLand, result.Position())
 			lt.emitHitEffects(tx, result)
 			lt.hitBlockSurviving(e, r, m, tx)
 			return m
@@ -250,6 +258,7 @@ func (lt *ProjectileBehaviour) Tick(e *Ent, tx *world.Tx) *Movement {
 		m.dvel = m.vel.Sub(vel)
 		return m
 	}
+	lt.postGameEvent(e, tx, gameevent.ProjectileLand, result.Position())
 	lt.emitHitEffects(tx, result)
 	if lt.conf.Hit != nil {
 		lt.conf.Hit(e, tx, result)

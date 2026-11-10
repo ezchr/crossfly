@@ -54,6 +54,9 @@ type Config struct {
 	Effects                []effect.Effect
 	// TimeSinceRest is the ticks since the player last slept or respawned (Player.TimeSinceRest).
 	TimeSinceRest int64
+	// WardenThreat is the warden warning level of sculk shriekers, its cooldown and the ticks until it
+	// drops (Player.WardenThreat).
+	WardenThreat [3]int
 }
 
 // Apply applies fields from a Config to a world.EntityData, filling out empty
@@ -98,6 +101,7 @@ func (cfg Config) Apply(data *world.EntityData) {
 		fireTicks:           conf.FireTicks,
 		fallDistance:        conf.FallDistance,
 		timeSinceRest:       conf.TimeSinceRest,
+		wardenThreat:        wardenThreat{level: conf.WardenThreat[0], cooldown: conf.WardenThreat[1], decline: conf.WardenThreat[2]},
 	}
 	if conf.NoNameTag {
 		pdata.nameTag = ""

@@ -36,6 +36,7 @@ func (p *Provider) fromJson(d jsonData, lookupWorld func(world.Dimension) *world
 		FireTicks:           d.FireTicks,
 		FallDistance:        d.FallDistance,
 		TimeSinceRest:       d.TimeSinceRest,
+		WardenThreat:        [3]int{d.WardenThreatLevel, d.WardenThreatLevelIncreaseCooldown, d.WardenThreatDecreaseTimer},
 		Inventory:           inventory.New(36, nil),
 		EnderChestInventory: inventory.New(27, nil),
 		OffHand:             inventory.New(1, nil),
@@ -95,6 +96,10 @@ func (p *Provider) toJson(d player.Config, w *world.World) jsonData {
 		EnderChestInventory: encodeItems(d.EnderChestInventory.Slots()),
 		Dimension:           int32(dim),
 		TimeSinceRest:       d.TimeSinceRest,
+
+		WardenThreatLevel:                 d.WardenThreat[0],
+		WardenThreatLevelIncreaseCooldown: d.WardenThreat[1],
+		WardenThreatDecreaseTimer:         d.WardenThreat[2],
 	}
 }
 
@@ -119,6 +124,10 @@ type jsonData struct {
 	FallDistance                     float64
 	Dimension                        int32
 	TimeSinceRest                    int64
+	// The warden warning level of sculk shriekers, with BDS's WardenSpawnTrackerComponent names.
+	WardenThreatLevel                 int `json:",omitempty"`
+	WardenThreatLevelIncreaseCooldown int `json:",omitempty"`
+	WardenThreatDecreaseTimer         int `json:",omitempty"`
 }
 
 type jsonInventoryData struct {

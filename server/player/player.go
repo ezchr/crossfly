@@ -3,6 +3,7 @@ package player
 import (
 	"errors"
 	"fmt"
+	"github.com/df-mc/dragonfly/server/world/gameevent"
 	"math"
 	"math/rand/v2"
 	"net"
@@ -113,6 +114,10 @@ type playerData struct {
 	// timeSinceRest counts the ticks since the player last slept or respawned (BDS
 	// InsomniaComponent); see TimeSinceRest.
 	timeSinceRest int64
+	// wardenThreat is the warning level of sculk shriekers (WardenSpawnTrackerComponent); gameEventMove
+	// tracks the player's movement for vibrations. See game_event.go.
+	wardenThreat  wardenThreat
+	gameEventMove *gameevent.Movement
 
 	mc           *entity.MovementComputer
 	portalTravel *entity.PortalTravelComputer
@@ -727,6 +732,7 @@ func (p *Player) Hurt(dmg float64, src world.DamageSource) (float64, world.HurtR
 	}
 
 	p.addHealth(-damageLeft)
+	p.postDamageEvent(src)
 
 	if src.ReducedByArmour() {
 		p.Exhaust(0.1)
@@ -1867,6 +1873,7 @@ func (p *Player) UseItem() {
 			return
 		}
 		useCtx.CountSub, useCtx.NewItem = 1, usable.Consume(p.tx, p)
+		p.postConsumeEvent(i)
 		p.handleUseContext(useCtx)
 		p.tx.PlaySound(p.Position().Add(mgl64.Vec3{0, 1.5}), sound.Burp{})
 		// Stop using the item, as vanilla does when an item is consumed. A client still holding the
@@ -2744,6 +2751,7 @@ func (p *Player) placeBlock(pos cube.Pos, b world.Block, ignoreBBox bool) bool {
 	}
 	p.tx.SetBlock(pos, b, nil)
 	p.tx.PlaySound(pos.Vec3(), sound.BlockPlace{Block: b})
+	p.postGameEvent(gameevent.BlockPlace, pos.Vec3Centre())
 	p.SwingArm()
 	return true
 }
@@ -3072,6 +3080,7 @@ func (p *Player) Move(deltaPos mgl64.Vec3, deltaYaw, deltaPitch float64) {
 
 	p.onGround = p.checkOnGround(deltaPos)
 	p.updateFallState(deltaPos.Y())
+	p.trackGameEventMovement()
 
 	if p.Flying() {
 		return // flying costs no food, as in vanilla: fast flight counts as sprinting
@@ -4561,6 +4570,7 @@ func (p *Player) Data() Config {
 		FallDistance:        p.fallDistance,
 		Effects:             p.Effects(),
 		TimeSinceRest:       p.timeSinceRest,
+		WardenThreat:        [3]int{p.wardenThreat.level, p.wardenThreat.cooldown, p.wardenThreat.decline},
 	}
 }
 
@@ -4646,6 +4656,7 @@ func (p *Player) broadcastArmour(_ int, before, after item.Stack) {
 		// Only send armour if the type of the armour changed.
 		return
 	}
+	p.postEquipEvent(after.Empty())
 	for _, viewer := range p.viewers() {
 		viewer.ViewEntityArmour(p)
 	}

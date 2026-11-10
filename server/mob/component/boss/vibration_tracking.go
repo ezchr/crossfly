@@ -4,6 +4,7 @@ package boss
 
 import (
 	"encoding/json"
+	"github.com/df-mc/dragonfly/server/world/gameevent"
 	"sync"
 
 	"github.com/df-mc/dragonfly/server/block/cube"
@@ -27,14 +28,12 @@ func init() {
 //	                           liquid): flap, at most once every 10 ticks
 //
 // Allays, bats, bees, chickens, the ender dragon, parrots and phantoms flap;
-// the vex makes no steps or swims. Dragonfly has no game event dispatcher
-// and no sculk blocks: the only listener is the warden's
-// minecraft:vibration_listener, which notices steps and swims itself
-// (VibrationListener.scan) and asks this component whether to; flaps are
-// sent to the listeners within 16 blocks.
+// the vex makes no steps or swims. The mob system trackMovement
+// (vibration_dispatch.go) posts the game events (package gameevent) for the
+// sculk blocks and the flaps; the warden notices steps and swims itself
+// (VibrationListener.scan) and asks this component whether to.
 type MovementTracking struct {
 	EmitMove, EmitSwim, EmitFlap bool
-	nextFlap                     int64
 }
 
 func newMovementTracking(_ string, raw json.RawMessage) (mob.Component, error) {
@@ -62,34 +61,6 @@ func (*MovementTracking) Attach(*mob.Mob) {}
 
 // Detach ...
 func (*MovementTracking) Detach(*mob.Mob) {}
-
-// Tick sends a flap every 10 ticks while the mob is in the air.
-func (c *MovementTracking) Tick(m *mob.Mob) {
-	if !c.EmitFlap || m.Dead() {
-		return
-	}
-	now := m.Ticks()
-	if now < c.nextFlap || !airborne(m) {
-		return
-	}
-	c.nextFlap = now + 10
-	vib := Vibration{Event: VibrationFlap, Pos: m.Position(), Source: m.H()}
-	tx := m.Tx()
-	for _, h := range listenersIn(tx) {
-		e, ok := h.Entity(tx)
-		if !ok {
-			forgetListener(tx, h)
-			continue
-		}
-		if lm, ok := mob.Of(e); ok && lm.H() != m.H() {
-			if l, ok := ListenerOf(lm); ok {
-				l.Hear(lm, vib) // Hear checks the range.
-			} else {
-				forgetListener(tx, h)
-			}
-		}
-	}
-}
 
 // airborne is the else branch of _trackMovement: not on the ground, a
 // climbable block, scaffolding, powder snow or cobweb, and not in water or
@@ -147,13 +118,19 @@ func addListener(m *mob.Mob) {
 		set = map[*world.EntityHandle]struct{}{}
 		listeners.m[tx.World()] = set
 	}
-	set[m.H()] = struct{}{}
+	if _, ok := set[m.H()]; !ok {
+		set[m.H()] = struct{}{}
+		gameevent.Track(tx.World(), 1)
+	}
 }
 
 func forgetListener(tx *world.Tx, h *world.EntityHandle) {
 	listeners.Lock()
 	defer listeners.Unlock()
 	if set, ok := listeners.m[tx.World()]; ok {
+		if _, ok := set[h]; ok {
+			gameevent.Track(tx.World(), -1)
+		}
 		delete(set, h)
 		if len(set) == 0 {
 			delete(listeners.m, tx.World())

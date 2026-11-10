@@ -5,6 +5,8 @@ package boss
 import (
 	"encoding/json"
 	"fmt"
+	"github.com/df-mc/dragonfly/server/world/gameevent"
+	"github.com/df-mc/dragonfly/server/world/particle"
 	"math"
 	"slices"
 
@@ -467,11 +469,13 @@ type Vibration struct {
 // minecraft:vibration_damper or steps on wool; a line through wool
 // blocks it.
 //
-// Dragonfly has no game events: the listener notices entities that move
-// (steps, swimming, landing; game_event_movement_tracking may turn steps and
-// swims off), projectiles flying or landing near it, mobs being hurt
-// (HurtHook) and explosions near it; flapping mobs send their flaps to it
-// (MovementTracking).
+// The listener notices entities that move near it itself (steps, swimming,
+// landing; game_event_movement_tracking may turn steps and swims off) and
+// projectiles flying or landing near it (scan); every other game event of
+// the world (blocks broken and placed, doors, containers, explosions,
+// entities hurt, eating, equipping, flaps...) reaches it through package
+// gameevent (hearMobListeners). A vibration on its way shows the vibration
+// particle.
 //
 // A warden reacts as WardenVibrationConfig::onSignalReceive: actor event
 // 77 (tendrils), anger at the source (default_annoyingness; a projectile's
@@ -600,6 +604,10 @@ func (v *VibrationListener) Tick(m *mob.Mob) {
 		v.candidate = nil
 		c.arrive = m.Ticks() + int64(c.dist)
 		v.flying = c
+		// VibrationListener::_requestVibrationParticle: from the block of the vibration to the head.
+		m.Tx().AddParticle(cube.PosFromVec3(c.Pos).Vec3Centre(), particle.Vibration{
+			Entity: m.H(), EyeHeight: m.EyePosition()[1] - m.Position()[1], Ticks: int(c.dist),
+		})
 	}
 	if v.flying != nil && m.Ticks() >= v.flying.arrive {
 		vib := *v.flying
@@ -731,23 +739,18 @@ func (v *VibrationListener) receive(m *mob.Mob, vib Vibration) {
 	}
 }
 
-// vibrationHurtHook offers every mob hit as a vibration to the listeners
-// near it (game event entity_damage).
+// vibrationHurtHook posts entity_damage for every mob hit (Mob::_hurt), with
+// the attacker as its owner.
 func vibrationHurtHook(m *mob.Mob, _ float64, src world.DamageSource) {
 	tx := m.Tx()
-	for e := range tx.EntitiesWithin(m.BBox().Grow(16)) {
-		lm, ok := mob.Of(e)
-		if !ok || lm.H() == m.H() {
-			continue
-		}
-		if l, ok := ListenerOf(lm); ok {
-			vib := Vibration{Event: VibrationDamage, Pos: m.Position(), Source: m.H()}
-			if a := attackerOf(src); a != nil {
-				vib.Owner = a.H()
-			}
-			l.Hear(lm, vib)
-		}
+	if !gameevent.Active(tx) {
+		return
 	}
+	ctx := gameevent.Context{Source: m, Damped: m.HasComponent("minecraft:vibration_damper")}
+	if a := attackerOf(src); a != nil {
+		ctx.Owner = a
+	}
+	gameevent.PostContext(tx, gameevent.EntityDamage, m.Position(), ctx)
 }
 
 // --- small client components ---

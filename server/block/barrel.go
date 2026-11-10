@@ -83,6 +83,7 @@ func (b Barrel) AddViewer(v ContainerViewer, tx *world.Tx, pos cube.Pos) {
 	defer b.viewerMu.Unlock()
 	if len(b.viewers) == 0 {
 		b.open(tx, pos)
+		postContainer(tx, pos, true)
 	}
 	b.viewers[v] = struct{}{}
 }
@@ -98,6 +99,7 @@ func (b Barrel) RemoveViewer(v ContainerViewer, tx *world.Tx, pos cube.Pos) {
 	delete(b.viewers, v)
 	if len(b.viewers) == 0 {
 		b.close(tx, pos)
+		postContainer(tx, pos, false)
 	}
 }
 

@@ -109,6 +109,7 @@ func (s ShulkerBox) RemoveViewer(v ContainerViewer, tx *world.Tx, pos cube.Pos) 
 	delete(s.viewers, v)
 	if len(s.viewers) == 0 {
 		s.close(tx, pos)
+		postContainer(tx, pos, false)
 	}
 }
 
@@ -157,6 +158,7 @@ func (s ShulkerBox) open(tx *world.Tx, pos cube.Pos) {
 	}
 	tx.PlaySound(pos.Vec3Centre(), sound.ShulkerBoxOpen{})
 	tx.ScheduleBlockUpdate(pos, s, 0)
+	postContainer(tx, pos, true)
 }
 
 // close closes the shulker box, displaying the animation and playing a sound.

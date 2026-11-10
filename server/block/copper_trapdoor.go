@@ -82,9 +82,10 @@ func (t CopperTrapdoor) WithOxidationLevel(o OxidationType) Oxidisable {
 	return t
 }
 
-func (t CopperTrapdoor) Activate(pos cube.Pos, _ cube.Face, tx *world.Tx, _ item.User, _ *item.UseContext) bool {
+func (t CopperTrapdoor) Activate(pos cube.Pos, _ cube.Face, tx *world.Tx, u item.User, _ *item.UseContext) bool {
 	t.Open = !t.Open
 	tx.SetBlock(pos, t, nil)
+	postToggle(tx, pos, t.Open, u)
 	if t.Open {
 		tx.PlaySound(pos.Vec3Centre(), sound.TrapdoorOpen{Block: t})
 		return true

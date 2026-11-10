@@ -113,7 +113,7 @@ func (d CopperDoor) UseOnBlock(pos cube.Pos, face cube.Face, _ mgl64.Vec3, tx *w
 	return placed(ctx)
 }
 
-func (d CopperDoor) Activate(pos cube.Pos, _ cube.Face, tx *world.Tx, _ item.User, _ *item.UseContext) bool {
+func (d CopperDoor) Activate(pos cube.Pos, _ cube.Face, tx *world.Tx, u item.User, _ *item.UseContext) bool {
 	d.Open = !d.Open
 	tx.SetBlock(pos, d, nil)
 
@@ -123,6 +123,7 @@ func (d CopperDoor) Activate(pos cube.Pos, _ cube.Face, tx *world.Tx, _ item.Use
 		door.Open = d.Open
 		tx.SetBlock(otherPos, door, nil)
 	}
+	postToggle(tx, pos, d.Open, u)
 	if d.Open {
 		tx.PlaySound(pos.Vec3Centre(), sound.DoorOpen{Block: d})
 		return true

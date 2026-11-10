@@ -98,6 +98,7 @@ func (c EnderChest) open(tx *world.Tx, pos cube.Pos) {
 		v.ViewBlockAction(pos, OpenAction{})
 	}
 	tx.PlaySound(pos.Vec3Centre(), sound.EnderChestOpen{})
+	postContainer(tx, pos, true)
 }
 
 // close closes the ender chest, displaying the animation and playing a sound.
@@ -106,6 +107,7 @@ func (c EnderChest) close(tx *world.Tx, pos cube.Pos) {
 		v.ViewBlockAction(pos, CloseAction{})
 	}
 	tx.PlaySound(pos.Vec3Centre(), sound.EnderChestClose{})
+	postContainer(tx, pos, false)
 }
 
 // EncodeNBT ...

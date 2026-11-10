@@ -133,6 +133,7 @@ func (c Chest) AddViewer(v ContainerViewer, tx *world.Tx, pos cube.Pos) {
 	c.viewerMu.Lock()
 	if len(c.viewers) == 0 {
 		c.open(tx, pos)
+		postContainer(tx, pos, true)
 	}
 	c.viewers[v] = struct{}{}
 	c.viewerMu.Unlock()
@@ -155,6 +156,7 @@ func (c Chest) RemoveViewer(v ContainerViewer, tx *world.Tx, pos cube.Pos) {
 	delete(c.viewers, v)
 	if len(c.viewers) == 0 {
 		c.close(tx, pos)
+		postContainer(tx, pos, false)
 	}
 	c.viewerMu.Unlock()
 	if world.JavaRedstone() {

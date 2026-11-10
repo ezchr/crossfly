@@ -1,6 +1,7 @@
 package block
 
 import (
+	"github.com/df-mc/dragonfly/server/world/gameevent"
 	"math"
 	"math/rand/v2"
 	"time"
@@ -124,6 +125,7 @@ func (c ExplosionConfig) Explode(tx *world.Tx, src world.ExplosionSource) {
 		}
 	}
 	size, explosionPos := src.Size(), src.Position()
+	gameevent.Post(tx, gameevent.Explode, explosionPos, explosionBreaker(src, c.Source))
 	if c.ItemDropChance == 0 {
 		c.ItemDropChance = 1.0 / size
 	}
