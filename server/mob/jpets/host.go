@@ -68,9 +68,15 @@ func (h petHost) DefaultRandomPos(xz, y int) (mgl64.Vec3, bool) {
 func (h petHost) SameTypeInBox(dx, dy, dz float64) []petHost {
 	box := h.m.BBox().GrowVec3(mgl64.Vec3{dx, dy, dz})
 	id := entityID(h.m)
+	same := func(e world.Entity) bool { return entityID(e) == id }
+	// BreedGoal(this, speed, AbstractHorse.class): horses and donkeys look at
+	// each other (mules come of it).
+	if c, ok := h.m.Behaviour().(interface{ sameBreedClass(world.Entity) bool }); ok {
+		same = c.sameBreedClass
+	}
 	var out []petHost
-	for e := range h.m.Tx().EntitiesWithin(box) {
-		if entityID(e) != id {
+	for _, e := range entitiesTouching(h.m.Tx(), box) {
+		if !same(e) {
 			continue
 		}
 		if o, ok := javamob.Of(e); ok && !o.Dead() {

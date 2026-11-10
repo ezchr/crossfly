@@ -528,3 +528,22 @@ func TestLlamaCaravan(t *testing.T) {
 		t.Fatal("the free llama did not join the leashed one")
 	}
 }
+
+// TestMuleBreeding: a horse and a donkey in love make a mule.
+func TestMuleBreeding(t *testing.T) {
+	w := mobtest.New(t, mobtest.Options{})
+	arena(w)
+	a := spawnJava(t, w, "minecraft:horse", mgl64.Vec3{0.5, 1, 0.5})
+	b := spawnJava(t, w, "minecraft:donkey", mgl64.Vec3{2.5, 1, 0.5})
+	p := w.AddPlayer("tester", mgl64.Vec3{1.5, 1, 3.5})
+	for _, r := range []*mobtest.Ref{a, b} {
+		withMob(t, w, r, func(m *javamob.Mob) {
+			m.Behaviour().(*Equine).tameWithName(m, mustPlayer(t, w, p, m.Tx()).(*player.Player))
+			m.SetHealth(m.MaxHealth())
+		})
+		p.Interact(r, stackOf(t, "minecraft:golden_carrot", 1))
+	}
+	if _, ok := w.TickUntil(400, func(tx *world.Tx) bool { return len(w.Mobs("minecraft:mule")) > 0 }); !ok {
+		t.Fatal("no mule")
+	}
+}
