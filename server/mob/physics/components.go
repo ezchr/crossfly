@@ -65,10 +65,13 @@ func newCanClimb(string, json.RawMessage) (mob.Component, error) {
 	return flagComponent{set: setCanClimb, v: true}, nil
 }
 
-// newPushableByEntity is minecraft:pushable_by_entity. Its presets (special
-// push modes against given entities, e.g. sulfur cubes, minecarts) are not
-// modelled: the mob is pushed normally by everything.
-func newPushableByEntity(string, json.RawMessage) (mob.Component, error) {
+// newPushableByEntity is minecraft:pushable_by_entity. The mob is pushed
+// normally by everything; presets add special push modes against given
+// entities (the ball push of sulfur cubes, push_presets.go).
+func newPushableByEntity(_ string, raw json.RawMessage) (mob.Component, error) {
+	if c, ok, err := newPushPresets(raw); ok || err != nil {
+		return c, err
+	}
 	return flagComponent{set: setPushable, v: true}, nil
 }
 
