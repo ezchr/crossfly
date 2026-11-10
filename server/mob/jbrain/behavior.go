@@ -5,10 +5,9 @@ import (
 )
 
 // Random is the random source behaviours and sensors draw from. *rand.Rand
-// (math/rand) satisfies it, as does the Java-compatible random of the mob
-// base.
+// (math/rand/v2, as the Java mob base uses) satisfies it.
 type Random interface {
-	Intn(n int) int
+	IntN(n int) int
 	Float32() float32
 	Float64() float64
 }
@@ -139,7 +138,7 @@ func (b *Behavior[E]) TryStart(c *Ctx, e E) bool {
 	b.state = Running
 	d := b.min
 	if b.max > b.min {
-		d += c.Rand.Intn(b.max + 1 - b.min)
+		d += c.Rand.IntN(b.max + 1 - b.min)
 	}
 	b.end = c.Time + int64(d)
 	b.task.Start(c, e)

@@ -55,7 +55,7 @@ func (p *Provider[E]) MakeBrain(e E, r Random, saved *Packed) *Brain[E] {
 			ss.rate = pr
 		}
 		// randomlyDelayStart draws from the construction-time scan rate.
-		ss.timeLeft = int64(r.Intn(rate))
+		ss.timeLeft = int64(r.IntN(rate))
 		b.sensors = append(b.sensors, ss)
 		for _, m := range s.Requires() {
 			b.mem.Register(m)

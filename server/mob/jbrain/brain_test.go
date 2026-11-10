@@ -2,7 +2,7 @@ package jbrain
 
 import (
 	"bytes"
-	"math/rand"
+	"math/rand/v2"
 	"reflect"
 	"testing"
 
@@ -96,8 +96,8 @@ func TestBehaviorDuration(t *testing.T) {
 		return []ActivityData[*body]{{Activity: ActCore, Behaviours: Seq[*body](0, b)}}
 	}}
 	e := &body{}
-	br := p.MakeBrain(e, rand.New(rand.NewSource(1)), nil)
-	c := Ctx{Rand: rand.New(rand.NewSource(2))}
+	br := p.MakeBrain(e, rand.New(rand.NewPCG(1, 0)), nil)
+	c := Ctx{Rand: rand.New(rand.NewPCG(2, 0))}
 	br.Tick(c, e)
 	if task.starts != 0 {
 		t.Fatal("started without its entry memory")
@@ -125,7 +125,7 @@ func TestActivityHashOrder(t *testing.T) {
 	// with OpenJDK 25: [play, core, rest, hide, meet, idle, pre_raid, work, panic, raid].
 	ins := []Activity{ActPanic, ActCore, ActIdle, ActRaid, ActPreRaid, ActHide, ActMeet, ActRest, ActWork, ActPlay}
 	want := []Activity{ActPlay, ActCore, ActRest, ActHide, ActMeet, ActIdle, ActPreRaid, ActWork, ActPanic, ActRaid}
-	br := (&Provider[*body]{}).MakeBrain(&body{}, rand.New(rand.NewSource(1)), nil)
+	br := (&Provider[*body]{}).MakeBrain(&body{}, rand.New(rand.NewPCG(1, 0)), nil)
 	for _, a := range ins {
 		br.AddActivity(ActivityData[*body]{Activity: a, Behaviours: Seq[*body](0, Trigger[*body]("x", nil, func(*Ctx, *body) bool { return false }))})
 	}
@@ -138,7 +138,7 @@ func TestActivityHashOrder(t *testing.T) {
 	}
 	ins = []Activity{ActCore, ActFight, ActCelebrate, ActAdmireItem, ActAvoid, ActRide, ActIdle}
 	want = []Activity{ActCore, ActAdmireItem, ActCelebrate, ActIdle, ActAvoid, ActRide, ActFight}
-	br = (&Provider[*body]{}).MakeBrain(&body{}, rand.New(rand.NewSource(1)), nil)
+	br = (&Provider[*body]{}).MakeBrain(&body{}, rand.New(rand.NewPCG(1, 0)), nil)
 	for _, a := range ins {
 		br.AddActivity(ActivityData[*body]{Activity: a, Behaviours: Seq[*body](0, Trigger[*body]("x", nil, func(*Ctx, *body) bool { return false }))})
 	}
@@ -164,8 +164,8 @@ func TestPriorityOrderAndRunningOutsideActivity(t *testing.T) {
 			{Activity: ActWork, Behaviours: Seq[*body](1, mk("work1"))},
 		}
 	}}
-	br := p.MakeBrain(e, rand.New(rand.NewSource(1)), nil)
-	c := Ctx{Rand: rand.New(rand.NewSource(3))}
+	br := p.MakeBrain(e, rand.New(rand.NewPCG(1, 0)), nil)
+	c := Ctx{Rand: rand.New(rand.NewPCG(3, 0))}
 	br.Tick(c, e)
 	if want := []string{"core0", "idle2", "core5"}; !reflect.DeepEqual(e.log, want) {
 		t.Fatalf("log %v, want %v", e.log, want)
@@ -200,7 +200,7 @@ func TestActivityConditionsAndErase(t *testing.T) {
 			{Activity: ActIdle},
 		}
 	}}
-	br := p.MakeBrain(e, rand.New(rand.NewSource(1)), nil)
+	br := p.MakeBrain(e, rand.New(rand.NewPCG(1, 0)), nil)
 	br.SetActiveActivityToFirstValid(ActPanic, ActIdle)
 	if br.IsActive(ActPanic) {
 		t.Fatal("panic active without its memory")
@@ -221,7 +221,7 @@ func TestSchedule(t *testing.T) {
 	p := &Provider[*body]{Activities: func(*body) []ActivityData[*body] {
 		return []ActivityData[*body]{{Activity: ActIdle}, {Activity: ActRest}}
 	}}
-	br := p.MakeBrain(e, rand.New(rand.NewSource(1)), nil)
+	br := p.MakeBrain(e, rand.New(rand.NewPCG(1, 0)), nil)
 	calls := 0
 	br.SetSchedule(func(*Ctx) (Activity, bool) { calls++; return ActRest, true })
 	for tm := int64(0); tm < 50; tm++ {
@@ -243,7 +243,7 @@ func TestSensorRates(t *testing.T) {
 	st := &SensorType[*body]{Name: "count", Key: "countsensor", New: func() Sensor[*body] { return countSensor{&n} }}
 	p := &Provider[*body]{EntityType: "testmob", Sensors: []*SensorType[*body]{st}}
 	e := &body{}
-	br := p.MakeBrain(e, rand.New(rand.NewSource(1)), nil)
+	br := p.MakeBrain(e, rand.New(rand.NewPCG(1, 0)), nil)
 	for range 200 {
 		br.Tick(Ctx{}, e)
 	}
@@ -256,7 +256,7 @@ func TestSensorRates(t *testing.T) {
 	SetPaperSensorRate("testmob", "countsensor", 40)
 	defer SetPaperSensorRate("testmob", "countsensor", -1)
 	n = 0
-	br = p.MakeBrain(e, rand.New(rand.NewSource(1)), nil)
+	br = p.MakeBrain(e, rand.New(rand.NewPCG(1, 0)), nil)
 	for range 400 {
 		br.Tick(Ctx{}, e)
 	}
@@ -272,7 +272,7 @@ func TestRunOneWeights(t *testing.T) {
 	}
 	g := RunOne[*body](nil, W[*body](mk("a"), 1), W[*body](mk("b"), 3))
 	m := newMem()
-	c := &Ctx{Rand: rand.New(rand.NewSource(9)), Mem: m}
+	c := &Ctx{Rand: rand.New(rand.NewPCG(9, 0)), Mem: m}
 	e := &body{}
 	for range 4000 {
 		g.TryStart(c, e)
@@ -294,7 +294,7 @@ func TestGateEraseOnStop(t *testing.T) {
 	m := newMem(testMemA.ID())
 	Set(m, testMemA, 1)
 	g := NewGate[*body](nil, []MemoryID{testMemA.ID()}, Ordered, TryAll, []Weighted[*body]{W[*body](Trigger[*body]("t", nil, func(*Ctx, *body) bool { return true }), 1)})
-	c := &Ctx{Rand: rand.New(rand.NewSource(1)), Mem: m}
+	c := &Ctx{Rand: rand.New(rand.NewPCG(1, 0)), Mem: m}
 	g.TryStart(c, &body{})
 	g.TickOrStop(c, &body{})
 	if m.Has(testMemA.ID()) {
@@ -304,7 +304,7 @@ func TestGateEraseOnStop(t *testing.T) {
 
 func TestPackRoundTrip(t *testing.T) {
 	p := &Provider[*body]{Memories: []MemoryID{MemHome.ID(), MemLastSlept.ID(), MemGolemDetectedRecently.ID(), MemAngryAt.ID(), testMemA.ID(), testMemSave.ID()}}
-	br := p.MakeBrain(&body{}, rand.New(rand.NewSource(1)), nil)
+	br := p.MakeBrain(&body{}, rand.New(rand.NewPCG(1, 0)), nil)
 	home := GlobalPos{Dim: world.Overworld, Pos: cube.Pos{10, 64, -3}}
 	u := uuid.MustParse("01234567-89ab-cdef-0123-456789abcdef")
 	SetM(br, MemHome, home)
@@ -322,7 +322,7 @@ func TestPackRoundTrip(t *testing.T) {
 	if err := nbt.NewDecoderWithEncoding(bytes.NewReader(data), nbt.LittleEndian).Decode(&back); err != nil {
 		t.Fatal(err)
 	}
-	br2 := p.MakeBrain(&body{}, rand.New(rand.NewSource(1)), Unpack(back))
+	br2 := p.MakeBrain(&body{}, rand.New(rand.NewPCG(1, 0)), Unpack(back))
 	if v, ok := GetM(br2, MemHome); !ok || v != home {
 		t.Fatalf("home %v %v", v, ok)
 	}
