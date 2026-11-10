@@ -281,6 +281,7 @@ func Transform(m *mob.Mob, id, event string, preserveEquipment, dropEquipment, k
 // over.
 func TransformWith(m *mob.Mob, o TransformOptions) (*mob.Mob, error) {
 	tx := m.Tx()
+	o.Into = ActorID(o.Into)
 	if _, ok := mob.TypeFor(o.Into); !ok {
 		return nil, fmt.Errorf("no mob type %q", o.Into)
 	}
