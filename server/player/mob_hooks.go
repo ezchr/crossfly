@@ -4,6 +4,7 @@ package player
 
 import (
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/df-mc/dragonfly/server/entity"
@@ -45,11 +46,20 @@ func (p *Player) recordAttacker(src world.DamageSource) {
 		return
 	}
 	lastAttackers.Store(p.H(), attackRecord{attacker: attacker.H(), at: time.Now()})
-	lastHurtTargets.Store(attacker.H(), attackRecord{attacker: p.H(), at: time.Now()})
+	if trackHurtTargets.Load() {
+		lastHurtTargets.Store(attacker.H(), attackRecord{attacker: p.H(), at: time.Now()})
+	}
 }
 
-// lastHurtTargets holds the player each entity last hurt (by the attacker's handle).
-var lastHurtTargets sync.Map
+// lastHurtTargets holds the player each entity last hurt (by the attacker's handle), kept only once
+// TrackHurtTargets was called (the Java mob mode's pets: nothing is recorded otherwise).
+var (
+	lastHurtTargets  sync.Map
+	trackHurtTargets atomic.Bool
+)
+
+// TrackHurtTargets turns on recording the player victims of LastHurtTarget.
+func TrackHurtTargets() { trackHurtTargets.Store(true) }
 
 // LastHurtTarget returns the player the entity e last hurt and when (Java's LivingEntity.lastHurtMob for
 // player victims: a pet attacks what its owner hit). For players only; mobs hit by players are recorded

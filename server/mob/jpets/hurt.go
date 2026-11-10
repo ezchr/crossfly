@@ -69,6 +69,7 @@ func recordHit(m *mob.Mob, _ float64, src world.DamageSource) {
 // LastHurtMob is LivingEntity.getLastHurtMob with its timestamp: the mob or
 // player e last hurt.
 func LastHurtMob(e world.Entity) (*world.EntityHandle, int64, bool) {
+	player.TrackHurtTargets() // only the pets of the Java mob mode ask
 	hitsMu.Lock()
 	r, ok := hits[e.H()]
 	hitsMu.Unlock()
