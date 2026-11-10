@@ -157,15 +157,22 @@ const maxUpdateFlushRounds = 16
 
 // scheduled reports whether a tick is scheduled for b at pos that has not run yet.
 func (queue *scheduledTickQueue) scheduled(br BlockRegistry, pos cube.Pos, b Block) bool {
-	t, ok := queue.furthestTicks[scheduledTickIndex{pos: pos, hash: br.BlockHash(b)}]
-	return ok && t > queue.currentTick
+	// LevelTicks.hasScheduledTick: a tick of the block's type waits at the position.
+	return queue.pending[scheduledTickType{pos: pos, kind: scheduledTickKind(b)}] > 0
 }
 
 // cancel removes the ticks scheduled at pos for b.
 func (queue *scheduledTickQueue) cancel(br BlockRegistry, pos cube.Pos, b Block) {
 	index := scheduledTickIndex{pos: pos, hash: br.BlockHash(b)}
+	kind := scheduledTickKind(b)
 	queue.ticks = slices.DeleteFunc(queue.ticks, func(t scheduledTick) bool {
-		return t.pos == index.pos && t.bhash == index.hash
+		if t.pos != index.pos || scheduledTickKind(t.b) != kind {
+			return false
+		}
+		if t.t > queue.currentTick {
+			queue.unpend(t)
+		}
+		return true
 	})
 	delete(queue.furthestTicks, index)
 }

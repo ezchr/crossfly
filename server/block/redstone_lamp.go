@@ -39,7 +39,10 @@ func (r RedstoneLamp) RedstonePowerUpdate(_ cube.Pos, _ *world.Tx, power int) (w
 // It also schedules initially lit lamps with no power, even without a power edge.
 func (r RedstoneLamp) RedstonePowerActionUpdate(pos cube.Pos, tx *world.Tx, update world.RedstoneUpdate) {
 	if update.NewPower > 0 {
-		tx.CancelBlockUpdate(pos, r)
+		if !world.JavaRedstone() {
+			tx.CancelBlockUpdate(pos, r)
+		}
+		// Java keeps the off tick: it checks the power again when it runs (RedstoneLampBlock.tick).
 	} else if r.Lit {
 		tx.ScheduleBlockUpdate(pos, r, redstoneLampOffDelay)
 	}

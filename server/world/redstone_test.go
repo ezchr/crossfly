@@ -594,15 +594,23 @@ func TestScheduledTickQueueDuplicateScheduling(t *testing.T) {
 				queue.schedule(DefaultBlockRegistry, pos, b, delay)
 			}
 
+			wantTicks := test.wantTicks
+			if javaRedstone {
+				// Java keeps the tick already waiting, whenever it is due (LevelChunkTicks.schedule).
+				wantTicks = wantTicks[:1]
+			}
+			ticks := queue.fromChunk(chunkPosFromBlockPos(pos))
+			if len(ticks) != len(wantTicks) {
+				t.Fatalf("active ticks = %v, want %v", ticks, wantTicks)
+			}
+			if javaRedstone {
+				return
+			}
 			index := scheduledTickIndex{pos: pos, hash: DefaultBlockRegistry.BlockHash(b)}
 			if got, want := queue.furthestTicks[index], int64(102); got != want {
 				t.Fatalf("furthest tick = %d, want %d", got, want)
 			}
-			ticks := queue.fromChunk(chunkPosFromBlockPos(pos))
-			if len(ticks) != len(test.wantTicks) {
-				t.Fatalf("active ticks = %v, want %v", ticks, test.wantTicks)
-			}
-			for i, want := range test.wantTicks {
+			for i, want := range wantTicks {
 				if got := ticks[i].t; got != want {
 					t.Fatalf("active tick %d = %d, want %d; ticks=%v", i, got, want, ticks)
 				}
@@ -678,6 +686,13 @@ func TestScheduledTickQueueExecutesEarlierDueTickBeforeLaterTick(t *testing.T) {
 	})
 	if ticksAfterFirst != 1 {
 		t.Fatalf("earlier due tick executed %d time(s), want 1", ticksAfterFirst)
+	}
+	if javaRedstone {
+		// Java dropped the later tick: it was scheduled while the earlier one waited.
+		if len(activeAfterFirst) != 0 || ticksAfterSecond != 1 {
+			t.Fatalf("java: active after first %v, ticks after second %d; want none and 1", activeAfterFirst, ticksAfterSecond)
+		}
+		return
 	}
 	if !hasFurthestAfterFirst || furthestAfterFirst != 102 {
 		t.Fatalf("furthest tick after earlier tick = %d, %t; want 102, true", furthestAfterFirst, hasFurthestAfterFirst)

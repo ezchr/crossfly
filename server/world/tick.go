@@ -371,6 +371,29 @@ type scheduledTickQueue struct {
 	furthestTicks map[scheduledTickIndex]int64
 	currentTick   int64
 	nextOrder     int64
+	// pending counts the ticks not yet due per position and tick type, for Java redstone: Java keeps one scheduled
+	// tick per position and block (or fluid) type (LevelChunkTicks.schedule drops a tick while one is pending).
+	pending map[scheduledTickType]int
+}
+
+// scheduledTickType is a position and the tick type of a block there (scheduledTickKind).
+type scheduledTickType struct {
+	pos  cube.Pos
+	kind uint64
+}
+
+// scheduledTickKind is the type Java keys a scheduled tick by: the block type, or for a liquid its fluid type, a
+// source (Fluids.WATER) and flowing liquid (Fluids.FLOWING_WATER) being different types.
+func scheduledTickKind(b Block) uint64 {
+	if b == nil {
+		return 0
+	}
+	base, _ := b.Hash()
+	kind := base << 1
+	if l, ok := b.(Liquid); ok && l.LiquidDepth() == 8 && !l.LiquidFalling() {
+		kind |= 1
+	}
+	return kind
 }
 
 type scheduledTick struct {
@@ -389,7 +412,7 @@ type scheduledTickIndex struct {
 
 // newScheduledTickQueue creates a queue for scheduled block ticks.
 func newScheduledTickQueue(tick int64) *scheduledTickQueue {
-	return &scheduledTickQueue{furthestTicks: make(map[scheduledTickIndex]int64), currentTick: tick}
+	return &scheduledTickQueue{furthestTicks: make(map[scheduledTickIndex]int64), currentTick: tick, pending: make(map[scheduledTickType]int)}
 }
 
 // tick processes scheduled ticks, calling ScheduledTicker.ScheduledTick for any
@@ -408,6 +431,7 @@ func (queue *scheduledTickQueue) tick(tx *Tx, tick int64) {
 	for _, t := range queue.ticks {
 		if t.t <= tick {
 			due = append(due, t)
+			queue.unpend(t)
 		} else {
 			future = append(future, t)
 		}
@@ -449,17 +473,37 @@ func (queue *scheduledTickQueue) tick(tx *Tx, tick int64) {
 				continue
 			}
 		}
-		if ticker, ok := b.(ScheduledTicker); ok && w.conf.Blocks.BlockHash(b) == t.bhash {
+		// ServerLevel.tickBlock/tickFluid: the tick runs if a block (or fluid) of its type is there, in any state.
+		kind := scheduledTickKind(t.b)
+		if ticker, ok := b.(ScheduledTicker); ok && scheduledTickKind(b) == kind {
 			if t.b != nil {
 				ran[key] = true
 			}
 			ticker.ScheduledTick(t.pos, tx, w.r)
-		} else if liquid, ok := tx.additionalLiquid(t.pos); ok && w.conf.Blocks.BlockHash(liquid) == t.bhash {
+		} else if liquid, ok := tx.additionalLiquid(t.pos); ok && scheduledTickKind(liquid) == kind {
 			if ticker, ok := liquid.(ScheduledTicker); ok {
 				ticker.ScheduledTick(t.pos, tx, w.r)
 			}
 		}
 	}
+}
+
+// unpend notes that the tick t is no longer waiting.
+func (queue *scheduledTickQueue) unpend(t scheduledTick) {
+	key := scheduledTickType{pos: t.pos, kind: scheduledTickKind(t.b)}
+	if queue.pending[key] <= 1 {
+		delete(queue.pending, key)
+		return
+	}
+	queue.pending[key]--
+}
+
+// pend notes that the tick t waits.
+func (queue *scheduledTickQueue) pend(t scheduledTick) {
+	if queue.pending == nil {
+		queue.pending = make(map[scheduledTickType]int)
+	}
+	queue.pending[scheduledTickType{pos: t.pos, kind: scheduledTickKind(t.b)}]++
 }
 
 // fluidTick is 1 for a tick scheduled for a liquid, which Java Edition runs after the block ticks, and 0 otherwise.
@@ -507,12 +551,21 @@ func (queue *scheduledTickQueue) schedule(br BlockRegistry, pos cube.Pos, b Bloc
 func (queue *scheduledTickQueue) schedulePriority(br BlockRegistry, pos cube.Pos, b Block, delay time.Duration, priority TickPriority) {
 	resTick := queue.currentTick + int64(max(delay/(time.Second/20), 1))
 	index := scheduledTickIndex{pos: pos, hash: br.BlockHash(b)}
-	if t, ok := queue.furthestTicks[index]; ok && t >= resTick && t > queue.currentTick {
+	if javaRedstone {
+		// LevelChunkTicks.schedule: nothing is scheduled while a tick of the same type waits at the position, however
+		// soon or late it is due.
+		if queue.pending[scheduledTickType{pos: pos, kind: scheduledTickKind(b)}] > 0 {
+			return
+		}
+	} else if t, ok := queue.furthestTicks[index]; ok && t >= resTick && t > queue.currentTick {
 		return
 	}
 	queue.furthestTicks[index] = resTick
 	queue.nextOrder++
 	queue.ticks = append(queue.ticks, scheduledTick{pos: pos, t: resTick, b: b, bhash: index.hash, priority: priority, order: queue.nextOrder})
+	if javaRedstone {
+		queue.pend(queue.ticks[len(queue.ticks)-1])
+	}
 }
 
 // retarget moves the ticks scheduled at pos for from over to to, for a block whose state changed
@@ -526,6 +579,10 @@ func (queue *scheduledTickQueue) retarget(br BlockRegistry, pos cube.Pos, from, 
 	index := scheduledTickIndex{pos: pos, hash: br.BlockHash(to)}
 	for i, t := range queue.ticks {
 		if t.pos == pos && t.bhash == old.hash {
+			if javaRedstone && t.t > queue.currentTick {
+				queue.unpend(t)
+				queue.pend(scheduledTick{pos: pos, b: to})
+			}
 			queue.ticks[i].b, queue.ticks[i].bhash = to, index.hash
 		}
 	}
@@ -547,7 +604,13 @@ func (queue *scheduledTickQueue) fromChunk(pos ChunkPos) []scheduledTick {
 // removeChunk removes all scheduled ticks positioned within a ChunkPos.
 func (queue *scheduledTickQueue) removeChunk(pos ChunkPos) {
 	queue.ticks = slices.DeleteFunc(queue.ticks, func(tick scheduledTick) bool {
-		return chunkPosFromBlockPos(tick.pos) == pos
+		if chunkPosFromBlockPos(tick.pos) != pos {
+			return false
+		}
+		if javaRedstone && tick.t > queue.currentTick {
+			queue.unpend(tick)
+		}
+		return true
 	})
 	maps.DeleteFunc(queue.furthestTicks, func(index scheduledTickIndex, _ int64) bool {
 		return chunkPosFromBlockPos(index.pos) == pos
@@ -567,6 +630,9 @@ func (queue *scheduledTickQueue) add(ticks []scheduledTick) {
 	}
 	queue.ticks = append(queue.ticks, ticks...)
 	for _, t := range ticks {
+		if javaRedstone && t.t > queue.currentTick {
+			queue.pend(t)
+		}
 		index := scheduledTickIndex{pos: t.pos, hash: t.bhash}
 		if existing, ok := queue.furthestTicks[index]; ok {
 			queue.furthestTicks[index] = max(existing, t.t)
