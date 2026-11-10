@@ -100,3 +100,54 @@ func TestHiveRules(t *testing.T) {
 		t.Fatal(p)
 	}
 }
+
+func TestBeeState(t *testing.T) {
+	r := rng()
+	b := NewBeeState(r)
+	if b.FlowerCooldown < 20 || b.FlowerCooldown > 60 {
+		t.Fatal(b.FlowerCooldown)
+	}
+	b.SetHasStung(true)
+	died := -1
+	for i := 1; i <= 1300 && died < 0; i++ {
+		if _, d := b.ServerAiStep(r, false); d {
+			died = i
+		}
+	}
+	if died < 0 {
+		t.Fatal("stung bee never died within 1300 ticks")
+	}
+	b = NewBeeState(r)
+	b.SetHasNectar(true)
+	b.TicksWithoutNectar = 5
+	b.SetHasNectar(true)
+	if b.TicksWithoutNectar != 0 || !b.HasNectar() {
+		t.Fatal("nectar")
+	}
+	b.DropOffNectar()
+	if b.HasNectar() {
+		t.Fatal("drop off")
+	}
+	drowned := 0
+	for i := 0; i < 25; i++ {
+		if d, _ := b.ServerAiStep(r, true); d {
+			drowned++
+		}
+	}
+	if drowned != 5 {
+		t.Fatalf("drowning ticks %d, want 5 (ticks 21-25 under water)", drowned)
+	}
+	m := map[string]any{}
+	p := cube.Pos{1, 2, 3}
+	b.Hive = &p
+	b.EncodeNBT(m)
+	var c BeeState
+	c.DecodeNBT(m)
+	if c.Hive == nil || *c.Hive != p {
+		t.Fatal("hive pos round trip")
+	}
+	if !AttractsBees(block.Flower{Type: block.Poppy()}) || AttractsBees(block.DoubleFlower{Type: block.Sunflower()}) ||
+		!AttractsBees(block.DoubleFlower{Type: block.Sunflower(), UpperPart: true}) || AttractsBees(block.Grass{}) {
+		t.Fatal("bee_attractive")
+	}
+}
