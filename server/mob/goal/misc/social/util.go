@@ -33,23 +33,22 @@ func timeOfDay(tx *world.Tx) float64 {
 	return f + (f2-f)/3
 }
 
-// throwItem throws s from m's eyes towards to (BDS
-// GoAndGiveItemsToOwnerGoal::_attemptToGiveItem; the speed follows Java
-// BehaviorUtils.throwItem, 0.2 blocks a tick along the direction plus a
-// little lift), with a pickup delay.
-func throwItem(m *mob.Mob, s item.Stack, to mgl64.Vec3, pickupDelay time.Duration) {
-	from := m.EyePosition().Sub(mgl64.Vec3{0, 0.3, 0})
-	d := to.Sub(from)
-	if d.Len() > 1e-4 {
+// throwItem throws s from m's eyes towards to, as the allay's
+// GoAndGiveItemsToOwnerGoal::_attemptToGiveItem and
+// GoAndGiveItemsToNoteblockGoal::tick do: Spawner::spawnItem at the eye
+// position with a pickup delay of 5 ticks, then the item's motion is the
+// unit vector from the mob's position to the target times the throw speed
+// 0.2, its y times 1.5 (both set in the goal constructors).
+func throwItem(m *mob.Mob, s item.Stack, to mgl64.Vec3) {
+	d := to.Sub(m.Position())
+	if d.Len() >= 1e-4 {
 		d = d.Normalize().Mul(0.2)
+	} else {
+		d = mgl64.Vec3{}
 	}
-	d[1] += 0.1
-	opts := world.EntitySpawnOpts{Position: from, Velocity: d}
-	if pickupDelay > 0 {
-		m.Tx().AddEntity(entity.NewItemPickupDelay(opts, s, pickupDelay))
-		return
-	}
-	m.Tx().AddEntity(entity.NewItem(opts, s))
+	d[1] *= 1.5
+	opts := world.EntitySpawnOpts{Position: m.EyePosition(), Velocity: d}
+	m.Tx().AddEntity(entity.NewItemPickupDelay(opts, s, 5*time.Second/20))
 }
 
 // entityOf opens h in m's transaction.
@@ -70,3 +69,7 @@ func yawDir(yaw float64) mgl64.Vec3 {
 	r := mgl64.DegToRad(yaw)
 	return mgl64.Vec3{-math.Sin(r), 0, math.Cos(r)}
 }
+
+// playerEyeHeight is how far over its feet BDS puts a player (Actor::getPosition of a player is its
+// eye position).
+const playerEyeHeight = 1.62

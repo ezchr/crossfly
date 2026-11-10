@@ -16,6 +16,7 @@ import (
 	"github.com/df-mc/dragonfly/server/mob/goal/misc/social"
 	"github.com/df-mc/dragonfly/server/mob/internal/mobtest"
 	_ "github.com/df-mc/dragonfly/server/mob/vanilla"
+	"github.com/df-mc/dragonfly/server/player"
 	"github.com/df-mc/dragonfly/server/world"
 	"github.com/go-gl/mathgl/mgl64"
 	"github.com/sandertv/gophertunnel/minecraft/protocol"
@@ -52,7 +53,10 @@ func mobOf(t *testing.T, tx *world.Tx, r *mobtest.Ref) *mob.Mob {
 }
 
 // TestAllayGivesItemToOwner: an allay holding items flies to its owner and
-// throws one item at it.
+// throws one item at it. The thrown item has a pickup delay of only 5 ticks
+// (Spawner::spawnItem in GoAndGiveItemsToOwnerGoal::_attemptToGiveItem), so
+// the owner standing there picks it up: it is in the owner's inventory or,
+// not yet picked up, lying near the owner.
 func TestAllayGivesItemToOwner(t *testing.T) {
 	w := setup(t, mobtest.Options{Time: mobtest.Noon}, "minecraft:behavior.go_and_give_items_to_owner", "minecraft:navigation.hover")
 	p := w.AddPlayer("owner", mgl64.Vec3{8.5, 1, 0.5})
@@ -74,12 +78,15 @@ func TestAllayGivesItemToOwner(t *testing.T) {
 	if d := w.Dist(a, p); d > 4 {
 		t.Errorf("threw from %.1f blocks, reach is 3", d)
 	}
-	w.Tick(20)
-	w.Do(func(tx *world.Tx) {
-		if itemsNear(tx, p.PosTx(tx), 4) == 0 {
-			t.Errorf("no thrown item near the owner")
-		}
-	})
+	if _, ok := w.TickUntil(40, func(tx *world.Tx) bool {
+		pl, _ := p.Entity(tx)
+		_, got := pl.(*player.Player).Inventory().First(item.NewStack(item.Diamond{}, 1))
+		return got
+	}); !ok {
+		w.Do(func(tx *world.Tx) {
+			t.Errorf("owner got no diamond (%d items near the owner)", itemsNear(tx, p.PosTx(tx), 4))
+		})
+	}
 }
 
 // TestAllayGivesItemToNoteblock: an allay that heard a note block brings

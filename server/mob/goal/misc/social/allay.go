@@ -5,7 +5,6 @@ package social
 import (
 	"encoding/json"
 	"strings"
-	"time"
 
 	"github.com/df-mc/dragonfly/server/block"
 	"github.com/df-mc/dragonfly/server/block/cube"
@@ -244,11 +243,15 @@ func (g *giveItems) give(m *mob.Mob) {
 	if main.Empty() {
 		return
 	}
-	to := g.dest
-	if !g.noteblock {
-		to = to.Add(mgl64.Vec3{0, 1, 0})
+	// BDS aims one block over the owner's position (Actor::getPosition: a
+	// player's eyes), or at the middle of the block over the note block.
+	to := g.dest.Add(mgl64.Vec3{0, 1, 0})
+	if g.noteblock {
+		to = g.dest.Add(mgl64.Vec3{0, 0.5, 0})
+	} else if o, ok := entityOf(m, g.destEnt); ok && o.H().Type().EncodeEntity() == "minecraft:player" {
+		to[1] += playerEyeHeight
 	}
-	throwItem(m, main.Grow(-main.Count()+1), to, time.Second)
+	throwItem(m, main.Grow(-main.Count()+1), to)
 	m.SetHeldItems(main.Grow(-1), off)
 	g.thrown = true
 	kit.Sound(m, g.sound)
