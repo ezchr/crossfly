@@ -84,6 +84,9 @@ func NewZombifiedPiglin() *ZombifiedPiglin {
 // constructor.
 func (z *ZombifiedPiglin) RegisterGoals(m *javamob.Mob) {
 	m.SetPathfindingMalus(path.Lava, 8)
+	// Zombie.registerGoals: ZombieAttackTurtleEggGoal(4, 1, 3), which
+	// monster.Zombie does not add yet.
+	m.Goals().Add(4, NewZombieAttackTurtleEgg(1, 3))
 	z.Zombie.RegisterGoals(m)
 }
 

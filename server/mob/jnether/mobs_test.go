@@ -278,3 +278,26 @@ func TestPortalCandidates(t *testing.T) {
 		}
 	})
 }
+
+// TestZombifiedPiglinTramplesTurtleEggs: zombified piglins walk to turtle
+// eggs and destroy them (Zombie.ZombieAttackTurtleEggGoal; gold farms use
+// eggs as bait).
+func TestZombifiedPiglinTramplesTurtleEggs(t *testing.T) {
+	w := mobtest.New(t, mobtest.Options{})
+	w.Do(func(tx *world.Tx) {
+		w.Floor(tx, 0, 16, block.Stone{})
+		tx.SetBlock(cube.Pos{6, 1, 0}, block.TurtleEgg{}, nil)
+	})
+	spawnJ(t, w, ZombifiedPiglinID, mgl64.Vec3{0.5, 1, 0.5})
+	gone := false
+	for i := 0; i < 1600 && !gone; i += 20 {
+		w.Tick(20)
+		w.Do(func(tx *world.Tx) {
+			_, egg := tx.Block(cube.Pos{6, 1, 0}).(block.TurtleEgg)
+			gone = !egg
+		})
+	}
+	if !gone {
+		t.Error("the turtle egg survived 80 seconds next to a zombified piglin")
+	}
+}
