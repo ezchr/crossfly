@@ -3,7 +3,9 @@
 package jnether
 
 import (
+	"github.com/df-mc/dragonfly/server/block"
 	"github.com/df-mc/dragonfly/server/block/cube"
+	"github.com/df-mc/dragonfly/server/mob/component/boss"
 	"github.com/df-mc/dragonfly/server/mob/javamob"
 	"github.com/df-mc/dragonfly/server/mob/javaspawn"
 	"github.com/df-mc/dragonfly/server/world"
@@ -11,10 +13,16 @@ import (
 )
 
 // Install turns on what this package adds to the world in Java mob mode,
-// besides its mob types: zombified piglins from nether portal blocks. The
+// besides its mob types: zombified piglins from nether portal blocks, the
+// Java wither from the skull pattern (WitherSkullBlock.checkSpawn, replacing
+// the Bedrock summoning hook) and the Java dragon in the End fight. The
 // server calls it once after javamob.Install, before any world ticks
 // (full.go).
 func Install() {
+	block.SetSkullSpawner(func(tx *world.Tx, pos cube.Pos) bool {
+		return TrySummonWither(tx, pos, SummonHooks{SpawnWither: spawnWither})
+	})
+	boss.JavaDragon = javaDragonHooks{}
 	InstallPortalSpawning(PortalSpawnHooks{
 		SpawnZombifiedPiglin: func(tx *world.Tx, pos mgl64.Vec3, yaw float64) world.Entity {
 			m, err := javamob.Spawn(tx, ZombifiedPiglinID, pos, javamob.SpawnStructure, javamob.SpawnOptions{Rotation: cube.Rotation{yaw, 0}})
