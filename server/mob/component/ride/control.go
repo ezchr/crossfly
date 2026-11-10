@@ -133,6 +133,12 @@ func (c *FreeCamera) Tick(m *mob.Mob) {
 		input.Speed = m.Attr(mob.AttrUnderwaterMovement)
 	} else if fs := m.Attr(mob.AttrFlyingSpeed); fs > 0 {
 		input.Speed = fs
+		if !m.OnGround() {
+			// Travel accelerates in the air by 0.02 (the default flying speed) x the input: scale the input
+			// to the mob's flying speed (happy ghast 0.016: about 0.17 blocks a tick).
+			k := fs / 0.02
+			input.Forward, input.Strafe, input.Vertical = input.Forward*k, input.Strafe*k, input.Vertical*k
+		}
 	}
 }
 

@@ -55,6 +55,10 @@ func floatNavigationAfter(m *mob.Mob) {
 	if m.Dead() || !m.HasComponent("minecraft:navigation.float") || m.ActorFlag(protocol.EntityDataFlagResting) {
 		return
 	}
+	if _, steered := m.ControllingPassenger(); steered {
+		// The steering rider turns it (free_camera_controlled).
+		return
+	}
 	d := m.Vel()
 	if t, ok := m.Target(); ok && t.Position().Sub(m.Position()).LenSqr() < 4096 {
 		d = t.Position().Sub(m.Position())

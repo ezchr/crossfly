@@ -100,7 +100,9 @@ func TestBDSDefaults(t *testing.T) {
 	fw := build[*floatWander](t, "minecraft:behavior.float_wander", newFloatWander, `{}`)
 	eq(t, "float_wander xz", fw.xz, 10.0)
 	eq(t, "float_wander y", fw.y, 7.0)
-	eq(t, "float_wander flags", fw.Flags(), mob.ControlFlags(0))
+	eq(t, "float_wander flags", fw.Flags(), mob.FlagMove) // float_wander_has_move_control (26.60)
+	fwOff := build[*floatWander](t, "minecraft:behavior.float_wander", newFloatWander, `{"float_wander_has_move_control":false}`)
+	eq(t, "float_wander flags without move control", fwOff.Flags(), mob.ControlFlags(0))
 
 	rh := build[*randomHover](t, "minecraft:behavior.random_hover", newRandomHover, `{"hover_height":[1,4]}`)
 	eq(t, "random_hover interval", rh.interval, 120)

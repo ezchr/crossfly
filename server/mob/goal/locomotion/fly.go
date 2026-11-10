@@ -19,11 +19,14 @@ import (
 	"github.com/go-gl/mathgl/mgl64"
 )
 
-// floatWander is minecraft:behavior.float_wander (BDS FloatWanderGoal, ghast
-// and bat): drift towards a random point.
+// floatWander is minecraft:behavior.float_wander (BDS FloatWanderGoal, ghast,
+// bat and happy ghast): drift towards a random point.
 //
 //	xz_dist 10, y_dist 7 (>= 1), y_offset 0, must_reach false,
-//	random_reselect false, float_duration [0, 0] s. Flags none.
+//	random_reselect false, float_duration [0, 0] s,
+//	float_wander_has_move_control true: flags move (the 26.60
+//	FloatWanderGoalDefinition defaults; ghast and bat turn it off, so a
+//	steering rider's player_ride_tamed keeps a happy ghast from wandering).
 //
 // Every tick the mob's velocity gets (target - pos)/max(dist, 0.1) x its
 // movement speed. A new target (pos + random in +-xz, +-y, + y_offset) is
@@ -51,11 +54,15 @@ func newFloatWander(spec mob.GoalSpec) (mob.Goal, error) {
 		MustReach      bool       `json:"must_reach"`
 		RandomReselect bool       `json:"random_reselect"`
 		Duration       floatRange `json:"float_duration"`
+		MoveControl    *bool      `json:"float_wander_has_move_control"`
 	}{}
 	if err := decodeGoal(spec, &j); err != nil {
 		return nil, err
 	}
 	g := &floatWander{GoalBase: mob.GoalBase{Control: spec.FlagsOr(0)}, xz: 10, y: 7, yOff: j.YOffset, mustReach: j.MustReach, randomReselect: j.RandomReselect, duration: j.Duration}
+	if j.MoveControl == nil || *j.MoveControl {
+		g.Control = mob.FlagMove
+	}
 	if j.XZ != nil {
 		g.xz = float64(max(*j.XZ, 1))
 	}
@@ -517,6 +524,13 @@ func (g *floatTempt) Tick(m *mob.Mob) {
 	}
 	if target.Sub(m.Position()).Len() <= g.stopDistance(m) {
 		m.Navigation().Stop(m)
+		return
+	}
+	if m.HasComponent("minecraft:navigation.float") {
+		// FloatNavigation moves the mob only by its velocity (an adult happy ghast has no move control):
+		// push it towards the player as float_wander pushes it towards its target.
+		d := target.Sub(m.Position())
+		m.SetVelocity(m.Vel().Add(d.Mul(m.Speed() * g.speed / math.Max(d.Len(), 0.1))))
 		return
 	}
 	if !m.Navigation().MoveTo(m, target, g.speed) {

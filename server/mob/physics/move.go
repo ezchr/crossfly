@@ -165,7 +165,8 @@ func pushEntities(m *mob.Mob, s *state) {
 	search := area.GrowVec3(mgl64.Vec3{2, 2, 2})
 	self := m.H()
 	for e := range tx.EntitiesWithin(search) {
-		if e.H() == self {
+		if e.H() == self || m.HasPassenger(e.H()) || m.VehicleHandle() == e.H() {
+			// Entity.push: riders and their vehicle do not push each other.
 			continue
 		}
 		if !e.H().Type().BBox(e).Translate(e.Position()).IntersectsWith(area) {
