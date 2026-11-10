@@ -235,6 +235,39 @@ func (l LingeringPotion) Dispense(pos cube.Pos, face cube.Face, tx *world.Tx, ct
 	})
 }
 
+// dispenserShear shears an entity for a dispenser holding shears and reports whether it did. Package mob installs
+// it with SetDispenserShear; without mobs it is nil.
+var dispenserShear func(tx *world.Tx, e world.Entity) bool
+
+// SetDispenserShear installs the function dispensers holding shears shear entities with. Call it once, from an init
+// function.
+func SetDispenserShear(f func(tx *world.Tx, e world.Entity) bool) { dispenserShear = f }
+
+// Dispense shears the first mob in the block in front of a dispenser that can be sheared: a sheep, mooshroom, snow
+// golem, bogged or sulfur cube that is neither a baby nor sheared already (ShearsItem::dispense, 26.60). The shears
+// take one damage and the dispenser clicks. As on Bedrock, nothing to shear is no failure: the dispenser stays
+// silent and keeps the shears as they were. Harvesting a beehive's honeycomb, which BDS tries first, is left to the
+// hive.
+func (s Shears) Dispense(pos cube.Pos, face cube.Face, tx *world.Tx, ctx *DispenseContext) DispenseResult {
+	if dispenserShear == nil {
+		return DispenseSuccess
+	}
+	front := pos.Side(face)
+	box := cube.Box(float64(front[0]), float64(front[1]), float64(front[2]), float64(front[0]+1), float64(front[1]+1), float64(front[2]+1))
+	// BDS fetches the entities whose box meets the block's (BlockSource::fetchEntities).
+	for e := range tx.EntitiesWithin(box.Grow(2)) {
+		if !e.H().Type().BBox(e).Translate(e.Position()).IntersectsWith(box) {
+			continue
+		}
+		if dispenserShear(tx, e) {
+			ctx.DamageItem(1)
+			tx.PlaySound(front.Vec3Centre(), sound.Click{})
+			return DispenseSuccess
+		}
+	}
+	return DispenseSuccess
+}
+
 // Dispense launches the snowball from a dispenser.
 func (s Snowball) Dispense(pos cube.Pos, face cube.Face, tx *world.Tx, ctx *DispenseContext) DispenseResult {
 	create := tx.World().EntityRegistry().Config().Snowball
