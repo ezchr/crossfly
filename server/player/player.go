@@ -103,8 +103,11 @@ type playerData struct {
 
 	lastXPPickup *time.Time
 
-	lastDamage  float64
-	immuneUntil time.Time
+	lastDamage float64
+	// immuneTicks is how many more ticks the player is immune to damage no greater than lastDamage. BDS counts
+	// this hurt time down in Mob::baseTick and sets it to 10 in Mob::hurt, so it is counted in ticks rather
+	// than wall-clock time.
+	immuneTicks int
 
 	deathPos       *mgl64.Vec3
 	deathDimension world.Dimension
@@ -681,7 +684,7 @@ func (p *Player) Hurt(dmg float64, src world.DamageSource) (float64, world.HurtR
 	totalDamage := p.FinalDamageFrom(dmg, src)
 	damageLeft := totalDamage
 
-	immune := time.Now().Before(p.immuneUntil)
+	immune := p.immuneTicks > 0
 	if immune {
 		damageLeft -= p.lastDamage
 	}
@@ -850,9 +853,10 @@ func (p *Player) knockBack(src mgl64.Vec3, force, height float64) {
 	p.SetVelocity(velocity.Mul(1 - p.Armour().KnockBackResistance()))
 }
 
-// setAttackImmunity sets the duration the player is immune to entity attacks.
+// setAttackImmunity sets the duration the player is immune to entity attacks, rounded up to whole ticks.
 func (p *Player) setAttackImmunity(d time.Duration, dmg float64) {
-	p.immuneUntil = time.Now().Add(d)
+	const tick = time.Second / 20
+	p.immuneTicks = int(max(0, (d+tick-1)/tick))
 	p.lastDamage = dmg
 }
 
@@ -3370,6 +3374,9 @@ func (p *Player) Latency() time.Duration {
 
 // Tick ticks the entity, performing actions such as checking if the player is still breaking a block.
 func (p *Player) Tick(tx *world.Tx, current int64) {
+	if p.immuneTicks > 0 {
+		p.immuneTicks--
+	}
 	p.shieldTick()
 	if p.clearShieldBlockState(tx.World(), current) {
 		p.updateState()

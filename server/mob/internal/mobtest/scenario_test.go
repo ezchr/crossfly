@@ -117,8 +117,11 @@ func TestSkeletonKeepsDistanceAndShoots(t *testing.T) {
 	if arrows == 0 && p.Health() >= 500 {
 		t.Fatalf("skeleton never shot (dist %.1f):\n%v", final, w.Dump(s))
 	}
-	if final > maxRange+1 {
-		t.Errorf("skeleton stayed at %.1f blocks, outside its %.0f-block attack range", final, maxRange)
+	// An arrow that hits knocks the player back up to two blocks, and the
+	// skeleton then walks back into range: the 400th tick may fall in
+	// between. It gets one attack interval (3 s) to be in range again.
+	if _, ok := w.TickUntil(60, func(tx *world.Tx) bool { return mobtest.HDistTx(tx, s, p) <= maxRange+1 }); !ok {
+		t.Errorf("skeleton stayed at %.1f blocks, outside its %.0f-block attack range", w.Dist(s, p), maxRange)
 	}
 	if minDist < 4 {
 		t.Errorf("skeleton came within %.1f blocks: it should keep its distance", minDist)

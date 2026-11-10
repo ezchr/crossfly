@@ -164,10 +164,15 @@ func TestEffectImmunity(t *testing.T) {
 }
 
 // TestPufferfishPoisons: a fully puffed pufferfish poisons a player
-// touching it for 10 s (mob_effect) and hurts them (area_attack).
+// touching it for 10 s (mob_effect) and hurts them (area_attack). The
+// player's food is below 18 so it does not regenerate: with a full food bar
+// it heals 1 on the hunger ticks 0 and 1, and whether those heals land
+// before or after the hit depends on the order the world ticks its
+// entities in (a map), which put the health back to 20 now and then.
 func TestPufferfishPoisons(t *testing.T) {
 	w := arena(t)
 	p := w.AddPlayer("p", mgl64.Vec3{1.2, 1, 0.5})
+	p.With(func(pl *player.Player) { pl.SetFood(17) })
 	f := w.Spawn("minecraft:pufferfish", mgl64.Vec3{0.5, 1, 0.5})
 	f.With(func(m *mob.Mob) { m.Fire("minecraft:to_full_puff", nil) })
 	w.Tick(3)
@@ -186,8 +191,7 @@ func TestPufferfishPoisons(t *testing.T) {
 }
 
 // TestSlimeAreaAttack: a large slime hurts an iron golem (in its
-// entity_filter) touching it for 4, once per damage_cooldown (0.5 s). A mob
-// is used because Dragonfly's player hurt immunity runs on wall-clock time.
+// entity_filter) touching it for 4, once per damage_cooldown (0.5 s).
 func TestSlimeAreaAttack(t *testing.T) {
 	w := arena(t)
 	g := w.Spawn("minecraft:iron_golem", mgl64.Vec3{2.1, 1, 0.5})

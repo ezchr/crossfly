@@ -16,8 +16,9 @@ import (
 
 // TestMobDamageDifficulty: Player::_hurt scales every damage a mob deals
 // (melee, contact, a creeper's explosion) by difficulty, 0 on peaceful,
-// but not projectiles. Every hit goes to a fresh player, as a player's hurt
-// cooldown runs on the wall clock.
+// but not projectiles. Every hit goes to a fresh player: no tick passes
+// between the hits, so a player's hurt cooldown (10 ticks) would take the
+// later ones down to what they deal over the last.
 func TestMobDamageDifficulty(t *testing.T) {
 	w := mobtest.New(t, mobtest.Options{})
 	w.Do(func(tx *world.Tx) { w.Floor(tx, 0, 16, block.Stone{}) })
