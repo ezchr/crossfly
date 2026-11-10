@@ -240,7 +240,7 @@ func (cmd Command) executeRunnable(v reflect.Value, args string, source Source, 
 
 	var argFrags []string
 	if args != "" {
-		r := csv.NewReader(strings.NewReader(args))
+		r := csv.NewReader(strings.NewReader(compactBlockStates(args)))
 		r.Comma, r.LazyQuotes = ' ', true
 		record, err := r.Read()
 		if err != nil {

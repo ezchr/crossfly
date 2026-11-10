@@ -137,6 +137,15 @@ func BuildAvailableCommands(
 					Optional: paramInfo.Optional,
 					Options:  opt,
 				})
+				if _, ok := paramInfo.Value.(cmd.BlockParameter); ok {
+					// The states that may follow the block (unpowered_repeater ["repeater_delay"=2]), as BDS
+					// sends /setblock's: the client refuses a command it cannot match to an overload.
+					overloads[i].Parameters = append(overloads[i].Parameters, protocol.CommandParameter{
+						Name:     paramInfo.Name + "States",
+						Type:     protocol.CommandArgValid | protocol.CommandArgTypeBlockStates,
+						Optional: true,
+					})
+				}
 			}
 		}
 		pk.Commands = append(pk.Commands, protocol.Command{

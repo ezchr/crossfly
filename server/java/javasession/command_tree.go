@@ -32,6 +32,8 @@ import (
 //	                                                   maxEnumLiterals (items, blocks) an argument
 //	                                                   the server suggests for (ask_server):
 //	                                                   minecraft:resource_location, or string word
+//	cmd.BlockParameter -> minecraft:block_state, or minecraft:block_predicate for a filter: the
+//	                      client completes the block and its states itself
 //	other cmd.Parameter -> string word (greedy when last)
 //
 // The tree is rebuilt every commandRefresh and resent only when it changed (permissions and enum
@@ -50,6 +52,8 @@ const (
 	parserString  = 5
 	parserEntity  = 6
 	parserVec3    = 10
+	parserBlock   = 12 // minecraft:block_state
+	parserBlockP  = 13 // minecraft:block_predicate
 	parserResLoc  = 36 // minecraft:resource_location
 
 	stringWord   = 0
@@ -204,6 +208,9 @@ func allOptional(params []cmd.ParamInfo) bool {
 
 // literalsOf returns the literal words a parameter takes, or nil if it is an argument.
 func literalsOf(p cmd.ParamInfo, src cmd.Source) []string {
+	if _, ok := p.Value.(cmd.BlockParameter); ok {
+		return nil
+	}
 	switch v := p.Value.(type) {
 	case cmd.SubCommand:
 		if validLiteral(p.Name) {
@@ -271,6 +278,13 @@ func argumentOf(p cmd.ParamInfo, last bool, src cmd.Source) cmdNode {
 	n := cmdNode{kind: nodeArgument, name: p.Name, redirect: -1, prop: -1}
 	if n.name == "" {
 		n.name = "value"
+	}
+	if b, ok := p.Value.(cmd.BlockParameter); ok {
+		n.parser = parserBlock
+		if b.BlockPredicate() {
+			n.parser = parserBlockP
+		}
+		return n
 	}
 	switch v := p.Value.(type) {
 	case int, int8, int16, int32, int64, uint, uint8, uint16, uint32, uint64:

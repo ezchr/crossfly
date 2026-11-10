@@ -65,57 +65,37 @@ func (s summon) Run(src cmd.Source, o *cmd.Output, tx *world.Tx) {
 
 // --- /setblock, /fill ---
 
-// blockName is the name of a block, suggested from the registered block items.
-type blockName string
-
-func (blockName) Type() string { return "Block" }
-func (blockName) Options(cmd.Source) []string {
-	seen := map[string]bool{}
-	var out []string
-	for _, it := range world.Items() {
-		if _, ok := it.(world.Block); !ok {
-			continue
-		}
-		name, _ := it.EncodeItem()
-		short := strings.TrimPrefix(name, "minecraft:")
-		if !seen[short] {
-			seen[short] = true
-			out = append(out, short, name)
-		}
-	}
-	slices.Sort(out)
-	return out
-}
-
-// lookupBlock returns the block a block name stands for: the block of its item, or air.
-func lookupBlock(name blockName) (world.Block, bool) {
-	n := strings.TrimPrefix(string(name), "minecraft:")
-	if n == "air" {
-		return nil, true
-	}
-	it, ok := world.ItemByName("minecraft:"+n, 0)
-	if !ok {
-		return nil, false
-	}
-	b, ok := it.(world.Block)
-	return b, ok
-}
+// The block arguments take states in either edition's syntax: see BlockArg in blockarg.go.
 
 type setBlock struct {
 	op
 	Position mgl64.Vec3 `cmd:"position"`
-	Block    blockName  `cmd:"block"`
+	Block    BlockArg   `cmd:"block"`
 }
 
 func (s setBlock) Run(_ cmd.Source, o *cmd.Output, tx *world.Tx) {
-	b, ok := lookupBlock(s.Block)
-	if !ok {
-		o.Errorf("Unknown block: %v", s.Block)
+	b, err := ParseBlock(string(s.Block))
+	if err != nil {
+		o.Error(err)
 		return
 	}
 	pos := cube.PosFromVec3(s.Position)
-	tx.SetBlock(pos, b, nil)
+	place(tx, pos, b)
 	o.Printf("Block placed at %v", pos)
+}
+
+// place sets the block typed at pos, with a fresh block entity and with water for a waterlogged Java state.
+func place(tx *world.Tx, pos cube.Pos, b BlockState) {
+	bl := b.Block()
+	if nbt, ok := bl.(world.NBTer); ok {
+		// A value of its own per block (one chest is not another's), and never the nil data of an
+		// unimplemented block.
+		bl = nbt.DecodeNBT(map[string]any{}).(world.Block)
+	}
+	tx.SetBlock(pos, bl, nil)
+	if l := b.Liquid(); l != nil {
+		tx.SetLiquid(pos, l)
+	}
 }
 
 // maxFill is the most blocks /fill changes at once, as in vanilla.
@@ -123,16 +103,33 @@ const maxFill = 32768
 
 type fill struct {
 	op
-	From  mgl64.Vec3 `cmd:"from"`
-	To    mgl64.Vec3 `cmd:"to"`
-	Block blockName  `cmd:"block"`
+	From   mgl64.Vec3                   `cmd:"from"`
+	To     mgl64.Vec3                   `cmd:"to"`
+	Block  BlockArg                     `cmd:"block"`
+	Mode   cmd.Optional[fillMode]       `cmd:"mode"`
+	Filter cmd.Optional[BlockFilterArg] `cmd:"filter"`
 }
 
+// fillMode is /fill's mode. replace, with or without a filter, is vanilla's default.
+type fillMode string
+
+func (fillMode) Type() string                { return "FillMode" }
+func (fillMode) Options(cmd.Source) []string { return []string{"replace"} }
+
 func (f fill) Run(_ cmd.Source, o *cmd.Output, tx *world.Tx) {
-	b, ok := lookupBlock(f.Block)
-	if !ok {
-		o.Errorf("Unknown block: %v", f.Block)
+	b, err := ParseBlock(string(f.Block))
+	if err != nil {
+		o.Error(err)
 		return
+	}
+	var filter *BlockState
+	if text, ok := f.Filter.Load(); ok {
+		fb, err := ParseBlock(string(text))
+		if err != nil {
+			o.Error(err)
+			return
+		}
+		filter = &fb
 	}
 	a, c := cube.PosFromVec3(f.From), cube.PosFromVec3(f.To)
 	lo := cube.Pos{min(a[0], c[0]), min(a[1], c[1]), min(a[2], c[2])}
@@ -143,7 +140,10 @@ func (f fill) Run(_ cmd.Source, o *cmd.Output, tx *world.Tx) {
 	}
 	n := 0
 	for pos := range cube.Range3D(lo, hi) {
-		tx.SetBlock(pos, b, nil)
+		if filter != nil && !filter.Matches(tx.Block(pos)) {
+			continue
+		}
+		place(tx, pos, b)
 		n++
 	}
 	o.Printf("%v blocks filled", n)
