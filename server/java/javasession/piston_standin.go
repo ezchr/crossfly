@@ -19,19 +19,19 @@ var javaEntityDrawn = map[string]bool{
 	"minecraft:conduit": true, "minecraft:copper_golem_statue": true,
 }
 
-// javaShown returns the block a Java client is shown for b.
-func javaShown(b world.Block) world.Block {
+// javaShown returns the block a Java client is shown for b, and whether it is another block.
+func javaShown(b world.Block) (world.Block, bool) {
 	s, ok := b.(javaStandIn)
 	if !ok {
-		return b
+		return b, false
 	}
 	in := s.JavaStandIn()
 	if in == nil {
-		return b
+		return b, false
 	}
 	name, _ := in.EncodeBlock()
 	if !javaEntityDrawn[javaBlockEntityName(name)] {
-		return b
+		return b, false
 	}
-	return in
+	return in, true
 }

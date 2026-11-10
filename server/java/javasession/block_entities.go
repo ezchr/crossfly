@@ -70,7 +70,7 @@ func (s *Session) addBlockEntities(col *jchunk.Column, blocks map[cube.Pos]world
 		if b == nil {
 			continue
 		}
-		if shown := javaShown(b); shown != b {
+		if shown, ok := javaShown(b); ok {
 			// A moving block shown as the block it carries (piston_standin.go).
 			b = shown
 			section := (pos[1] - javaDimensionMinY(s.dim)) / 16
