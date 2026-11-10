@@ -16,12 +16,14 @@ import (
 // (default 1200), sooner when fed its feed_items (each feeding takes
 // "growth" of the duration off, default 0.1), and fires grow_up when grown
 // (BDS AgeableComponent/AgeableDefinition). pause_growth_items stop the
-// growth and reset_growth_items start it over (golden dandelion).
+// growth and reset_growth_items start it over (golden dandelion). On
+// growing up it drops one of each drop_items (a turtle's scute).
 type ageable struct {
 	duration float64
 	feed     []feedItem
 	pause    []ItemDescriptor
 	reset    []ItemDescriptor
+	drop     []ItemDescriptor
 	growUp   Trigger
 	filter   mob.Filter
 
@@ -76,6 +78,7 @@ func newAgeable(key string, raw json.RawMessage) (mob.Component, error) {
 		Feed     json.RawMessage `json:"feed_items"`
 		Pause    json.RawMessage `json:"pause_growth_items"`
 		Reset    json.RawMessage `json:"reset_growth_items"`
+		Drop     json.RawMessage `json:"drop_items"`
 		GrowUp   Trigger         `json:"grow_up"`
 		Filters  json.RawMessage `json:"interact_filters"`
 	}{}
@@ -95,6 +98,9 @@ func newAgeable(key string, raw json.RawMessage) (mob.Component, error) {
 	}
 	if c.reset, err = ParseItemList(j.Reset); err != nil {
 		return nil, fmt.Errorf("%v: %w", key, err)
+	}
+	if c.drop, err = ParseItemList(j.Drop); err != nil {
+		return nil, fmt.Errorf("%v: drop_items: %w", key, err)
 	}
 	if c.filter, err = mob.CompileFilter(j.Filters); err != nil {
 		return nil, fmt.Errorf("%v: %w", key, err)
@@ -116,9 +122,21 @@ func (c *ageable) Tick(m *mob.Mob) {
 		return
 	}
 	if c.age++; c.age >= c.total() {
-		c.done = true
-		c.growUp.Fire(m, nil)
+		c.grow(m)
 	}
+}
+
+// grow ends the growth: the baby drops one of each drop_items at its feet
+// (AgeableDefinition::addDropItem; the age system spawns them with
+// Actor::spawnAtLocation when the baby grows up) and fires grow_up.
+func (c *ageable) grow(m *mob.Mob) {
+	c.done = true
+	for _, d := range c.drop {
+		if s, ok := d.Stack(1); ok {
+			DropItems(m, []item.Stack{s}, 0)
+		}
+	}
+	c.growUp.Fire(m, nil)
 }
 
 // Age returns the ticks grown and the ticks it takes to grow up.
@@ -155,8 +173,7 @@ func (c *ageable) Interact(m *mob.Mob, user item.User, held item.Stack, _ mgl64.
 			}
 		}
 		if c.age >= c.total() && c.duration > 0 {
-			c.done = true
-			c.growUp.Fire(m, nil)
+			c.grow(m)
 		}
 		return left, true
 	}

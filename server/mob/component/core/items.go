@@ -198,6 +198,8 @@ var legacyItems = map[string]string{
 	"fireball":          "fire_charge",
 	"carrotonastick":    "carrot_on_a_stick",
 	"horsearmorleather": "leather_horse_armor",
+	// The turtle's ageable drop_items still names its scute this way.
+	"turtle_shell_piece": "turtle_scute",
 }
 
 var legacyDyes = [...]string{"ink_sac", "red_dye", "green_dye", "cocoa_beans", "lapis_lazuli", "purple_dye", "cyan_dye",
