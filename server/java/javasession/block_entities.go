@@ -70,6 +70,14 @@ func (s *Session) addBlockEntities(col *jchunk.Column, blocks map[cube.Pos]world
 		if b == nil {
 			continue
 		}
+		if shown := javaShown(b); shown != b {
+			// A moving block shown as the block it carries (piston_standin.go).
+			b = shown
+			section := (pos[1] - javaDimensionMinY(s.dim)) / 16
+			if rid := world.BlockRuntimeID(b); section >= 0 && section < len(col.Sections) && int(rid) < len(s.blk.java) {
+				col.Sections[section].Blocks[jchunk.BlockIndex(pos[0]&15, pos[1]&15, pos[2]&15)] = s.blk.java[rid]
+			}
+		}
 		name, _ := b.EncodeBlock()
 		java := javaBlockEntityName(name)
 		var data []byte

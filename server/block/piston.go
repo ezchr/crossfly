@@ -24,6 +24,8 @@ type Piston struct {
 	Progress, LastProgress float64
 	Started                int64
 	Attached               []cube.Pos
+	// Powered is whether redstone power reaches the piston, kept with redstone = "dragonfly" only (piston_df.go).
+	Powered bool
 }
 
 func pistonBedrockFace(f cube.Face) cube.Face {
@@ -61,12 +63,24 @@ func (p Piston) UseOnBlock(pos cube.Pos, face cube.Face, _ mgl64.Vec3, tx *world
 	return placed(ctx)
 }
 func (p Piston) BlockPlaced(pos cube.Pos, previous world.Block, tx *world.Tx) {
+	if !world.JavaRedstone() {
+		return
+	}
 	if old, ok := previous.(Piston); !ok || old.Sticky != p.Sticky {
 		p.check(pos, tx)
 	}
 }
-func (p Piston) NeighbourUpdateTick(pos, _ cube.Pos, tx *world.Tx) { p.check(pos, tx) }
+func (p Piston) NeighbourUpdateTick(pos, _ cube.Pos, tx *world.Tx) {
+	if !world.JavaRedstone() {
+		return
+	}
+	p.check(pos, tx)
+}
 func (p Piston) RedstonePowerActionUpdate(pos cube.Pos, tx *world.Tx, u world.RedstoneUpdate) {
+	if !world.JavaRedstone() {
+		p.dfRedstoneUpdate(pos, tx)
+		return
+	}
 	if u.OldPower == u.NewPower {
 		return
 	}
@@ -140,6 +154,9 @@ func (p Piston) check(pos cube.Pos, tx *world.Tx) {
 	}
 }
 func (p Piston) BlockEvent(pos cube.Pos, tx *world.Tx, event int) {
+	if !world.JavaRedstone() {
+		return
+	}
 	on := p.powered(pos, tx)
 	if event == 0 {
 		if !on || p.Extended || p.State == 3 {
@@ -280,7 +297,7 @@ func pistonNotify(pos cube.Pos, tx *world.Tx) {
 	}
 }
 func (p Piston) Tick(tick int64, pos cube.Pos, tx *world.Tx) {
-	if p.State != 1 && p.State != 3 {
+	if !world.JavaRedstone() || p.State != 1 && p.State != 3 {
 		return
 	}
 
@@ -316,7 +333,11 @@ func (p Piston) EncodeNBT() map[string]any {
 			attached = append(attached, int32(v))
 		}
 	}
-	return map[string]any{"id": "PistonArm", "Progress": float32(p.Progress), "LastProgress": float32(p.LastProgress), "State": p.State, "NewState": p.State, "Sticky": boolByte(p.Sticky), "AttachedBlocks": attached, "BreakBlocks": []any{}, "dfStarted": p.Started, "dfExtended": boolByte(p.Extended)}
+	m := map[string]any{"id": "PistonArm", "Progress": float32(p.Progress), "LastProgress": float32(p.LastProgress), "State": p.State, "NewState": p.State, "Sticky": boolByte(p.Sticky), "AttachedBlocks": attached, "BreakBlocks": []any{}, "dfStarted": p.Started, "dfExtended": boolByte(p.Extended)}
+	if p.Powered {
+		m["dfPowered"] = byte(1)
+	}
+	return m
 }
 func (p Piston) DecodeNBT(m map[string]any) any {
 	p.State = nbtconv.Uint8(m, "State")
@@ -324,6 +345,7 @@ func (p Piston) DecodeNBT(m map[string]any) any {
 	p.LastProgress = float64(nbtconv.Float32(m, "LastProgress"))
 	p.Started = nbtconv.Int64(m, "dfStarted")
 	p.Extended = p.State == 1 || p.State == 2
+	p.Powered = nbtconv.Bool(m, "dfPowered")
 
 	p.Attached = nil
 	list := nbtconv.Slice(m, "AttachedBlocks")

@@ -29,6 +29,10 @@ func (MovingPiston) EncodeBlock() (string, map[string]any) { return "minecraft:m
 func (MovingPiston) FreshBlockEntity() bool    { return true }
 func (m MovingPiston) Model() world.BlockModel { return movingPistonModel{m} }
 func (m MovingPiston) Tick(tick int64, pos cube.Pos, tx *world.Tx) {
+	if !world.JavaRedstone() {
+		m.dfTick(pos, tx)
+		return
+	}
 	if m.Moving == nil {
 		tx.SetBlock(pos, nil, nil)
 		return
