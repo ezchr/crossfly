@@ -113,9 +113,33 @@ func (k Kelp) NeighbourUpdateTick(pos, changedNeighbour cube.Pos, tx *world.Tx) 
 		return
 	}
 	if changedNeighbour[1]-1 == pos.Y() {
+		if _, kelpAbove := tx.Block(changedNeighbour).(Kelp); kelpAbove && world.JavaRedstone() {
+			// Kelp grew or was set on top: Java turns this kelp into a stem, which keeps no age
+			// (GrowingPlantHeadBlock.updateShape); nothing changes here.
+			return
+		}
 		// When a kelp block is broken above, the kelp block underneath it gets a new random age.
 		tx.SetBlock(pos, k.withRandomAge(), nil)
 	}
+}
+
+// schedulesFluidTick is the water tick of Java's kelp updateShape: every change beside it ticks its water, except a
+// change above, where the top kelp turns into a stem under new kelp (GrowingPlantHeadBlock) or a stem turns back
+// into the top under broken kelp (GrowingPlantBodyBlock) instead. Crossfly keeps no head or stem: a change above to
+// kelp, water or air is taken as one of those, anything else ticks the water as it would under a top kelp.
+func (k Kelp) schedulesFluidTick(pos, changed cube.Pos, tx *world.Tx) bool {
+	if changed == pos {
+		// The kelp itself changed (a new age): Java runs no updateShape on a block for its own change.
+		return false
+	}
+	if changed != pos.Side(cube.FaceUp) {
+		return true
+	}
+	switch tx.Block(changed).(type) {
+	case Kelp, Water, Air:
+		return false
+	}
+	return true
 }
 
 // ScheduledTick breaks the kelp if it lost its support (Java redstone: a tick after the block below changed, as

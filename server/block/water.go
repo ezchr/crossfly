@@ -140,13 +140,25 @@ func (w Water) ScheduledTick(pos cube.Pos, tx *world.Tx, _ *rand.Rand) {
 }
 
 // NeighbourUpdateTick ...
-func (w Water) NeighbourUpdateTick(pos, _ cube.Pos, tx *world.Tx) {
+func (w Water) NeighbourUpdateTick(pos, changed cube.Pos, tx *world.Tx) {
 	if tx.World().Dimension().WaterEvaporates() {
 		// Particles are spawned client-side.
 		tx.SetLiquid(pos, nil)
 		return
 	}
+	if world.JavaRedstone() {
+		// Water held by a block (kelp) gets its ticks from that block's updateShape, which may skip them.
+		if f, ok := tx.Block(pos).(fluidTickOwner); ok && !f.schedulesFluidTick(pos, changed, tx) {
+			return
+		}
+	}
 	tx.ScheduleBlockUpdate(pos, w, time.Second/4)
+}
+
+// fluidTickOwner is a block holding water that decides itself whether a change beside it ticks the water (Java's
+// GrowingPlantHeadBlock and GrowingPlantBodyBlock with scheduleFluidTicks).
+type fluidTickOwner interface {
+	schedulesFluidTick(pos, changed cube.Pos, tx *world.Tx) bool
 }
 
 // LiquidType ...
