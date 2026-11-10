@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+
+	"github.com/df-mc/dragonfly/server/item"
 )
 
 // Equipment tests. has_equipment follows ActorHasEquipmentTest: it collects
@@ -34,12 +36,51 @@ func parseItem(s string) itemMatcher {
 }
 
 func (m itemMatcher) match(it Item) bool {
-	if ns(it.Name) != m.name {
-		return false
+	name := ns(it.Name)
+	if name != m.name && name != itemAliases[m.name] {
+		return m.matchColourAlias(name)
 	}
 	// Aux 0 in a descriptor matches the default item, as ItemDescriptor with
 	// aux value 0 does for items without variants.
 	return !m.hasAux || m.aux == it.Aux || m.aux == 0x7fff
+}
+
+// matchColourAlias matches the items of a legacy name BDS registers as a
+// complex alias split by colour (ComplexAliasDescriptor::sameItem: any item
+// of the alias, so "carpet" is every colour of carpet but not moss carpet);
+// an aux picks the colour of that legacy data value.
+func (m itemMatcher) matchColourAlias(name string) bool {
+	suffix, ok := colourItemAliases[m.name]
+	if !ok {
+		return false
+	}
+	for i, c := range item.Colours() {
+		if name == "minecraft:"+c.String()+"_"+suffix {
+			return !m.hasAux || m.aux == i || m.aux == 0x7fff
+		}
+	}
+	return false
+}
+
+// itemAliases are legacy item names of the entity files that BDS resolves
+// to a renamed item (ItemRegistry aliases).
+var itemAliases = map[string]string{
+	"minecraft:fireball":       "minecraft:fire_charge",
+	"minecraft:carrotonastick": "minecraft:carrot_on_a_stick",
+	"minecraft:lily_pad":       "minecraft:waterlily",
+	"minecraft:melon":          "minecraft:melon_slice",
+	"minecraft:speckled_melon": "minecraft:glistering_melon_slice",
+	"minecraft:totem":          "minecraft:totem_of_undying",
+	"minecraft:netherstar":     "minecraft:nether_star",
+	"minecraft:tallgrass":      "minecraft:short_grass",
+}
+
+// colourItemAliases are the legacy names split into one item per colour, with
+// the suffix of the colour items.
+var colourItemAliases = map[string]string{
+	"minecraft:wool": "wool", "minecraft:carpet": "carpet", "minecraft:concrete": "concrete",
+	"minecraft:concrete_powder": "concrete_powder", "minecraft:stained_glass": "stained_glass",
+	"minecraft:stained_glass_pane": "stained_glass_pane", "minecraft:stained_hardened_clay": "terracotta",
 }
 
 func setupItem(in *Input) error {
