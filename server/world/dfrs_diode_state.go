@@ -32,8 +32,17 @@ func (r RedstoneTransaction) State(pos cube.Pos) (v uint64, ok bool) {
 // SetState stores transient state for the redstone component at pos: what it remembers between ticks that its block
 // state does not hold, such as the inputs a repeater has yet to pass on.
 func (r RedstoneTransaction) SetState(pos cube.Pos, v uint64) {
-	r.componentStateMap()[pos] = v
+	m := r.componentStateMap()
+	if _, ok := m[pos]; !ok && len(m) >= componentStateLimit {
+		// Nothing removes the states of components that are gone: start again. Components rebuild their state
+		// from their block.
+		clear(m)
+	}
+	m[pos] = v
 }
+
+// componentStateLimit bounds the states kept per world by the stand-in.
+const componentStateLimit = 1 << 16
 
 // ClearState removes the transient state of the redstone component at pos.
 func (r RedstoneTransaction) ClearState(pos cube.Pos) {

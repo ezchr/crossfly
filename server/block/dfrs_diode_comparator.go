@@ -58,6 +58,10 @@ func (c RedstoneComparator) dfRecord(pos cube.Pos, tx *world.Tx, rear, side int)
 	now := int(tx.CurrentTick())
 	newest := s.record(0)
 	if newest.valid && newest.rear == rear && newest.side == side {
+		if out := c.dfOutput(rear, side); out != c.Output || c.Powered != (out > 0) {
+			// The output does not follow inputs it has had for a while (a comparator placed where one was).
+			tx.ScheduleBlockUpdate(pos, c, dfComparatorDelay*time.Second/20)
+		}
 		return
 	}
 	rec := dfComparatorRecord{rear: rear, side: side, tick: now & 0xff, valid: true}
