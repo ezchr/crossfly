@@ -101,6 +101,11 @@ func (s *state) Tick(e *entity.Ent, tx *world.Tx) *entity.Movement {
 		s.effects.Tick(m, tx)
 		s.noAction++
 	}
+	if tick := s.t.hooks.Tick; tick != nil {
+		// A type with its own tick (TypeHooks, Java mob mode).
+		tick(m)
+		return nil
+	}
 	for st := StageSensors; st < stageCount; st++ {
 		if s.dying > 0 && st != StageTravel && st != StageDespawn && st != StageSend {
 			continue

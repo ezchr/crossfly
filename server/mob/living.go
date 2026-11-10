@@ -86,6 +86,10 @@ func (m *Mob) KnockBack(src mgl64.Vec3, force, height float64) {
 	if m.Dead() {
 		return
 	}
+	if h := m.s.t.hooks.KnockBack; h != nil {
+		h(m, src, force, height)
+		return
+	}
 	if knockBackHook != nil {
 		knockBackHook(m, src, force, height)
 		return

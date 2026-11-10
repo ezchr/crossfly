@@ -20,6 +20,8 @@ type Type struct {
 	// removeInPeaceful: the mob is removed while the difficulty is peaceful
 	// (removeInPeacefulTypes).
 	removeInPeaceful bool
+	// hooks replace engine steps (type_hooks.go).
+	hooks TypeHooks
 }
 
 var (

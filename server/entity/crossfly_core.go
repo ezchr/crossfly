@@ -19,3 +19,6 @@ type javaItem struct{}
 
 // Mobs reports whether Crossfly Full's mobs are on: never in Crossfly Core.
 func Mobs() bool { return false }
+
+// JavaMobs reports whether Crossfly Full's Java mob mode is on: never in Crossfly Core.
+func JavaMobs() bool { return false }

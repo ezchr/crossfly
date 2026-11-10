@@ -80,7 +80,7 @@ func (i *ItemBehaviour) Item() item.Stack {
 // Tick moves the entity, checks if it should be picked up by a nearby collector
 // or if it should merge with nearby item entities.
 func (i *ItemBehaviour) Tick(e *Ent, tx *world.Tx) *Movement {
-	if world.JavaRedstone() {
+	if world.JavaRedstone() || JavaMobs() {
 		return i.javaTick(e, tx)
 	}
 	if i.intoHopperBelow(e, tx) {
