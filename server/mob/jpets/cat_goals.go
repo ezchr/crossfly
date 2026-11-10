@@ -41,7 +41,7 @@ func (c *Cat) RegisterGoals(m *javamob.Mob) {
 	turtles := goal.NewNearestAttackableTarget(isBabyTurtleOnLand, false, false)
 	ts.Add(1, &nonTameRandomTarget{t: &c.Tamable, NearestAttackableTarget: turtles})
 	// CatAvoidEntityGoal(Player, 16, 0.8, 1.33, NO_CREATIVE_OR_SPECTATOR).
-	c.avoidPlayers = &catAvoidPlayers{c: c, AvoidEntity: goal.NewAvoidEntity(func(e world.Entity) bool {
+	c.avoidPlayers = &catAvoidPlayers{trusting: func() bool { return c.Tame }, AvoidEntity: goal.NewAvoidEntity(func(e world.Entity) bool {
 		p, ok := e.(*player.Player)
 		return ok && !p.GameMode().CreativeInventory() && p.GameMode() != world.GameModeSpectator
 	}, 16, 0.8, 1.33)}
@@ -69,17 +69,18 @@ func (c *Cat) breed(m, partner *javamob.Mob) bool {
 	return true
 }
 
-// catAvoidPlayers is Cat.CatAvoidEntityGoal: only while wild.
+// catAvoidPlayers is Cat.CatAvoidEntityGoal and Ocelot.OcelotAvoidEntityGoal:
+// only while the cat is wild (the ocelot not trusting).
 type catAvoidPlayers struct {
 	*goal.AvoidEntity
-	c *Cat
+	trusting func() bool
 }
 
 func (g *catAvoidPlayers) CanUse(m *javamob.Mob) bool {
-	return !g.c.Tame && g.AvoidEntity.CanUse(m)
+	return !g.trusting() && g.AvoidEntity.CanUse(m)
 }
 func (g *catAvoidPlayers) CanContinueToUse(m *javamob.Mob) bool {
-	return !g.c.Tame && g.AvoidEntity.CanContinueToUse(m)
+	return !g.trusting() && g.AvoidEntity.CanContinueToUse(m)
 }
 
 // catTempt is Cat.CatTemptGoal: TemptGoal(0.6, cat food, canScare) for wild

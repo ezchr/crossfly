@@ -339,3 +339,59 @@ func TestPetsSaved(t *testing.T) {
 		}
 	})
 }
+
+// TestOcelotTrust: fish fed to a tempted ocelot within 3 blocks makes it
+// trust the player (one in three), after which it no longer flees players.
+func TestOcelotTrust(t *testing.T) {
+	w := mobtest.New(t, mobtest.Options{})
+	arena(w)
+	r := spawnJava(t, w, "minecraft:ocelot", mgl64.Vec3{0.5, 1, 0.5})
+	p := w.AddPlayer("tester", mgl64.Vec3{2.5, 1, 0.5})
+	p.Hold(stackOf(t, "minecraft:cod", 64))
+	// The ocelot must be tempted (OcelotTemptGoal running) to take the fish.
+	if _, ok := w.TickUntil(100, func(tx *world.Tx) bool {
+		bm, _ := r.Mob(tx)
+		jm, _ := javamob.Of(bm)
+		return jm.Behaviour().(*Ocelot).tempt.Running()
+	}); !ok {
+		t.Fatal("ocelot not tempted by fish")
+	}
+	for i := 0; i < 60; i++ {
+		p.Interact(r, stackOf(t, "minecraft:cod", 1))
+		trusting := false
+		withMob(t, w, r, func(m *javamob.Mob) { trusting = m.Behaviour().(*Ocelot).Trusting })
+		if trusting {
+			withMob(t, w, r, func(m *javamob.Mob) {
+				for _, g := range m.Goals().Goals() {
+					if _, ok := g.(*catAvoidPlayers); ok {
+						t.Fatal("a trusting ocelot still avoids players")
+					}
+				}
+			})
+			return
+		}
+	}
+	t.Fatal("ocelot never trusted the player")
+}
+
+// TestPolarBearDefendsCub: an adult bear with a cub nearby targets a player
+// within half its follow range.
+func TestPolarBearDefendsCub(t *testing.T) {
+	w := mobtest.New(t, mobtest.Options{})
+	arena(w)
+	bear := spawnJava(t, w, "minecraft:polar_bear", mgl64.Vec3{0.5, 1, 0.5})
+	cub := spawnJava(t, w, "minecraft:polar_bear", mgl64.Vec3{2.5, 1, 0.5})
+	withMob(t, w, bear, func(m *javamob.Mob) { m.SetBaby(false) })
+	withMob(t, w, cub, func(m *javamob.Mob) {
+		m.Behaviour().(*PolarBear).Animal.SetBaby(true)
+		m.SetBaby(true)
+	})
+	w.AddPlayer("tester", mgl64.Vec3{6.5, 1, 0.5})
+	if _, ok := w.TickUntil(200, func(tx *world.Tx) bool {
+		bm, _ := bear.Mob(tx)
+		_, ok := bm.Target()
+		return ok
+	}); !ok {
+		t.Fatal("bear did not go for the player near its cub")
+	}
+}
