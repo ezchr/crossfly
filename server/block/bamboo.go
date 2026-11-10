@@ -86,6 +86,13 @@ func (b Bamboo) NeighbourUpdateTick(pos, _ cube.Pos, tx *world.Tx) {
 	if !b.canStay(pos, tx) {
 		breakOrScheduleBreak(b, pos, tx)
 	}
+	if world.JavaRedstone() && !b.Thick {
+		// Java's BambooStalkBlock.updateShape: a stalk takes the age (thickness) of an older stalk above it.
+		if above, ok := tx.Block(pos.Side(cube.FaceUp)).(Bamboo); ok && above.Thick {
+			b.Thick = true
+			tx.SetBlock(pos, b, nil)
+		}
+	}
 }
 
 // ScheduledTick breaks the bamboo if it can no longer stay (Java redstone: a tick after a neighbour changed).
