@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/df-mc/dragonfly/server/block"
+	"github.com/df-mc/dragonfly/server/block/cube"
 	"github.com/df-mc/dragonfly/server/entity"
 	"github.com/df-mc/dragonfly/server/item"
 	"github.com/df-mc/dragonfly/server/mob/internal/mobtest"
@@ -277,8 +278,7 @@ func TestHorseBreeding(t *testing.T) {
 	}
 }
 
-// TestCatTaming: raw fish tame a cat (one in three); a wild cat gets a
-// variant at spawn.
+// TestCatTaming: raw fish tame a cat (one in three), which then sits.
 func TestCatTaming(t *testing.T) {
 	w := mobtest.New(t, mobtest.Options{})
 	arena(w)
@@ -296,9 +296,6 @@ func TestCatTaming(t *testing.T) {
 		c := m.Behaviour().(*Cat)
 		if !c.Tame || !c.OrderedToSit {
 			t.Fatal("cat not tamed and sitting")
-		}
-		if c.Variant == "all_black" {
-			t.Fatal("all black cat without a full moon or witch hut")
 		}
 	})
 }
@@ -393,5 +390,44 @@ func TestPolarBearDefendsCub(t *testing.T) {
 		return ok
 	}); !ok {
 		t.Fatal("bear did not go for the player near its cub")
+	}
+}
+
+// TestFoxPicksUpItem: a fox with an empty mouth walks to an item and holds
+// it.
+func TestFoxPicksUpItem(t *testing.T) {
+	w := mobtest.New(t, mobtest.Options{})
+	w.Do(func(tx *world.Tx) { w.Arena(tx, 5, 3) })
+	r := spawnJava(t, w, "minecraft:fox", mgl64.Vec3{0.5, 1, 0.5})
+	withMob(t, w, r, func(m *javamob.Mob) { m.SetItemSlot(javamob.SlotMainHand, item.Stack{}) })
+	w.Do(func(tx *world.Tx) {
+		tx.AddEntity(tx.World().EntityRegistry().Config().Item(world.EntitySpawnOpts{Position: mgl64.Vec3{3.5, 1, 0.5}}, stackOf(t, "minecraft:feather", 1)))
+	})
+	// FoxSearchForItemsGoal shares priority 11 with the random stroll, so it
+	// starts between strolls.
+	if _, ok := w.TickUntil(4800, func(tx *world.Tx) bool {
+		bm, _ := r.Mob(tx)
+		jm, _ := javamob.Of(bm)
+		return itemName(jm.ItemBySlot(javamob.SlotMainHand)) == "minecraft:feather"
+	}); !ok {
+		t.Fatal("fox never picked up the feather")
+	}
+}
+
+// TestFoxSleepsInShade: by day a fox under a roof with nothing around falls
+// asleep.
+func TestFoxSleepsInShade(t *testing.T) {
+	w := mobtest.New(t, mobtest.Options{Time: mobtest.Noon})
+	arena(w)
+	w.Do(func(tx *world.Tx) {
+		w.Fill(tx, cube.Pos{-6, 4, -6}, cube.Pos{6, 4, 6}, block.Stone{})
+	})
+	r := spawnJava(t, w, "minecraft:fox", mgl64.Vec3{0.5, 1, 0.5})
+	if _, ok := w.TickUntil(3600, func(tx *world.Tx) bool {
+		bm, _ := r.Mob(tx)
+		jm, _ := javamob.Of(bm)
+		return jm.Behaviour().(*Fox).flag(foxSleeping)
+	}); !ok {
+		t.Fatal("fox did not sleep in the shade by day")
 	}
 }

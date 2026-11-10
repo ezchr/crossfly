@@ -195,6 +195,9 @@ type moveToBlockHooks struct {
 	canUse      func(m *javamob.Mob) bool
 	start, stop func(m *javamob.Mob)
 	tick        func(m *javamob.Mob, reached bool)
+	// tickWithPos runs before the base tick (FoxEatBerriesGoal.tick calls
+	// super.tick last).
+	tickWithPos func(m *javamob.Mob, reached bool, pos cube.Pos)
 }
 
 // moveToBlock is MoveToBlockGoal: every 10-20 s (or fixedStart ticks) look
@@ -213,6 +216,10 @@ type moveToBlock struct {
 	nextStartTick, tryTicks, maxStayTicks int
 	blockPos                              cube.Pos
 	reached                               bool
+	// acceptedDistance is acceptedDistance (1 by default), recalc the
+	// shouldRecalculatePath interval (40 by default).
+	acceptedDistance float64
+	recalc           int
 }
 
 func (g *moveToBlock) Flags() javamob.Flags          { return g.flags }
@@ -255,12 +262,22 @@ func (g *moveToBlock) Stop(m *javamob.Mob) {
 }
 
 func (g *moveToBlock) Tick(m *javamob.Mob) {
+	if g.hooks.tickWithPos != nil {
+		g.hooks.tickWithPos(m, g.reached, g.blockPos)
+	}
 	target := g.blockPos.Side(cube.FaceUp)
 	centre := mgl64.Vec3{float64(target[0]) + 0.5, float64(target[1]) + 0.5, float64(target[2]) + 0.5}
-	if centre.Sub(m.Position()).LenSqr() >= 1 {
+	accepted, recalc := g.acceptedDistance, g.recalc
+	if accepted == 0 {
+		accepted = 1
+	}
+	if recalc == 0 {
+		recalc = 40
+	}
+	if centre.Sub(m.Position()).LenSqr() >= accepted*accepted {
 		g.reached = false
 		g.tryTicks++
-		if g.tryTicks%40 == 0 {
+		if g.tryTicks%recalc == 0 {
 			m.Navigation().MoveTo(m, mgl64.Vec3{float64(target[0]) + 0.5, float64(target[1]), float64(target[2]) + 0.5}, 0, g.speed)
 		}
 	} else {

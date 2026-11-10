@@ -138,3 +138,18 @@ func randomTeleport(m *javamob.Mob, to mgl64.Vec3) bool {
 	m.Navigation().Stop()
 	return true
 }
+
+// entitiesTouching is Level.getEntities(box): the entities whose bounding box
+// intersects box (tx.EntitiesWithin only takes positions strictly inside).
+func entitiesTouching(tx *world.Tx, box cube.BBox) []world.Entity {
+	var out []world.Entity
+	for e := range tx.EntitiesWithin(box.Grow(2)) {
+		b := e.H().Type().BBox(e).Translate(e.Position())
+		if b.Max()[0] >= box.Min()[0] && b.Min()[0] <= box.Max()[0] &&
+			b.Max()[1] >= box.Min()[1] && b.Min()[1] <= box.Max()[1] &&
+			b.Max()[2] >= box.Min()[2] && b.Min()[2] <= box.Max()[2] {
+			out = append(out, e)
+		}
+	}
+	return out
+}
