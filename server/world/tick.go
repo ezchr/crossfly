@@ -414,7 +414,14 @@ func (queue *scheduledTickQueue) tick(tx *Tx, tick int64) {
 	}
 	queue.ticks = future
 	maps.DeleteFunc(queue.furthestTicks, func(_ scheduledTickIndex, t int64) bool { return t <= tick })
+	// Java Edition keeps fluid ticks in a queue of their own and runs it after all block ticks of the tick
+	// (ServerLevel.tick: blockTicks, then fluidTicks). Run in between, the updates of flowing water reach observers
+	// and pistons before their own ticks do, a flying machine's pistons fire in another order, and a flooder ends
+	// up moving its waterlogged block with a full push, which places it dry: the flooder loses its water.
 	slices.SortStableFunc(due, func(a, b scheduledTick) int {
+		if d := cmp.Compare(fluidTick(a), fluidTick(b)); d != 0 {
+			return d
+		}
 		if d := cmp.Compare(a.t, b.t); d != 0 {
 			return d
 		}
@@ -453,6 +460,14 @@ func (queue *scheduledTickQueue) tick(tx *Tx, tick int64) {
 			}
 		}
 	}
+}
+
+// fluidTick is 1 for a tick scheduled for a liquid, which Java Edition runs after the block ticks, and 0 otherwise.
+func fluidTick(t scheduledTick) int {
+	if _, ok := t.b.(Liquid); ok {
+		return 1
+	}
+	return 0
 }
 
 // tickInOrder runs the due ticks in the order they were scheduled, without Java Edition's priorities.
