@@ -10,8 +10,8 @@ import (
 	"github.com/df-mc/dragonfly/server/world"
 )
 
-// dfWorld makes a world with redstone = "dragonfly" for one test; the test binary runs Java redstone otherwise.
-func dfWorld(t *testing.T) *world.World {
+// dfpWorld makes a world with redstone = "dragonfly" for one test; the test binary runs Java redstone otherwise.
+func dfpWorld(t *testing.T) *world.World {
 	t.Helper()
 	world.SetJavaRedstone(false)
 	w := world.Config{Dim: world.End, Synchronous: true}.New()
@@ -22,21 +22,21 @@ func dfWorld(t *testing.T) *world.World {
 	return w
 }
 
-func dfTicks(w *world.World, n int) {
+func dfpTicks(w *world.World, n int) {
 	for range n {
 		w.AdvanceTick()
 	}
 }
 
-func dfBlockAt[T world.Block](t *testing.T, w *world.World, pos cube.Pos) (b T, ok bool) {
+func dfpBlockAt[T world.Block](t *testing.T, w *world.World, pos cube.Pos) (b T, ok bool) {
 	t.Helper()
 	runWorld(w, func(tx *world.Tx) { b, ok = tx.Block(pos).(T) })
 	return
 }
 
-func dfPiston(t *testing.T, w *world.World, pos cube.Pos) Piston {
+func dfpPiston(t *testing.T, w *world.World, pos cube.Pos) Piston {
 	t.Helper()
-	p, ok := dfBlockAt[Piston](t, w, pos)
+	p, ok := dfpBlockAt[Piston](t, w, pos)
 	if !ok {
 		t.Fatalf("no piston at %v", pos)
 	}
@@ -45,49 +45,49 @@ func dfPiston(t *testing.T, w *world.World, pos cube.Pos) Piston {
 
 func TestDragonflyPistonPushAndPull(t *testing.T) {
 	for _, sticky := range []bool{false, true} {
-		w := dfWorld(t)
+		w := dfpWorld(t)
 		pos := cube.Pos{0, 64, 0}
 		runWorld(w, func(tx *world.Tx) {
 			tx.SetBlock(cube.Pos{1, 64, 0}, Stone{}, nil)
 			tx.SetBlock(pos, Piston{Facing: cube.FaceEast, Sticky: sticky}, nil)
 		})
-		dfTicks(w, 2)
+		dfpTicks(w, 2)
 		runWorld(w, func(tx *world.Tx) { tx.SetBlock(pos.Side(cube.FaceWest), RedstoneBlock{}, nil) })
 		// The redstone engine sees the power at the end of this tick, the piston starts on the next.
-		dfTicks(w, 2)
-		if p := dfPiston(t, w, pos); p.State != 1 || p.Progress != .5 {
+		dfpTicks(w, 2)
+		if p := dfpPiston(t, w, pos); p.State != 1 || p.Progress != .5 {
 			t.Fatalf("sticky=%t: piston should be half out one tick after power: state %d progress %v", sticky, p.State, p.Progress)
 		}
-		if _, ok := dfBlockAt[MovingPiston](t, w, cube.Pos{2, 64, 0}); !ok {
+		if _, ok := dfpBlockAt[MovingPiston](t, w, cube.Pos{2, 64, 0}); !ok {
 			t.Fatalf("sticky=%t: stone is not moving", sticky)
 		}
-		dfTicks(w, 1)
-		if p := dfPiston(t, w, pos); p.State != 1 || p.Progress != 1 {
+		dfpTicks(w, 1)
+		if p := dfpPiston(t, w, pos); p.State != 1 || p.Progress != 1 {
 			t.Fatalf("sticky=%t: piston should be all out: state %d progress %v", sticky, p.State, p.Progress)
 		}
-		dfTicks(w, 1)
-		if p := dfPiston(t, w, pos); p.State != 2 || !p.Extended {
+		dfpTicks(w, 1)
+		if p := dfpPiston(t, w, pos); p.State != 2 || !p.Extended {
 			t.Fatalf("sticky=%t: piston should have landed its blocks: state %d", sticky, p.State)
 		}
-		if _, ok := dfBlockAt[Stone](t, w, cube.Pos{2, 64, 0}); !ok {
+		if _, ok := dfpBlockAt[Stone](t, w, cube.Pos{2, 64, 0}); !ok {
 			t.Fatalf("sticky=%t: stone not pushed", sticky)
 		}
-		if _, ok := dfBlockAt[PistonHead](t, w, cube.Pos{1, 64, 0}); !ok {
+		if _, ok := dfpBlockAt[PistonHead](t, w, cube.Pos{1, 64, 0}); !ok {
 			t.Fatalf("sticky=%t: no arm", sticky)
 		}
 		runWorld(w, func(tx *world.Tx) { tx.SetBlock(pos.Side(cube.FaceWest), nil, nil) })
-		dfTicks(w, 5)
-		if p := dfPiston(t, w, pos); p.State != 0 || p.Extended {
+		dfpTicks(w, 5)
+		if p := dfpPiston(t, w, pos); p.State != 0 || p.Extended {
 			t.Fatalf("sticky=%t: piston did not retract: state %d", sticky, p.State)
 		}
 		want := cube.Pos{2, 64, 0}
 		if sticky {
 			want = cube.Pos{1, 64, 0}
 		}
-		if _, ok := dfBlockAt[Stone](t, w, want); !ok {
+		if _, ok := dfpBlockAt[Stone](t, w, want); !ok {
 			t.Errorf("sticky=%t: stone should be at %v", sticky, want)
 		}
-		if _, ok := dfBlockAt[Air](t, w, cube.Pos{1, 64, 0}); !ok && !sticky {
+		if _, ok := dfpBlockAt[Air](t, w, cube.Pos{1, 64, 0}); !ok && !sticky {
 			t.Errorf("arm left behind")
 		}
 	}
@@ -95,7 +95,7 @@ func TestDragonflyPistonPushAndPull(t *testing.T) {
 
 func TestDragonflyPistonPushLimit(t *testing.T) {
 	for _, count := range []int{12, 13} {
-		w := dfWorld(t)
+		w := dfpWorld(t)
 		pos := cube.Pos{0, 64, 0}
 		runWorld(w, func(tx *world.Tx) {
 			for i := 1; i <= count; i++ {
@@ -112,7 +112,7 @@ func TestDragonflyPistonPushLimit(t *testing.T) {
 // TestDragonflyPistonNoQuasiConnectivity: power next to the block above a piston does nothing, nor does power in
 // front of it.
 func TestDragonflyPistonNoQuasiConnectivity(t *testing.T) {
-	w := dfWorld(t)
+	w := dfpWorld(t)
 	pos := cube.Pos{0, 64, 0}
 	other := cube.Pos{0, 64, 5}
 	runWorld(w, func(tx *world.Tx) {
@@ -122,23 +122,23 @@ func TestDragonflyPistonNoQuasiConnectivity(t *testing.T) {
 		// In front: the piston would push it if it powered it.
 		tx.SetBlock(other.Side(cube.FaceEast), RedstoneBlock{}, nil)
 	})
-	dfTicks(w, 6)
-	if p := dfPiston(t, w, pos); p.State != 0 {
+	dfpTicks(w, 6)
+	if p := dfpPiston(t, w, pos); p.State != 0 {
 		t.Error("piston powered through the block above it (quasi-connectivity)")
 	}
-	if p := dfPiston(t, w, other); p.State != 0 {
+	if p := dfpPiston(t, w, other); p.State != 0 {
 		t.Error("piston powered from its front")
 	}
 	runWorld(w, func(tx *world.Tx) { tx.SetBlock(cube.Pos{0, 65, 0}, RedstoneBlock{}, nil) })
-	dfTicks(w, 6)
-	if p := dfPiston(t, w, pos); p.State != 2 {
+	dfpTicks(w, 6)
+	if p := dfpPiston(t, w, pos); p.State != 2 {
 		t.Errorf("piston with a redstone block on top did not extend: state %d", p.State)
 	}
 }
 
 // TestDragonflyPistonMovesBlockEntities: Bedrock moves containers with their contents.
 func TestDragonflyPistonMovesBlockEntities(t *testing.T) {
-	w := dfWorld(t)
+	w := dfpWorld(t)
 	pos := cube.Pos{0, 64, 0}
 	runWorld(w, func(tx *world.Tx) {
 		c := NewChest()
@@ -150,15 +150,15 @@ func TestDragonflyPistonMovesBlockEntities(t *testing.T) {
 		tx.SetBlock(pos, Piston{Facing: cube.FaceEast, Sticky: true}, nil)
 		tx.SetBlock(pos.Side(cube.FaceDown), RedstoneBlock{}, nil)
 	})
-	dfTicks(w, 6)
-	c, ok := dfBlockAt[Chest](t, w, cube.Pos{2, 64, 0})
+	dfpTicks(w, 6)
+	c, ok := dfpBlockAt[Chest](t, w, cube.Pos{2, 64, 0})
 	if !ok {
 		t.Fatal("chest not pushed")
 	}
 	if s, _ := c.inventory.Item(3); s.Count() != 17 {
 		t.Errorf("chest lost its contents: %v", s)
 	}
-	d, ok := dfBlockAt[Dispenser](t, w, cube.Pos{3, 64, 0})
+	d, ok := dfpBlockAt[Dispenser](t, w, cube.Pos{3, 64, 0})
 	if !ok {
 		t.Fatal("dispenser not pushed")
 	}
@@ -166,8 +166,8 @@ func TestDragonflyPistonMovesBlockEntities(t *testing.T) {
 		t.Errorf("dispenser lost its contents: %v", s)
 	}
 	runWorld(w, func(tx *world.Tx) { tx.SetBlock(pos.Side(cube.FaceDown), nil, nil) })
-	dfTicks(w, 6)
-	c, ok = dfBlockAt[Chest](t, w, cube.Pos{1, 64, 0})
+	dfpTicks(w, 6)
+	c, ok = dfpBlockAt[Chest](t, w, cube.Pos{1, 64, 0})
 	if !ok {
 		t.Fatal("chest not pulled back")
 	}
@@ -177,7 +177,7 @@ func TestDragonflyPistonMovesBlockEntities(t *testing.T) {
 }
 
 func TestDragonflyPistonRules(t *testing.T) {
-	w := dfWorld(t)
+	w := dfpWorld(t)
 	pos := cube.Pos{0, 64, 0}
 	runWorld(w, func(tx *world.Tx) {
 		// Obsidian stops the push.
@@ -240,31 +240,31 @@ func TestDragonflyPistonRules(t *testing.T) {
 // TestDragonflyStickyPistonShortPulse: a one-tick pulse extends a sticky piston all the way, and it then pulls its
 // block back instead of dropping it.
 func TestDragonflyStickyPistonShortPulse(t *testing.T) {
-	w := dfWorld(t)
+	w := dfpWorld(t)
 	pos := cube.Pos{0, 64, 0}
 	runWorld(w, func(tx *world.Tx) {
 		tx.SetBlock(cube.Pos{1, 64, 0}, Stone{}, nil)
 		tx.SetBlock(pos, Piston{Facing: cube.FaceEast, Sticky: true}, nil)
 	})
-	dfTicks(w, 1)
+	dfpTicks(w, 1)
 	runWorld(w, func(tx *world.Tx) { tx.SetBlock(pos.Side(cube.FaceWest), RedstoneBlock{}, nil) })
-	dfTicks(w, 1)
+	dfpTicks(w, 1)
 	runWorld(w, func(tx *world.Tx) { tx.SetBlock(pos.Side(cube.FaceWest), nil, nil) })
-	dfTicks(w, 12)
-	if p := dfPiston(t, w, pos); p.State != 0 {
+	dfpTicks(w, 12)
+	if p := dfpPiston(t, w, pos); p.State != 0 {
 		t.Fatalf("piston should be back: state %d", p.State)
 	}
-	if _, ok := dfBlockAt[Stone](t, w, cube.Pos{1, 64, 0}); !ok {
+	if _, ok := dfpBlockAt[Stone](t, w, cube.Pos{1, 64, 0}); !ok {
 		t.Error("stone was not pulled back")
 	}
-	if _, ok := dfBlockAt[Air](t, w, cube.Pos{2, 64, 0}); !ok {
+	if _, ok := dfpBlockAt[Air](t, w, cube.Pos{2, 64, 0}); !ok {
 		t.Error("stone was dropped")
 	}
 }
 
 // TestDragonflyPistonRetriesWhenBlocked: a powered piston that cannot push extends once the way is free.
 func TestDragonflyPistonRetriesWhenBlocked(t *testing.T) {
-	w := dfWorld(t)
+	w := dfpWorld(t)
 	pos := cube.Pos{0, 64, 0}
 	runWorld(w, func(tx *world.Tx) {
 		for i := 1; i <= 13; i++ {
@@ -273,13 +273,13 @@ func TestDragonflyPistonRetriesWhenBlocked(t *testing.T) {
 		tx.SetBlock(pos, Piston{Facing: cube.FaceEast}, nil)
 		tx.SetBlock(pos.Side(cube.FaceWest), RedstoneBlock{}, nil)
 	})
-	dfTicks(w, 6)
-	if p := dfPiston(t, w, pos); p.State != 0 {
+	dfpTicks(w, 6)
+	if p := dfpPiston(t, w, pos); p.State != 0 {
 		t.Fatal("piston pushed 13 blocks")
 	}
 	runWorld(w, func(tx *world.Tx) { tx.SetBlock(cube.Pos{13, 64, 0}, nil, nil) })
-	dfTicks(w, 6)
-	if p := dfPiston(t, w, pos); p.State != 2 {
+	dfpTicks(w, 6)
+	if p := dfpPiston(t, w, pos); p.State != 2 {
 		t.Error("piston did not extend once the 13th block was gone")
 	}
 }
