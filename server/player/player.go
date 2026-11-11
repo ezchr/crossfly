@@ -3625,8 +3625,9 @@ func (p *Player) Tick(tx *world.Tx, current int64) {
 	p.prevWorld = tx.World()
 
 	if p.conn() == session.Nop && !p.Immobile() && p.riddenEntity == nil {
+		// Not m.Send(): Move below shows the position, and the velocity is only shown when the
+		// server sets one (SetVelocity), not every tick that gravity and drag change it.
 		m := p.mc.TickMovement(p, p.Position(), p.Velocity(), p.Rotation(), p.tx)
-		m.Send()
 
 		p.data.Vel = m.Velocity()
 		p.Move(m.Position().Sub(p.Position()), 0, 0)
