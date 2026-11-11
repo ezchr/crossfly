@@ -128,9 +128,11 @@ func (s *Session) ViewEntity(e world.Entity) {
 				ActionType: protocol.PlayerListActionRemove,
 				UUID:       v.UUID(),
 			}}})
-		} else {
-			s.ViewSkin(e)
 		}
+		// Every player entity gets its skin here, once: a real player only here, and a server-made
+		// one (an NPC) again after the list entry that carried it is gone, or clients may show it
+		// late or not at all.
+		s.ViewSkin(e)
 		return
 	case *entity.Ent:
 		switch e.H().Type() {
