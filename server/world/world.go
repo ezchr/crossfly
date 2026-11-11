@@ -1850,9 +1850,10 @@ func (w *World) columnTo(col *Column, pos ChunkPos) *chunk.Column {
 		Tick:            w.scheduledUpdates.currentTick,
 	}
 	for _, e := range col.Entities {
-		if isPlayerHandle(e) {
+		if isPlayerHandle(e) || unsaved(e.t) {
 			// Players are saved by the player provider: a chunk saved while one stands in
-			// it (autosave) would otherwise hold an entity no world can load again.
+			// it (autosave) would otherwise hold an entity no world can load again. Entities
+			// of an Unsaved type are placed again by their owner.
 			continue
 		}
 		data := e.encodeNBT()
@@ -1894,6 +1895,11 @@ func (w *World) columnFrom(c *chunk.Column, _ ChunkPos) *Column {
 		if !ok {
 			w.conf.Log.Debug("read column: unknown entity type, kept as saved", "ID", e.ID, "type", eid)
 			col.unknownEntities = append(col.unknownEntities, e)
+			continue
+		}
+		if unsaved(t) {
+			// Saved before its type was Unsaved: its owner places it again, so it would be a copy.
+			w.conf.Log.Debug("read column: dropped a saved entity of an unsaved type", "ID", e.ID, "type", eid)
 			continue
 		}
 		col.Entities = append(col.Entities, entityFromData(t, e.ID, e.Data))
@@ -1950,6 +1956,20 @@ func (c *Column) blockEntityTickOrder(pos cube.Pos) uint64 {
 
 // isPlayerHandle reports whether h is a player.
 func isPlayerHandle(h *EntityHandle) bool { return h.t.EncodeEntity() == "minecraft:player" }
+
+// Unsaved may be implemented by an EntityType whose entities are never written to the world's save,
+// because the code that owns them places them again (statues, holograms rebuilt from a config file).
+// Without it such an entity is saved with its chunk and comes back next to the one placed again,
+// one more copy every time the chunk unloads. Saved entities of the type that are found when a
+// chunk loads are dropped.
+type Unsaved interface {
+	Unsaved() bool
+}
+
+func unsaved(t EntityType) bool {
+	u, ok := t.(Unsaved)
+	return ok && u.Unsaved()
+}
 
 // trackPlayer adds h to the players of w if it is one.
 func (w *World) trackPlayer(h *EntityHandle) {
