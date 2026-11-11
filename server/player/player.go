@@ -866,8 +866,17 @@ func (p *Player) knockBack(src mgl64.Vec3, force, height float64) {
 		velocity = velocity.Normalize().Mul(force)
 	}
 	velocity[1] = height
+	velocity = velocity.Mul(1 - p.Armour().KnockBackResistance())
 
-	p.SetVelocity(velocity.Mul(1 - p.Armour().KnockBackResistance()))
+	if r := knockBackRules.Load(); r != nil {
+		if r.Momentum > 0 {
+			velocity = velocity.Add(p.Velocity().Mul(r.Momentum))
+		}
+		if r.HeightCap > 0 && velocity[1] > r.HeightCap {
+			velocity[1] = r.HeightCap
+		}
+	}
+	p.SetVelocity(velocity)
 }
 
 // setAttackImmunity sets the duration the player is immune to entity attacks, rounded up to whole ticks.
