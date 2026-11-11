@@ -685,7 +685,7 @@ func (p *Player) Hurt(dmg float64, src world.DamageSource) (float64, world.HurtR
 	if _, ok := p.Effect(effect.FireResistance); (ok && src.Fire()) || p.Dead() || !p.GameMode().AllowsTakingDamage() || !(dmg >= 0) {
 		return 0, world.HurtIgnored
 	}
-	if dmg = p.scaleMobDamage(dmg, src); dmg == 0 {
+	if dmg = p.scaleMobDamage(dmg, src); dmg == 0 && !entity.HurtsWithoutDamage(src) {
 		return 0, world.HurtIgnored
 	}
 	totalDamage := p.FinalDamageFrom(dmg, src)
@@ -744,7 +744,7 @@ func (p *Player) Hurt(dmg float64, src world.DamageSource) (float64, world.HurtR
 	p.addHealth(-damageLeft)
 	p.postDamageEvent(src)
 
-	if src.ReducedByArmour() {
+	if src.ReducedByArmour() && dmg > 0 {
 		p.Exhaust(0.1)
 		p.Armour().Damage(dmg, p.damageItem)
 

@@ -63,6 +63,7 @@ func init() {
 	world.RegisterItem(FermentedSpiderEye{})
 	world.RegisterItem(FireCharge{})
 	world.RegisterItem(Firework{})
+	world.RegisterItem(FishingRod{})
 	world.RegisterItem(FlintAndSteel{})
 	world.RegisterItem(Flint{})
 	world.RegisterItem(GhastTear{})

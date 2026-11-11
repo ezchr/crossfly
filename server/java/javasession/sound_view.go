@@ -295,6 +295,12 @@ func (s *Session) playSound(pos mgl64.Vec3, t world.Sound, broadcast bool) {
 		s.customSound(pos, names[min(max(so.Level, 1), 3)-1], 1, 1)
 	case sound.ItemThrow:
 		s.sound(pos, sndSnowballThrow, srcNeutral, 0.5, 0.4/(rnd()*0.4+0.8))
+	case sound.FishingRodCast:
+		// FishingRodItem.use: FISHING_BOBBER_THROW, neutral, 0.5, 0.4 / (random * 0.4 + 0.8).
+		s.sound(pos, sndFishingBobberThrow, srcNeutral, 0.5, 0.4/(rnd()*0.4+0.8))
+	case sound.FishingRodRetrieve:
+		// FishingRodItem.use: FISHING_BOBBER_RETRIEVE, neutral, 1, 0.4 / (random * 0.4 + 0.8).
+		s.sound(pos, sndFishingBobberRetrieve, srcNeutral, 1, 0.4/(rnd()*0.4+0.8))
 	case sound.ItemUseOn:
 		if broadcast && s.predictedUseOn(cube.PosFromVec3(pos)) {
 			return

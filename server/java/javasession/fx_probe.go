@@ -77,7 +77,7 @@ func (s *Session) probe(tx *world.Tx, c session.Controllable) {
 	s.ViewEntityWake(c)
 }
 
-// allSounds is one value of every Dragonfly sound type (92).
+// allSounds is one value of every Dragonfly sound type (94).
 var allSounds = []world.Sound{
 	sound.BlockPlace{Block: block.Stone{}}, sound.BlockBreaking{Block: block.Stone{}}, sound.GlassBreak{},
 	sound.Fizz{}, sound.AnvilLand{}, sound.AnvilUse{}, sound.AnvilBreak{}, sound.ChestOpen{}, sound.ChestClose{},
@@ -98,7 +98,8 @@ var allSounds = []world.Sound{
 	sound.Pop{}, sound.Explosion{}, sound.Thunder{}, sound.LevelUp{}, sound.Experience{}, sound.GhastWarning{},
 	sound.GhastShoot{}, sound.FireworkLaunch{}, sound.FireworkHugeBlast{}, sound.FireworkBlast{},
 	sound.FireworkTwinkle{}, sound.CushionPlace{}, sound.CushionSit{}, sound.CushionBreak{},
-	sound.ItemBreak{}, sound.ShieldBlock{}, sound.ItemThrow{}, sound.ItemUseOn{Block: block.Farmland{}},
+	sound.ItemBreak{}, sound.ShieldBlock{}, sound.ItemThrow{}, sound.FishingRodCast{}, sound.FishingRodRetrieve{},
+	sound.ItemUseOn{Block: block.Farmland{}},
 	sound.EquipItem{Item: item.Helmet{Tier: item.ArmourTierDiamond{}}}, sound.BucketFill{Liquid: block.Water{}},
 	sound.BucketEmpty{Liquid: block.Lava{}}, sound.BowShoot{}, sound.CrossbowLoad{Stage: sound.CrossbowLoadingEnd},
 	sound.CrossbowShoot{}, sound.ArrowHit{}, sound.Teleport{}, sound.UseSpyglass{}, sound.StopUsingSpyglass{},

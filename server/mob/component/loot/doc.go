@@ -2,7 +2,7 @@
 
 // Package loot holds the item helpers that mob loot, spawn equipment and
 // mob combat share: the Looting enchantment (Bedrock id 14, which Dragonfly
-// lacks), the trident and fishing rod items (drowned gear), the random
+// lacks), the trident item (drowned gear), the random
 // enchanting loot functions use (BDS EnchantUtils::randomlyEnchant), the
 // BDS "special multiplier" (clamped regional difficulty), the
 // was-picked-up mark on stacks a mob picked up, the held weapon's damage and

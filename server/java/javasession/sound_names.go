@@ -66,6 +66,8 @@ const (
 	sndItemBreak
 	sndShieldBlock
 	sndSnowballThrow
+	sndFishingBobberThrow
+	sndFishingBobberRetrieve
 	sndHoeTill
 	sndShovelFlatten
 	sndAxeStrip
@@ -188,6 +190,8 @@ var soundNames = [sndCount]string{
 	sndItemBreak:              "entity.item.break",
 	sndShieldBlock:            "item.shield.block",
 	sndSnowballThrow:          "entity.snowball.throw",
+	sndFishingBobberThrow:     "entity.fishing_bobber.throw",
+	sndFishingBobberRetrieve:  "entity.fishing_bobber.retrieve",
 	sndHoeTill:                "item.hoe.till",
 	sndShovelFlatten:          "item.shovel.flatten",
 	sndAxeStrip:               "item.axe.strip",

@@ -1037,6 +1037,10 @@ func (s *Session) playSound(pos mgl64.Vec3, t world.Sound, disableRelative bool)
 		pk.SoundType = packet.SoundEventBowHit
 	case sound.ItemThrow:
 		pk.SoundType, pk.EntityType = packet.SoundEventThrow, "minecraft:player"
+	case sound.FishingRodCast:
+		pk.SoundType, pk.EntityType = packet.SoundEventThrow, "minecraft:player"
+	case sound.FishingRodRetrieve:
+		return
 	case sound.LevelUp:
 		pk.SoundType, pk.ExtraData = packet.SoundEventLevelUp, 0x10000000
 	case sound.Experience:

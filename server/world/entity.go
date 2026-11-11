@@ -549,6 +549,12 @@ type EntityRegistryConfig struct {
 	Snowball           func(opts EntitySpawnOpts, owner Entity) *EntityHandle
 	SplashPotion       func(opts EntitySpawnOpts, t any, owner Entity) *EntityHandle
 	Lightning          func(opts EntitySpawnOpts) *EntityHandle
+	// FishingHook casts a fishing hook for owner (the velocity of opts is worked out from owner). Optional: fishing
+	// rods do nothing without it.
+	FishingHook func(opts EntitySpawnOpts, owner Entity) *EntityHandle
+	// ReelFishingHook reels in the fishing hook owner has out and returns the durability owner's rod loses, or false
+	// if owner has none out.
+	ReelFishingHook func(tx *Tx, owner Entity) (int, bool)
 	// Minecart creates a minecart of a kind (item.MinecartKind). Optional: minecart items do nothing without it.
 	Minecart func(opts EntitySpawnOpts, kind int) *EntityHandle
 	// CushionPlacement returns where a cushion used on a face of a block at clickPos (relative to the block) goes,

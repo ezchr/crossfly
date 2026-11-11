@@ -12,6 +12,13 @@ type ShieldBlock struct{ sound }
 // ItemThrow is a sound played when a player throws an item, such as a snowball.
 type ItemThrow struct{ sound }
 
+// FishingRodCast is a sound played when a fishing rod casts its hook.
+type FishingRodCast struct{ sound }
+
+// FishingRodRetrieve is a sound played when a fishing rod reels its hook in. Bedrock clients hear nothing (BDS plays
+// no sound), Java clients the bobber retrieve sound.
+type FishingRodRetrieve struct{ sound }
+
 // ItemUseOn is a sound played when a player uses its item on a block. An example of this is when a player
 // uses a shovel to turn grass into dirt path. Note that in these cases, the Block is actually the new block,
 // not the old one.

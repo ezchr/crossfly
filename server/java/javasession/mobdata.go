@@ -297,6 +297,18 @@ func init() {
 		d.boolean(17, mobBool(e, mobUsing.UsingItem)) // drinking a potion
 	}})
 
+	set("fishing_bobber", mobKind{notMob: true, extra: func(s *Session, d *mobData, e world.Entity, _ string) {
+		// FishingHook.DATA_HOOKED_ENTITY: the id of the entity the hook holds + 1, 0 for none (the client then draws
+		// the bobber on it); DATA_BITING: nothing bites, fishing is not implemented.
+		var id int32
+		if t, ok := mobAs[interface{ TargetEntity() *world.EntityHandle }](e); ok {
+			if j := s.handleJavaID(t.TargetEntity()); j != 0 {
+				id = j + 1
+			}
+		}
+		d.varInt(8, id)
+		d.boolean(9, false)
+	}})
 	set("wither_skull", mobKind{notMob: true, extra: func(_ *Session, d *mobData, _ world.Entity, bedrock string) {
 		d.boolean(8, bedrock == "minecraft:wither_skull_dangerous") // the blue skull
 	}})
