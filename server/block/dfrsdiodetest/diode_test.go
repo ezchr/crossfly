@@ -525,3 +525,13 @@ func TestActiveSculkSensorPowersCircuit(t *testing.T) {
 	r.set(repInput, block.SculkSensor{Phase: 2})
 	r.ticksUntil(10, func() bool { return !r.repeaterOn(repPos) })
 }
+
+func TestComparatorReadsRespawnAnchor(t *testing.T) {
+	r := newRig(t)
+	r.set(repInput, block.RespawnAnchor{Charge: 2}) // floor(2/4*15) = 7
+	r.set(repPos, block.RedstoneComparator{Facing: cube.West})
+	r.tick(4)
+	if c := comparatorAt(r, repPos); c.Output != 7 || !c.Powered {
+		t.Fatalf("comparator reading an anchor with 2 charges: output %d powered %t, want 7 true", c.Output, c.Powered)
+	}
+}

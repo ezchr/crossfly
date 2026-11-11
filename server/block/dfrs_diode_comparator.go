@@ -233,6 +233,10 @@ func bedrockAnalogOutput(pos cube.Pos, b world.Block, dir cube.Face, tx *world.T
 			return 0, true
 		}
 		return int(math.Floor(float64(b.Item.Count())/float64(b.Item.MaxCount())*14)) + 1, true
+	case RespawnAnchor:
+		return b.ComparatorSignal(), true // floor(charge/4*15), RespawnAnchorBlock::getComparatorSignal
+	case world.RedstoneAnalogOutputter:
+		return world.ClampRedstonePower(b.RedstoneAnalogOutput(pos, tx)), true // e.g. plugin blocks
 	case interface {
 		Inventory(*world.Tx, cube.Pos) *inventory.Inventory
 	}:
