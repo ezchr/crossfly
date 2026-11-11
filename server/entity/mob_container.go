@@ -16,6 +16,9 @@ type EntityWindow struct {
 	Equip []EquipSlot
 	// ChestSlots is the number of chest slots after the equipment.
 	ChestSlots int
+	// Chest shows the window as a chest of ChestSlots slots (a chest boat) instead of the horse screen. It has no
+	// equipment.
+	Chest bool
 	// OnClose is called once when the viewer closes the window.
 	OnClose func()
 }
