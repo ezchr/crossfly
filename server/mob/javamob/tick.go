@@ -252,9 +252,9 @@ func (m *Mob) handleJump() {
 	threshold := m.FluidJumpThreshold()
 	switch {
 	case inWater && (!s.onGround || height > threshold):
-		m.jumpInLiquid()
+		m.jumpInLiquidOf(false)
 	case lava && (!s.onGround || s.lavaHeight > threshold):
-		m.jumpInLiquid()
+		m.jumpInLiquidOf(true)
 	case (s.onGround || inWater && height <= threshold) && s.noJumpDelay == 0:
 		m.jumpFromGround()
 		s.noJumpDelay = 10
@@ -266,8 +266,22 @@ func (m *Mob) jumpInLiquid() {
 	m.SetVelocity(m.Velocity().Add(mgl64.Vec3{0, float64(float32(0.04))}))
 }
 
-// jumpFromGround is LivingEntity.jumpFromGround.
+// jumpInLiquidOf runs the behaviour's Jumper.JumpInLiquid, else jumpInLiquid.
+func (m *Mob) jumpInLiquidOf(lava bool) {
+	if j, ok := m.s.b.(Jumper); ok && j.JumpInLiquid(m, lava) {
+		return
+	}
+	m.jumpInLiquid()
+}
+
+// JumpPower is LivingEntity.getJumpPower.
+func (m *Mob) JumpPower() float64 { return m.jumpPower() }
+
+// jumpFromGround is LivingEntity.jumpFromGround (or the behaviour's Jumper).
 func (m *Mob) jumpFromGround() {
+	if j, ok := m.s.b.(Jumper); ok && j.JumpFromGround(m) {
+		return
+	}
 	power := m.jumpPower()
 	if power <= 1e-5 {
 		return

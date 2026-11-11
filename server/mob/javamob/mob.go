@@ -84,6 +84,12 @@ type (
 	BabySetter interface{ SetBaby(m *Mob, baby bool) }
 	// Climber is LivingEntity.onClimbable for mobs that climb without a ladder (Spider.onClimbable: isClimbing).
 	Climber interface{ OnClimbable(m *Mob) bool }
+	// Jumper overrides LivingEntity.jumpFromGround and jumpInLiquid (MagmaCube). Returning false runs the
+	// base jump.
+	Jumper interface {
+		JumpFromGround(m *Mob) bool
+		JumpInLiquid(m *Mob, lava bool) bool
+	}
 	// MaxHeadYRot is Mob.getMaxHeadYRot (75 by default), HeadRotSpeed getHeadRotSpeed (10), MaxHeadXRot
 	// getMaxHeadXRot (40).
 	HeadLimiter interface {
