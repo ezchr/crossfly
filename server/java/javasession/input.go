@@ -324,6 +324,9 @@ func (s *Session) handleInput(id int32, body []byte) (bool, error) {
 		if r.Err != nil {
 			return true, r.Err
 		}
+		if !validMove(&mgl64.Vec3{x, y, z}, &[2]float32{yaw, pitch}) {
+			return true, nil // ignored: the vehicle stays where the server has it
+		}
 		s.do(func(tx *world.Tx, c session.Controllable) {
 			vehicleMove(tx, c, mgl64.Vec3{x, y, z}, float64(yaw), float64(pitch))
 		})

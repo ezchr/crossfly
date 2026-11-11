@@ -160,7 +160,13 @@ func (e *Enderman) Teleport(m *javamob.Mob) bool {
 func (e *Enderman) teleportTowards(m *javamob.Mob, t world.Entity) bool {
 	p := m.Position()
 	eye := entity.EyePosition(t)
-	dir := mgl64.Vec3{p[0] - t.Position()[0], p[1] + m.Height()/2 - eye[1], p[2] - t.Position()[2]}.Normalize()
+	dir := mgl64.Vec3{p[0] - t.Position()[0], p[1] + m.Height()/2 - eye[1], p[2] - t.Position()[2]}
+	if dir.Len() < 1e-4 {
+		// Vec3.normalize: zero, not NaN, when the target stands on the enderman.
+		dir = mgl64.Vec3{}
+	} else {
+		dir = dir.Normalize()
+	}
 	r := m.Rand()
 	return e.teleportTo(m, mgl64.Vec3{
 		p[0] + (r.Float64()-0.5)*8 - dir[0]*16,

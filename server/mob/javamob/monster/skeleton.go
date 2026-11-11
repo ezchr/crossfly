@@ -168,7 +168,12 @@ func (s *AbstractSkeleton) PerformRangedAttack(m *javamob.Mob, target world.Enti
 	yd := tp[1] + (bb.Max()[1]-bb.Min()[1])/3 - start[1]
 	zd := tp[2] - m.Position()[2]
 	dist := math.Sqrt(xd*xd + zd*zd)
-	dir := mgl64.Vec3{xd, yd + dist*float64(float32(0.2)), zd}.Normalize()
+	dir := mgl64.Vec3{xd, yd + dist*float64(float32(0.2)), zd}
+	if dir.Len() < 1e-4 {
+		dir = mgl64.Vec3{} // Vec3.normalize: zero, not NaN
+	} else {
+		dir = dir.Normalize()
+	}
 	inaccuracy := float64(14 - m.DifficultyID()*4)
 	dir = dir.Add(mgl64.Vec3{r.NormFloat64(), r.NormFloat64(), r.NormFloat64()}.Mul(0.0075 * inaccuracy)).Mul(1.6)
 	// AbstractArrow.setBaseDamageFromMob: power × 2 plus a random bonus that grows with the difficulty.
