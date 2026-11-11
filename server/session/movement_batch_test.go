@@ -42,10 +42,10 @@ func TestMovesOncePerTick(t *testing.T) {
 	for tick := 0; tick < 20; tick++ {
 		s.queueMove(move(5, 1))
 		s.queueMove(move(5, 1))
-		s.queueMove(move(5, float32(tick+2)))
+		s.queueMove(move(5, float32(tick+2)*0.1))
 		s.FlushEntityMovement(mgl64.Vec3{})
 		got := drainMoves(s)
-		if len(got) != 1 || got[0].Position[0] != float32(tick+2) {
+		if len(got) != 1 || got[0].Position[0] != float32(tick+2)*0.1 {
 			t.Fatalf("tick %d: %d packets %v, want one at the latest position", tick, len(got), got)
 		}
 	}

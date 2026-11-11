@@ -21,8 +21,29 @@ type moveBatch struct {
 	sent map[uint64]int64
 }
 
+// Distance tiers of entity moves sent to Bedrock viewers: entities within MoveNearDistance blocks of
+// the viewer move every tick (combat stays exact), up to MoveFarDistance every MoveMidInterval ticks,
+// beyond that every MoveFarInterval ticks. Set them before the server starts. Teleports, server-made
+// moves and the first move after an entity is shown are never held back, and the last position of an
+// entity that stopped is sent on its next due tick.
+var (
+	MoveNearDistance = 16.0
+	MoveFarDistance  = 48.0
+	MoveMidInterval  = int64(2)
+	MoveFarInterval  = int64(4)
+)
+
 // moveInterval returns how many ticks apart moves of an entity dist blocks away are sent.
-func moveInterval(float64) int64 { return 1 }
+func moveInterval(dist float64) int64 {
+	switch {
+	case dist <= MoveNearDistance:
+		return 1
+	case dist <= MoveFarDistance:
+		return max(MoveMidInterval, 1)
+	default:
+		return max(MoveFarInterval, 1)
+	}
+}
 
 // queueMove keeps pk as the latest move of its entity, or writes it at once if it is the first move
 // of the entity since it was shown.
