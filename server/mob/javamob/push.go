@@ -126,3 +126,23 @@ func (m *Mob) Push(v mgl64.Vec3) {
 	m.SetVelocity(m.Velocity().Add(v))
 	m.SyncMovement()
 }
+
+// touchPlayers calls PlayerTouch for every player (not a spectator, alive) whose box grown by 1, 0.5, 1 touches the
+// mob: Player.aiStep's touch(entity) for the entities around it.
+func (m *Mob) touchPlayers(pt PlayerToucher) {
+	bb := m.BBox()
+	area := bb.GrowVec3(mgl64.Vec3{1, 0.5, 1})
+	for e := range m.Tx().EntitiesWithin(area) {
+		p, ok := e.(*player.Player)
+		if !ok || p.Dead() || p.GameMode() == world.GameModeSpectator {
+			continue
+		}
+		if !overlaps(boxOf(p).GrowVec3(mgl64.Vec3{1, 0.5, 1}), bb) {
+			continue
+		}
+		pt.PlayerTouch(m, p)
+		if m.gone() || m.Dead() {
+			return
+		}
+	}
+}

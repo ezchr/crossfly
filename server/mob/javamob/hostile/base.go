@@ -74,6 +74,15 @@ var Hooks = struct {
 }
 
 func init() {
+	Hooks.Move = func(m *mob.Mob, delta mgl64.Vec3) mgl64.Vec3 {
+		if jm, ok := javamob.Of(m); ok {
+			jm.SetVelocity(delta) // setDeltaMovement, then move(SELF, getDeltaMovement())
+			jm.Move(delta)
+			return jm.Velocity()
+		}
+		m.SetPosition(m.Pos().Add(delta))
+		return delta
+	}
 	Hooks.DoHurtTarget = func(m *mob.Mob, target world.Entity) bool {
 		if jm, ok := javamob.Of(m); ok {
 			return jm.DoHurtTarget(target)
@@ -262,4 +271,80 @@ func visibilityPercent(e world.Entity) float64 {
 		v *= 0.7 * math.Max(sense.ArmourCover(e), 0.1)
 	}
 	return v
+}
+
+// The physics state of a Java mob is the base's (it updates within the tick);
+// a *mob.Mob's Physics() only gets it at the end of the tick.
+
+// inWater is Entity.isInWater.
+func inWater(m *mob.Mob) bool {
+	if jm, ok := javamob.Of(m); ok {
+		return jm.InWater()
+	}
+	return m.Physics().InWater
+}
+
+// underWater is Entity.isUnderWater (the eyes in water).
+func underWater(m *mob.Mob) bool {
+	if jm, ok := javamob.Of(m); ok {
+		return jm.UnderWater()
+	}
+	return m.Physics().Underwater
+}
+
+// horizontalCollision is Entity.horizontalCollision.
+func horizontalCollision(m *mob.Mob) bool {
+	if jm, ok := javamob.Of(m); ok {
+		return jm.HorizontalCollision()
+	}
+	return m.Physics().HorizontalCollision
+}
+
+// onGround is Entity.onGround.
+func onGround(m *mob.Mob) bool {
+	if jm, ok := javamob.Of(m); ok {
+		return jm.OnGround()
+	}
+	return m.OnGround()
+}
+
+// noActionTime is Mob.noActionTime.
+func noActionTime(m *mob.Mob) int {
+	if jm, ok := javamob.Of(m); ok {
+		return jm.NoActionTime()
+	}
+	return m.InactivityTicks()
+}
+
+// verticalCollision is Entity.verticalCollision.
+func verticalCollision(m *mob.Mob) bool {
+	if jm, ok := javamob.Of(m); ok {
+		return jm.VerticalCollision()
+	}
+	return m.Physics().VerticalCollision
+}
+
+// inLava is Entity.isInLava.
+func inLava(m *mob.Mob) bool {
+	if jm, ok := javamob.Of(m); ok {
+		return jm.InLava()
+	}
+	return m.Physics().InLava
+}
+
+// setOnGround is Entity.setOnGround.
+func setOnGround(m *mob.Mob, v bool) {
+	if jm, ok := javamob.Of(m); ok {
+		jm.SetOnGround(v)
+	}
+	m.Physics().OnGround = v
+}
+
+// mobInput is (xxa, yya, zza): the strafe, vertical and forward input.
+func mobInput(m *mob.Mob) mgl64.Vec3 {
+	if jm, ok := javamob.Of(m); ok {
+		return mgl64.Vec3{jm.Xxa(), jm.Yya(), jm.Zza()}
+	}
+	in := m.Input()
+	return mgl64.Vec3{in.Strafe, in.Vertical, in.Forward}
 }

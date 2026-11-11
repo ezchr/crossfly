@@ -50,6 +50,14 @@ func liquidHeight(tx *world.Tx, pos cube.Pos, l world.Liquid) float64 {
 
 // travel is LivingEntity.travel.
 func (m *Mob) travel(input mgl64.Vec3) {
+	if t, ok := m.s.b.(Traveler); ok && t.Travel(m, input) {
+		return
+	}
+	m.TravelDefault(input)
+}
+
+// TravelDefault is LivingEntity.travel (super.travel of a Traveler).
+func (m *Mob) TravelDefault(input mgl64.Vec3) {
 	if m.InLiquid() {
 		m.travelInFluid(input)
 		return
@@ -324,6 +332,13 @@ func (m *Mob) onPos(offset float32) cube.Pos {
 	}
 	return cube.Pos{int(math.Floor(pos[0])), int(math.Floor(pos[1] - float64(offset))), int(math.Floor(pos[2]))}
 }
+
+// Move is Entity.move(MoverType.SELF, delta): the move with block collisions; the velocity is left as move leaves it.
+func (m *Mob) Move(delta mgl64.Vec3) { m.move(delta) }
+
+// MoveRelative is Entity.moveRelative: input (getInputVector) at speed, turned by the facing, added to the
+// velocity.
+func (m *Mob) MoveRelative(speed float64, input mgl64.Vec3) { m.moveRelative(speed, input) }
 
 // move is Entity.move(SELF, delta) for a mob.
 func (m *Mob) move(delta mgl64.Vec3) {

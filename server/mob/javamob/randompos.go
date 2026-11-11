@@ -105,7 +105,7 @@ func (m *Mob) randomPosTowardDirection(dist float64, dir cube.Pos) cube.Pos {
 }
 
 func (m *Mob) hasMalus(pos cube.Pos) bool {
-	return m.PathfindingMalus(m.s.nav.TypeAt(m, pos)) != 0
+	return m.PathfindingMalus(m.s.nav.WalkTypeAt(m, pos)) != 0
 }
 
 func (m *Mob) acceptable(pos cube.Pos, restrict bool) bool {
@@ -116,7 +116,7 @@ func (m *Mob) acceptable(pos cube.Pos, restrict bool) bool {
 	if restrict && !m.WithinHome(pos) {
 		return false
 	}
-	return path.IsStableDestination(tx, pos)
+	return m.s.nav.StableDestination(tx, pos) // GoalUtils.isNotStable: the navigation's isStableDestination
 }
 
 // generateRandomPos is RandomPos.generateRandomPos: the best of 10 candidates by walk target value.

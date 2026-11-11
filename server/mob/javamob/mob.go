@@ -11,6 +11,7 @@ import (
 	"github.com/df-mc/dragonfly/server/item"
 	"github.com/df-mc/dragonfly/server/mob"
 	"github.com/df-mc/dragonfly/server/mob/javamob/path"
+	"github.com/df-mc/dragonfly/server/player"
 	"github.com/df-mc/dragonfly/server/world"
 	"github.com/go-gl/mathgl/mgl64"
 )
@@ -121,6 +122,16 @@ type (
 	TargetListener interface {
 		OnTargetChanged(m *Mob, old, new world.Entity)
 	}
+	// Traveler replaces LivingEntity.travel (Guardian, AbstractFish and Dolphin travelInWater, Phantom's
+	// travelFlying, Squid's plain move). Returning false runs the base travel (TravelDefault).
+	Traveler interface {
+		Travel(m *Mob, input mgl64.Vec3) bool
+	}
+	// PlayerToucher is Entity.playerTouch: called once a tick for every player whose box, grown by 1, 0.5, 1
+	// (Player.aiStep's touch box), touches the mob (slime contact damage, pufferfish stings).
+	PlayerToucher interface {
+		PlayerTouch(m *Mob, p *player.Player)
+	}
 	// Brain is a Brain (sensors, memories, activities, behaviours) for brain-driven mobs: villagers, piglins,
 	// wardens. It ticks where Mob.customServerAiStep would tick it. The brain framework itself lives in its own
 	// package; the base only calls it.
@@ -195,6 +206,9 @@ func (m *Mob) LookControl() *LookControl { return &m.s.look }
 func (m *Mob) MoveControl() *MoveControl { return &m.s.move }
 func (m *Mob) JumpControl() *JumpControl { return &m.s.jump }
 
+// BodyRotationControl returns the body rotation control (getBodyRotationControl; set its Custom for a mob's own).
+func (m *Mob) BodyRotationControl() *BodyRotationControl { return &m.s.body }
+
 // Sensing returns the line of sight cache (Mob.getSensing).
 func (m *Mob) Sensing() *Sensing { return &m.s.sensing }
 
@@ -241,6 +255,9 @@ func (m *Mob) SetDimensions(width, height float64) {
 
 // OnGround is onGround.
 func (m *Mob) OnGround() bool { return m.s.onGround }
+
+// SetOnGround is setOnGround (a flopping fish leaves the ground at once).
+func (m *Mob) SetOnGround(v bool) { m.s.onGround = v }
 
 // HorizontalCollision, VerticalCollision and MinorHorizontalCollision report how the last move was stopped.
 func (m *Mob) HorizontalCollision() bool      { return m.s.horizontalCollision }
@@ -301,6 +318,10 @@ func (m *Mob) SetYya(v float64) { m.s.yya = v }
 
 // Zza is the forward input.
 func (m *Mob) Zza() float64 { return m.s.zza }
+
+// Xxa is the strafe input, Yya the vertical input.
+func (m *Mob) Xxa() float64 { return m.s.xxa }
+func (m *Mob) Yya() float64 { return m.s.yya }
 
 // SetJumping is setJumping; Jumping reports it.
 func (m *Mob) SetJumping(v bool) { m.s.jumping = v }

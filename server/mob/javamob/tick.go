@@ -53,6 +53,12 @@ func (m *Mob) tick() {
 	if m.gone() {
 		return
 	}
+	if pt, ok := s.b.(PlayerToucher); ok && !m.Dead() {
+		m.touchPlayers(pt)
+		if m.gone() {
+			return
+		}
+	}
 	m.tickHeadTurn()
 	if t, ok := s.b.(PostTicker); ok {
 		t.PostTick(m)

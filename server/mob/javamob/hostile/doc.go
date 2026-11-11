@@ -51,6 +51,12 @@
 //   - variants.go: rules of the mobs built on the base's zombie, skeleton,
 //     spider and the pets row's camel: husk, stray, bogged, parched, cave
 //     spider, giant, camel husk.
+//   - types_land.go, types_water.go, types_fish.go, types_guardian.go,
+//     types_phantom.go, types_dolphin.go: the javamob types (Behaviours) of
+//     all of the above but the creaking, breeze and warden: navigation
+//     (water-bound for guardians, fish, dolphins), the custom move, look and
+//     body controls, travel overrides, the goals through goalOf (adapt.go)
+//     and PanicGoal (panic.go).
 //
 // The functions take *mob.Mob; the base's *javamob.Mob embeds it. Hooks holds
 // the base functions this package calls (sounds, line of sight, melee hits,

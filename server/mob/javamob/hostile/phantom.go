@@ -9,6 +9,7 @@ import (
 	"github.com/df-mc/dragonfly/server/block"
 	"github.com/df-mc/dragonfly/server/block/cube"
 	"github.com/df-mc/dragonfly/server/mob"
+	"github.com/df-mc/dragonfly/server/mob/javamob"
 	"github.com/df-mc/dragonfly/server/player"
 	"github.com/df-mc/dragonfly/server/world"
 	"github.com/go-gl/mathgl/mgl64"
@@ -54,6 +55,10 @@ func SetPhantomSize(m *mob.Mob, size int) {
 		meta.Scale = scale
 	})
 	m.Attributes().SetBase(mob.AttrAttackDamage, float64(6+size))
+	if jm, ok := javamob.Of(m); ok {
+		jm.SetDimensions(0.9*scale, 0.5*scale)
+		jm.Attributes().Instance(javamob.AttrAttackDamage).SetBase(float64(6 + size))
+	}
 }
 
 // PhantomFinalizeSpawn is Phantom.finalizeSpawn: the anchor is 5 blocks above
@@ -322,8 +327,8 @@ func (g *phantomSweepGoal) CanContinueToUse(m *mob.Mob) bool {
 	if !ok || !alive(t) || creativeOrSpectator(t) || !g.CanUse(m) {
 		return false
 	}
-	if m.Ticks() > g.catSearchTick {
-		g.catSearchTick = m.Ticks() + 20
+	if tickCount(m) > g.catSearchTick {
+		g.catSearchTick = tickCount(m) + 20
 		cats := 0
 		for e := range m.Tx().EntitiesWithin(m.BBox().Grow(16)) {
 			if entityID(e) == "minecraft:cat" && alive(e) {
@@ -358,7 +363,7 @@ func (g *phantomSweepGoal) Tick(m *mob.Mob) {
 		p.phase = phantomCircle
 		// Level event 1039 (PHANTOM_BITE): the bite sound.
 		PlayLevelEvent(m.Tx(), blockPos(m.Pos()), levelEventPhantomBite, 0)
-	} else if m.Physics().HorizontalCollision || Hooks.HurtRecently(m) {
+	} else if horizontalCollision(m) || Hooks.HurtRecently(m) {
 		p.phase = phantomCircle
 	}
 }
@@ -387,7 +392,7 @@ func (phantomMoveControl) Stop()                                 {}
 
 func (phantomMoveControl) Tick(m *mob.Mob) {
 	p := phantomOf(m)
-	if m.Physics().HorizontalCollision {
+	if horizontalCollision(m) {
 		m.SetYaw(m.Yaw() + 180)
 		p.moveSpeed = 0.1
 	}
@@ -448,10 +453,10 @@ func (phantomBodyControl) Tick(m *mob.Mob) {
 // 0.91 in the air; no gravity.
 func PhantomTravel(m *mob.Mob, input mgl64.Vec3) {
 	speed, drag := 0.2, 0.91
-	switch p := m.Physics(); {
-	case p.InWater:
+	switch {
+	case inWater(m):
 		speed, drag = 0.02, 0.8
-	case p.InLava:
+	case inLava(m):
 		speed, drag = 0.02, 0.5
 	}
 	v := m.Vel().Add(inputVector(input, speed, m.Yaw()))

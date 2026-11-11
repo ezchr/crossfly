@@ -19,6 +19,8 @@ const (
 	// WallClimber is WallClimberNavigation (spiders): ground navigation that walks straight at the target once the
 	// path ends, so the spider climbs the wall in its way.
 	WallClimber
+	// WaterBound is WaterBoundPathNavigation (guardians, fish, dolphins): see NewWaterNavigation.
+	WaterBound
 )
 
 // Navigation is a PathNavigation of one mob: it finds paths and feeds their nodes to the mob's move control.
@@ -26,6 +28,8 @@ const (
 type Navigation struct {
 	kind Kind
 	eval *Evaluator
+	// walk is the walk evaluator a water-bound navigation keeps for WalkTypeAt.
+	walk *Evaluator
 	find *Finder
 
 	path          *Path
@@ -74,9 +78,13 @@ func (n *Navigation) SetAvoidSun(v bool) { n.avoidSun = v }
 func (n *Navigation) SetCanPathToTargetsBelowSurface(v bool) { n.belowSurface = v }
 
 // SetCanOpenDoors, SetCanPassDoors, SetCanFloat and SetCanWalkOverFences are the node evaluator settings.
-func (n *Navigation) SetCanOpenDoors(v bool)      { n.eval.SetCanOpenDoors(v) }
-func (n *Navigation) SetCanPassDoors(v bool)      { n.eval.SetCanPassDoors(v) }
-func (n *Navigation) SetCanFloat(v bool)          { n.eval.SetCanFloat(v) }
+func (n *Navigation) SetCanOpenDoors(v bool) { n.eval.SetCanOpenDoors(v) }
+func (n *Navigation) SetCanPassDoors(v bool) { n.eval.SetCanPassDoors(v) }
+func (n *Navigation) SetCanFloat(v bool) {
+	if n.kind != WaterBound { // WaterBoundPathNavigation.setCanFloat does nothing.
+		n.eval.SetCanFloat(v)
+	}
+}
 func (n *Navigation) SetCanWalkOverFences(v bool) { n.eval.SetCanWalkOverFences(v) }
 
 // CanFloat reports whether the mob floats in water while it paths.
@@ -125,7 +133,12 @@ func (n *Navigation) Stuck() bool { return n.stuck }
 func (n *Navigation) Stop() { n.path = nil }
 
 // canUpdatePath is GroundPathNavigation.canUpdatePath.
-func (n *Navigation) canUpdatePath(m Mob) bool { return m.OnGround() || m.InLiquid() || m.Passenger() }
+func (n *Navigation) canUpdatePath(m Mob) bool {
+	if n.kind == WaterBound {
+		return n.eval.breach || m.InLiquid()
+	}
+	return m.OnGround() || m.InLiquid() || m.Passenger()
+}
 
 // RecomputePath is PathNavigation.recomputePath.
 func (n *Navigation) RecomputePath(m Mob) {
@@ -151,7 +164,7 @@ func (n *Navigation) CreatePath(m Mob, pos cube.Pos, reachRange int) *Path {
 	if _, loaded := tx.BlockLoaded(pos); !loaded {
 		return nil
 	}
-	if !n.belowSurface {
+	if !n.belowSurface && n.kind != WaterBound {
 		pos = surfacePosition(tx, pos)
 	}
 	return n.createPath(m, []cube.Pos{pos}, 8, false, reachRange, n.maxPathLength(m))
@@ -321,6 +334,9 @@ func closerToCentre(p cube.Pos, v mgl64.Vec3, d float64) bool {
 
 // groundY is PathNavigation.getGroundY.
 func (n *Navigation) groundY(tx *world.Tx, t mgl64.Vec3) float64 {
+	if n.kind == WaterBound {
+		return t[1]
+	}
 	pos := cube.PosFromVec3(t)
 	if infoOf(tx.BlockRuntimeIDAt(pos.Side(cube.FaceDown))).kind == kindAir {
 		return t[1]
@@ -342,7 +358,11 @@ func (n *Navigation) followThePath(m Mob) {
 	xd := math.Abs(pos[0] - (float64(next.X) + 0.5))
 	yd := math.Abs(pos[1] - float64(next.Y))
 	zd := math.Abs(pos[2] - (float64(next.Z) + 0.5))
-	close := xd < n.maxDistToWP && zd < n.maxDistToWP && yd < 1
+	maxY := 1.0 // getMaxVerticalDistanceToWaypoint
+	if n.kind == WaterBound {
+		maxY = float64(float32(0.5))
+	}
+	close := xd < n.maxDistToWP && zd < n.maxDistToWP && yd < maxY
 	if close || canCutCorner(next.Type) && n.shouldTargetNextNodeInDirection(m, mp) {
 		n.path.Advance()
 	}
@@ -429,6 +449,9 @@ func (n *Navigation) resetStuckTimeout() {
 // tempMobPos is GroundPathNavigation.getTempMobPos.
 func (n *Navigation) tempMobPos(m Mob) mgl64.Vec3 {
 	pos := m.Position()
+	if n.kind == WaterBound { // WaterBoundPathNavigation.getTempMobPos: getY(0.5).
+		return mgl64.Vec3{pos[0], pos[1] + m.Height()*0.5, pos[2]}
+	}
 	return mgl64.Vec3{pos[0], float64(n.surfaceY(m)), pos[2]}
 }
 
@@ -454,7 +477,7 @@ func (n *Navigation) surfaceY(m Mob) int {
 // mob that avoids the sun.
 func (n *Navigation) trimPath(m Mob) {
 	tx := m.Tx()
-	if n.path == nil {
+	if n.path == nil || n.kind == WaterBound {
 		return
 	}
 	for i := 0; i < n.path.NodeCount(); i++ {

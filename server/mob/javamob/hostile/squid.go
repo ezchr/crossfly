@@ -68,7 +68,7 @@ func SquidAIStep(m *mob.Mob) {
 		// the client's stroke animation; it has no Bedrock counterpart and
 		// the clients animate fine without it, so it is not sent.
 	}
-	if m.Physics().InWater {
+	if inWater(m) {
 		if s.tentacleMovement < math.Pi {
 			scale := s.tentacleMovement / math.Pi
 			if scale > 0.75 {
@@ -154,9 +154,9 @@ func (squidRandomMovementGoal) Tick(m *mob.Mob) {
 	s := squidOf(m)
 	r := m.Rand()
 	switch {
-	case m.InactivityTicks() > 100:
+	case noActionTime(m) > 100:
 		s.movementVector = mgl64.Vec3{}
-	case nextInt(r, reducedTickDelay(50)) == 0 || !m.Physics().InWater || !s.hasMovementVector():
+	case nextInt(r, reducedTickDelay(50)) == 0 || !inWater(m) || !s.hasMovementVector():
 		a := nextFloat(r) * 2 * math.Pi
 		s.movementVector = mgl64.Vec3{math.Cos(a) * 0.2, -0.1 + nextFloat(r)*0.2, math.Sin(a) * 0.2}
 	}
@@ -176,7 +176,7 @@ func (g *squidFleeGoal) RequiresUpdateEveryTick() bool { return true }
 
 func (g *squidFleeGoal) CanUse(m *mob.Mob) bool {
 	e, _, ok := m.LastHurtBy()
-	return m.Physics().InWater && ok && e != nil && distanceSqr(m, e) < 100
+	return inWater(m) && ok && e != nil && distanceSqr(m, e) < 100
 }
 
 func (g *squidFleeGoal) Start(*mob.Mob) { g.fleeTicks = 0 }

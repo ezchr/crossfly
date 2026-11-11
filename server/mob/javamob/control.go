@@ -78,6 +78,21 @@ func (c *LookControl) DefaultTick(m *Mob) {
 	}
 }
 
+// TickCooldown counts the look down by a tick (lookAtCooldown-- of a custom look control) and reports whether it
+// was still looking.
+func (c *LookControl) TickCooldown() bool {
+	if c.cooldown <= 0 {
+		return false
+	}
+	c.cooldown--
+	return true
+}
+
+// YRotD and XRotD are LookControl.getYRotD and getXRotD: the yaw and pitch towards the wanted point, if it is not
+// straight above or at the mob.
+func (c *LookControl) YRotD(m *Mob) (float64, bool) { return c.yRotD(m) }
+func (c *LookControl) XRotD(m *Mob) (float64, bool) { return c.xRotD(m) }
+
 func (c *LookControl) xRotD(m *Mob) (float64, bool) {
 	p := m.Position()
 	xd, yd, zd := c.wanted[0]-p[0], c.wanted[1]-m.EyeY(), c.wanted[2]-p[2]
@@ -252,9 +267,20 @@ func (c *JumpControl) tick(m *Mob) {
 type BodyRotationControl struct {
 	headStableTime int
 	lastStableHead float64
+	// Custom, if set, replaces Tick (a mob's own body rotation control: Phantom's).
+	Custom func(m *Mob, c *BodyRotationControl)
 }
 
 func (c *BodyRotationControl) tick(m *Mob) {
+	if c.Custom != nil {
+		c.Custom(m, c)
+		return
+	}
+	c.DefaultTick(m)
+}
+
+// DefaultTick is BodyRotationControl.clientTick.
+func (c *BodyRotationControl) DefaultTick(m *Mob) {
 	p, o := m.Position(), m.s.old
 	xd, zd := p[0]-o[0], p[2]-o[2]
 	if xd*xd+zd*zd > float64(float32(2.5000003e-7)) {

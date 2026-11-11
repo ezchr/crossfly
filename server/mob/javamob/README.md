@@ -84,7 +84,10 @@ func (c *Cow) RegisterGoals(m *javamob.Mob) {
    `FarAwayRemover`, `Interactor` (`mobInteract`), `TargetFilter`
    (`canAttack`/`setTarget`), `BabySetter`, `Climber`, `HeadLimiter`,
    `WalkTargetValuer` (`getWalkTargetValue`; monsters use
-   `javamob.MonsterWalkTargetValue`).
+   `javamob.MonsterWalkTargetValue`), `Traveler` (`travel`: travelInWater,
+   travelFlying; `m.Move`, `m.MoveRelative`, `m.TravelDefault`), `PlayerToucher`
+   (`playerTouch`). Controls: `MoveControl`, `LookControl` and
+   `BodyRotationControl` each take a `Custom` tick.
 4. Goals: implement `javamob.Goal` (`CanUse`, `Flags` via `javamob.GoalBase`) and
    any of `CanContinueToUse`, `IsInterruptable`, `Start`, `Stop`, `Tick`,
    `RequiresUpdateEveryTick`. Goals shared by several mobs go to `goal/`; a goal of
@@ -92,7 +95,8 @@ func (c *Cow) RegisterGoals(m *javamob.Mob) {
    zombified piglin embeds `monster.Zombie` and replaces its hooks).
 5. Navigation other than ground walking: `m.SetNavigation(path.NewNavigation(kind, m))`
    in RegisterGoals (`path.WallClimber` for spiders; water, flying and amphibious
-   kinds are still to be added to `path/`). Maluses:
+   kinds are still to be added to `path/`; water-bound navigation is
+   `path.NewWaterNavigation(m, allowBreaching)`, WaterBoundPathNavigation + SwimNodeEvaluator). Maluses:
    `m.SetPathfindingMalus(path.Water, -1)`.
 6. Loot: the type's `entities/<name>` table is rolled on death
    (`Type.LootTable`, `NoLootTable`). Predicates the default entity_properties test
@@ -121,8 +125,8 @@ and on the mob `RemoveWhenFarAway`, `RequiresCustomPersistence`,
 
 * Paper's entity activation range (spigot.yml `entity-activation-range`: inactive
   mobs far from players tick their goals every few ticks only).
-* Ridden travel (controlling passenger, `tickRidden`, `getRiddenInput`), flying,
-  water-bound and amphibious navigation, `MoveThroughVillageGoal`, picking up loot,
+* Ridden travel (controlling passenger, `tickRidden`, `getRiddenInput`), flying
+  and amphibious navigation, `MoveThroughVillageGoal`, picking up loot,
   bubble columns, honey sliding, the `Entity.checkInsideBlocks` sweep along the move
   (the blocks at the end of the move are checked).
 * Dragonfly has no Looting enchantment yet, so loot rolls with looting 0.

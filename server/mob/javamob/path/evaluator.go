@@ -65,6 +65,9 @@ type Evaluator struct {
 	canFloat          bool
 	canWalkOverFences bool
 
+	// swim makes this a SwimNodeEvaluator (swim.go); breach is its allowBreaching.
+	swim, breach bool
+
 	neighbours [4]*Node
 }
 
@@ -116,6 +119,9 @@ func (e *Evaluator) node(x, y, z int) *Node {
 
 // start is WalkNodeEvaluator.getStart.
 func (e *Evaluator) start() *Node {
+	if e.swim {
+		return e.swimStart()
+	}
 	tx, m := e.tx, e.mob
 	pos := m.Position()
 	startY := int(math.Floor(pos[1]))
@@ -177,6 +183,9 @@ func (e *Evaluator) canStartAt(p cube.Pos) bool {
 
 // neighbours is WalkNodeEvaluator.getNeighbors.
 func (e *Evaluator) neighboursOf(out []*Node, pos *Node) int {
+	if e.swim {
+		return e.swimNeighbours(out, pos)
+	}
 	p, jump := 0, 0
 	above := e.cachedType(pos.X, pos.Y+1, pos.Z)
 	cur := e.cachedType(pos.X, pos.Y, pos.Z)
@@ -606,6 +615,17 @@ func StateType(tx *world.Tx, pos cube.Pos) Type {
 
 // TypeForMob is NodeEvaluator.getPathType(mob, pos) as MoveControl.isWalkable asks it.
 func (e *Evaluator) TypeForMob(tx *world.Tx, m Mob, pos cube.Pos) Type {
+	if e.swim {
+		if e.tx != nil {
+			return e.swimCachedType(pos[0], pos[1], pos[2])
+		}
+		e.tx, e.mob = tx, m
+		e.width, e.height, e.depth = int(math.Floor(float64(float32(m.Width())+1))), int(math.Floor(float64(float32(m.Height())+1))), int(math.Floor(float64(float32(m.Width())+1)))
+		t := e.swimCachedType(pos[0], pos[1], pos[2])
+		clear(e.typeCache)
+		e.tx, e.mob = nil, nil
+		return t
+	}
 	if e.tx != nil {
 		return e.TypeAt(pos[0], pos[1], pos[2])
 	}

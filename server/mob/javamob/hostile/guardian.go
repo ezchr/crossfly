@@ -138,9 +138,9 @@ func (g *guardianAttackGoal) CanContinueToUse(m *mob.Mob) bool {
 
 func (g *guardianAttackGoal) Start(m *mob.Mob) {
 	g.attackTime = -10
-	m.Navigation().Stop(m)
+	navStop(m)
 	if t, ok := m.Target(); ok {
-		m.LookControl().SetLookAtEntity(t, 90, 90)
+		lookControlAt(m, t, 90, 90)
 	}
 	m.SyncMovement()
 }
@@ -159,8 +159,8 @@ func (g *guardianAttackGoal) Tick(m *mob.Mob) {
 	if !ok {
 		return
 	}
-	m.Navigation().Stop(m)
-	m.LookControl().SetLookAtEntity(t, 90, 90)
+	navStop(m)
+	lookControlAt(m, t, 90, 90)
 	if !hasLineOfSight(m, t) {
 		m.SetTarget(nil)
 		return
@@ -243,13 +243,12 @@ func GuardianAIStep(m *mob.Mob) {
 	if m.Dead() {
 		return
 	}
-	p := m.Physics()
-	if !p.InWater && m.OnGround() {
+	if !inWater(m) && onGround(m) {
 		r := m.Rand()
 		v := m.Vel()
 		m.SetVelocity(v.Add(mgl64.Vec3{(nextFloat(r)*2 - 1) * 0.4, 0.5, (nextFloat(r)*2 - 1) * 0.4}))
 		m.SetYaw(nextFloat(r) * 360)
-		m.Physics().OnGround = false
+		setOnGround(m, false)
 		m.SyncMovement()
 	}
 	if guardianOf(m).attackTarget != nil {
@@ -284,66 +283,6 @@ func inputVector(input mgl64.Vec3, speed, yRot float64) mgl64.Vec3 {
 	return mgl64.Vec3{mv[0]*cos - mv[2]*sin, mv[1], mv[2]*cos + mv[0]*sin}
 }
 
-// guardianMoveControl is Guardian.GuardianMoveControl: swim straight at the
-// wanted position, speeding up smoothly, with a little wobble, and look a bit
-// ahead; spikes go in while moving.
-type guardianMoveControl struct {
-	wanted   mgl64.Vec3
-	speedMod float64
-	moveTo   bool
-	speed    float64
-}
-
-func (c *guardianMoveControl) SetWantedPosition(pos mgl64.Vec3, speed float64) {
-	c.wanted, c.speedMod, c.moveTo = pos, speed, true
-}
-func (c *guardianMoveControl) HasWanted() bool            { return c.moveTo }
-func (c *guardianMoveControl) WantedPosition() mgl64.Vec3 { return c.wanted }
-func (c *guardianMoveControl) Speed() float64             { return c.speedMod }
-func (c *guardianMoveControl) Strafe(float64, float64)    {}
-func (c *guardianMoveControl) Stop()                      { c.moveTo = false }
-
-func (c *guardianMoveControl) Tick(m *mob.Mob) {
-	g := guardianOf(m)
-	in := m.Input()
-	if !c.moveTo || m.Navigation().Done() {
-		in.Speed = 0
-		g.setMoving(m, false)
-		return
-	}
-	pos := m.Pos()
-	delta := c.wanted.Sub(pos)
-	length := delta.Len()
-	if length == 0 {
-		in.Speed = 0
-		g.setMoving(m, false)
-		return
-	}
-	xd, yd, zd := delta[0]/length, delta[1]/length, delta[2]/length
-	yRotD := math.Atan2(delta[2], delta[0])*180/math.Pi - 90
-	m.SetYaw(rotlerp(m.Yaw(), yRotD, 90))
-	m.SetBodyYaw(m.Yaw())
-	target := c.speedMod * m.Attr(mob.AttrMovement)
-	newSpeed := lerp(0.125, in.Speed, target)
-	in.Speed = newSpeed
-	phase := float64(m.Ticks()) + float64(entityNetID(m))
-	push := math.Sin(phase*0.5) * 0.05
-	cos := math.Cos(m.Yaw() * math.Pi / 180)
-	sin := math.Sin(m.Yaw() * math.Pi / 180)
-	yPush := math.Sin(phase*0.75) * 0.05
-	m.SetVelocity(m.Vel().Add(mgl64.Vec3{push * cos, yPush*(sin+cos)*0.25 + newSpeed*yd*0.1, push * sin}))
-	look := mgl64.Vec3{pos[0] + xd*2, m.EyePosition()[1] + yd/length, pos[2] + zd*2}
-	lc := m.LookControl()
-	old := look
-	if w, ok := lc.(interface{ Wanted() (mgl64.Vec3, bool) }); ok {
-		if p, looking := w.Wanted(); looking {
-			old = p
-		}
-	}
-	lc.SetLookAt(mgl64.Vec3{lerp(0.125, old[0], look[0]), lerp(0.125, old[1], look[1]), lerp(0.125, old[2], look[2])}, 10, 40)
-	g.setMoving(m, true)
-}
-
 // entityNetID stands in for Entity.getId in formulas that only need a
 // per-entity offset (the wobble phase, flap offsets): a stable number from
 // the entity's UUID.
@@ -375,7 +314,7 @@ func (curseAction) ActorEvent() uint8 { return packet.ActorEventGuardianMiningFa
 // strong with more than a minute left, and they see the ghost; the elder
 // keeps its home (16 blocks) where it first was.
 func ElderGuardianServerAIStep(m *mob.Mob) {
-	if (m.Ticks()+int64(entityNetID(m)))%elderEffectInterval == 0 {
+	if (tickCount(m)+int64(entityNetID(m)))%elderEffectInterval == 0 {
 		for _, pl := range elderCurseTargets(m) {
 			pl.AddEffect(effect.New(effect.MiningFatigue, elderEffectAmplifier+1, elderEffectDuration*time.Second/20))
 			for _, v := range m.Tx().Viewers(pl.Position()) {

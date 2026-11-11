@@ -68,7 +68,7 @@ func DolphinBaseTick(m *mob.Mob, noAI bool, drown func(m *mob.Mob, dmg float64))
 	if m.Dead() {
 		return
 	}
-	if !m.Physics().Underwater {
+	if !underWater(m) {
 		d.air = DolphinMaxAir
 		return
 	}
@@ -92,11 +92,11 @@ func DolphinTick(m *mob.Mob, inWaterOrRain bool, dryOut func(m *mob.Mob)) {
 	if d.moistness <= 0 {
 		dryOut(m)
 	}
-	if m.OnGround() {
+	if onGround(m) {
 		r := m.Rand()
 		m.SetVelocity(m.Vel().Add(mgl64.Vec3{(nextFloat(r)*2 - 1) * 0.2, 0.5, (nextFloat(r)*2 - 1) * 0.2}))
 		m.SetYaw(nextFloat(r) * 360)
-		m.Physics().OnGround = false
+		setOnGround(m, false)
 		m.SyncMovement()
 	}
 }
@@ -182,7 +182,7 @@ func (g *dolphinTreasureGoal) closeToTreasure(m *mob.Mob) bool {
 
 func (g *dolphinTreasureGoal) Start(m *mob.Mob) {
 	g.stuck = false
-	m.Navigation().Stop(m)
+	navStop(m)
 	if p, ok := treasureFinder(m.Tx(), blockPos(m.Pos())); ok {
 		dolphinOf(m).treasure = &p
 		return
@@ -249,7 +249,7 @@ func (g *dolphinSwimWithPlayerGoal) Start(m *mob.Mob) {
 
 func (g *dolphinSwimWithPlayerGoal) Stop(m *mob.Mob) {
 	g.player = nil
-	m.Navigation().Stop(m)
+	navStop(m)
 }
 
 func (g *dolphinSwimWithPlayerGoal) Tick(m *mob.Mob) {
@@ -257,11 +257,11 @@ func (g *dolphinSwimWithPlayerGoal) Tick(m *mob.Mob) {
 	if !ok {
 		return
 	}
-	m.LookControl().SetLookAtEntity(p, 1+20, 1) // getMaxHeadYRot() + 20, getMaxHeadXRot()
+	lookControlAt(m, p, 1+20, 1) // getMaxHeadYRot() + 20, getMaxHeadXRot()
 	if distanceSqr(m, p) < 6.25 {
-		m.Navigation().Stop(m)
+		navStop(m)
 	} else {
-		m.Navigation().MoveToEntity(m, p, g.speed)
+		navMoveToEntity(m, p, g.speed)
 	}
 	if swimming(p) && nextInt(m.Rand(), 6) == 0 {
 		giveGrace(p)
@@ -319,7 +319,7 @@ type dolphinMoveToItemGoal struct {
 func (g *dolphinMoveToItemGoal) Flags() mob.ControlFlags { return mob.FlagMove }
 
 func (g *dolphinMoveToItemGoal) CanUse(m *mob.Mob) bool {
-	if g.cooldown > m.Ticks() {
+	if g.cooldown > tickCount(m) {
 		return false
 	}
 	return len(dolphinItems(m)) > 0
@@ -327,20 +327,20 @@ func (g *dolphinMoveToItemGoal) CanUse(m *mob.Mob) bool {
 
 func (g *dolphinMoveToItemGoal) Start(m *mob.Mob) {
 	if items := dolphinItems(m); len(items) > 0 {
-		m.Navigation().MoveToEntity(m, items[0], 1.2)
+		navMoveToEntity(m, items[0], 1.2)
 	}
 	g.cooldown = 0
 }
 
 func (g *dolphinMoveToItemGoal) Tick(m *mob.Mob) {
 	if items := dolphinItems(m); len(items) > 0 {
-		m.Navigation().MoveToEntity(m, items[0], 1.2)
+		navMoveToEntity(m, items[0], 1.2)
 	}
 }
 
 func (g *dolphinMoveToItemGoal) Stop(m *mob.Mob) {
 	if dolphinDropItem(m) {
-		g.cooldown = m.Ticks() + int64(nextInt(m.Rand(), 100))
+		g.cooldown = tickCount(m) + int64(nextInt(m.Rand(), 100))
 	}
 }
 
@@ -465,13 +465,13 @@ func directionStep(yaw float64) cube.Pos {
 func (g *dolphinJumpGoal) CanContinueToUse(m *mob.Mob) bool {
 	yd := m.Vel()[1]
 	pitch := m.Pitch()
-	return (yd*yd >= 0.03 || pitch == 0 || math.Abs(pitch) >= 10 || !m.Physics().InWater) && !m.OnGround()
+	return (yd*yd >= 0.03 || pitch == 0 || math.Abs(pitch) >= 10 || !inWater(m)) && !onGround(m)
 }
 
 func (g *dolphinJumpGoal) Start(m *mob.Mob) {
 	step := directionStep(m.Yaw())
 	m.SetVelocity(m.Vel().Add(mgl64.Vec3{float64(step[0]) * 0.6, 0.7, float64(step[2]) * 0.6}))
-	m.Navigation().Stop(m)
+	navStop(m)
 }
 
 func (g *dolphinJumpGoal) Stop(m *mob.Mob) { m.SetPitch(0) }
@@ -505,14 +505,14 @@ func (breathAirGoal) IsInterruptable() bool { return false }
 func (breathAirGoal) CanUse(m *mob.Mob) bool { return dolphinOf(m).air < 140 }
 
 func (g breathAirGoal) Start(m *mob.Mob) {
-	m.Navigation().Stop(m)
+	navStop(m)
 	g.findAirPosition(m)
 }
 
 func (g breathAirGoal) Tick(m *mob.Mob) {
 	g.findAirPosition(m)
-	in := m.Input()
-	m.SetVelocity(m.Vel().Add(inputVector(mgl64.Vec3{in.Strafe, in.Vertical, in.Forward}, 0.02, m.Yaw())))
+	in := mobInput(m)
+	m.SetVelocity(m.Vel().Add(inputVector(in, 0.02, m.Yaw())))
 	m.SetVelocity(Hooks.Move(m, m.Vel()))
 }
 
@@ -531,5 +531,5 @@ func (breathAirGoal) findAirPosition(m *mob.Mob) {
 			break
 		}
 	}
-	m.Navigation().MoveTo(m, mgl64.Vec3{float64(dest[0]), float64(dest[1] + 1), float64(dest[2])}, 1)
+	navMoveTo(m, mgl64.Vec3{float64(dest[0]), float64(dest[1] + 1), float64(dest[2])}, 1)
 }

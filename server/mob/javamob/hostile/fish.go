@@ -3,11 +3,11 @@
 package hostile
 
 import (
-	"math"
 	"math/rand/v2"
 
 	"github.com/df-mc/dragonfly/server/block/cube"
 	"github.com/df-mc/dragonfly/server/mob"
+	"github.com/df-mc/dragonfly/server/mob/javamob"
 	"github.com/df-mc/dragonfly/server/world"
 	"github.com/go-gl/mathgl/mgl64"
 )
@@ -103,7 +103,7 @@ func FishBaseTick(m *mob.Mob, drown func(m *mob.Mob, dmg float64)) {
 	if m.Dead() {
 		return
 	}
-	if waterAnimalAir(&fishOf(m).air, m.Physics().InWater) {
+	if waterAnimalAir(&fishOf(m).air, inWater(m)) {
 		drown(m, 2)
 	}
 }
@@ -111,13 +111,12 @@ func FishBaseTick(m *mob.Mob, drown func(m *mob.Mob, dmg float64)) {
 // FishAIStep is the flop of AbstractFish.aiStep: a fish on dry ground hops
 // randomly (0.4 up) and plays its flop sound.
 func FishAIStep(m *mob.Mob) {
-	p := m.Physics()
-	if p.InWater || !m.OnGround() || !p.VerticalCollision {
+	if inWater(m) || !onGround(m) || !verticalCollision(m) {
 		return
 	}
 	r := m.Rand()
 	m.SetVelocity(m.Vel().Add(mgl64.Vec3{(nextFloat(r)*2 - 1) * 0.05, 0.4, (nextFloat(r)*2 - 1) * 0.05}))
-	p.OnGround = false
+	setOnGround(m, false)
 	m.SyncMovement()
 	playSound(m, fishFlopSound(m.Identifier()), 1, voicePitch(r))
 }
@@ -147,46 +146,6 @@ func FishTravelInWater(m *mob.Mob, input mgl64.Vec3) {
 		v[1] -= 0.005
 	}
 	m.SetVelocity(v)
-}
-
-// fishMoveControl is AbstractFish.FishMoveControl: buoyant when the eyes are
-// in water; swims straight at the wanted position, the speed easing in.
-type fishMoveControl struct {
-	wanted   mgl64.Vec3
-	speedMod float64
-	moveTo   bool
-}
-
-func (c *fishMoveControl) SetWantedPosition(pos mgl64.Vec3, speed float64) {
-	c.wanted, c.speedMod, c.moveTo = pos, speed, true
-}
-func (c *fishMoveControl) HasWanted() bool            { return c.moveTo }
-func (c *fishMoveControl) WantedPosition() mgl64.Vec3 { return c.wanted }
-func (c *fishMoveControl) Speed() float64             { return c.speedMod }
-func (c *fishMoveControl) Strafe(float64, float64)    {}
-func (c *fishMoveControl) Stop()                      { c.moveTo = false }
-
-func (c *fishMoveControl) Tick(m *mob.Mob) {
-	if m.Physics().Underwater {
-		m.SetVelocity(m.Vel().Add(mgl64.Vec3{0, 0.005}))
-	}
-	in := m.Input()
-	if !c.moveTo || m.Navigation().Done() {
-		in.Speed = 0
-		return
-	}
-	target := c.speedMod * m.Attr(mob.AttrMovement)
-	in.Speed = lerp(0.125, in.Speed, target)
-	d := c.wanted.Sub(m.Pos())
-	if d[1] != 0 {
-		dd := d.Len()
-		m.SetVelocity(m.Vel().Add(mgl64.Vec3{0, in.Speed * (d[1] / dd) * 0.1}))
-	}
-	if d[0] != 0 || d[2] != 0 {
-		yRotD := math.Atan2(d[2], d[0])*180/math.Pi - 90
-		m.SetYaw(rotlerp(m.Yaw(), yRotD, 90))
-		m.SetBodyYaw(m.Yaw())
-	}
 }
 
 // canRandomSwim is AbstractFish.canRandomSwim (FishSwimGoal's condition): a
@@ -361,7 +320,7 @@ func (g *followFlockLeaderGoal) Tick(m *mob.Mob) {
 	}
 	g.timeToRecalcPath = adjustedTickDelay(false, 10)
 	if l, ok := leaderOf(m); ok {
-		m.Navigation().MoveToEntity(m, l, 1)
+		navMoveToEntity(m, l, 1)
 	}
 }
 
@@ -422,6 +381,9 @@ func randomSalmonSize(r *rand.Rand) SalmonSize {
 func SetSalmonSize(m *mob.Mob, s SalmonSize) {
 	fishOf(m).salmonSize = s
 	m.UpdateMeta(func(meta *mob.Meta) { meta.Scale = s.Scale() })
+	if jm, ok := javamob.Of(m); ok {
+		jm.SetDimensions(0.7*s.Scale(), 0.4*s.Scale())
+	}
 }
 
 // Pufferfish (Pufferfish).
@@ -454,6 +416,10 @@ func SetPuffState(m *mob.Mob, state int) {
 		s := pufferScale(state)
 		meta.Width, meta.Height = 0.7*s, 0.7*s
 	})
+	if jm, ok := javamob.Of(m); ok {
+		s := pufferScale(state)
+		jm.SetDimensions(0.7*s, 0.7*s)
+	}
 }
 
 // PuffState is Pufferfish.getPuffState.
