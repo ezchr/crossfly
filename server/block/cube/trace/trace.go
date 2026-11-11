@@ -8,12 +8,19 @@ import (
 
 // TraverseBlocks performs a ray trace between the start and end coordinates.
 // A function 'f' is passed which is called for each voxel, if f returns false, the function will return.
-// TraverseBlocks panics if the start and end positions are the same.
+// If the start and end positions are the same, only the block at start is passed to f.
+// Non-finite positions are ignored and the trace stops after MaxTraverseDistance blocks.
 func TraverseBlocks(start, end mgl64.Vec3, f func(pos cube.Pos) (con bool)) {
 	dir := end.Sub(start)
-	if mgl64.FloatEqual(dir.LenSqr(), 0) {
-		panic("start and end points are the same, giving a zero direction vector")
+	if !finite(start) || !finite(end) || !finite(dir) {
+		// A NaN or infinite point never gets reached, so the loop below would never end.
+		return
 	}
+	if mgl64.FloatEqual(dir.LenSqr(), 0) {
+		f(cube.PosFromVec3(start))
+		return
+	}
+	r := min(dir.Len(), MaxTraverseDistance)
 	dir = dir.Normalize()
 
 	b := cube.PosFromVec3(start)
@@ -24,7 +31,6 @@ func TraverseBlocks(start, end mgl64.Vec3, f func(pos cube.Pos) (con bool)) {
 
 	delta := safeDivideVec3(step, dir)
 
-	r := start.Sub(end).Len()
 	for {
 		if !f(b) {
 			return
@@ -51,6 +57,19 @@ func TraverseBlocks(start, end mgl64.Vec3, f func(pos cube.Pos) (con bool)) {
 			max[2] += delta[2]
 		}
 	}
+}
+
+// MaxTraverseDistance is the longest distance TraverseBlocks walks.
+const MaxTraverseDistance = 4096
+
+// finite reports whether all components of v are finite.
+func finite(v mgl64.Vec3) bool {
+	for _, f := range v {
+		if math.IsNaN(f) || math.IsInf(f, 0) {
+			return false
+		}
+	}
+	return true
 }
 
 // safeDivideVec3 ...
