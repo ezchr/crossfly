@@ -33,6 +33,8 @@ import (
 // Session handles incoming packets from connections and sends outgoing packets by providing a thin layer
 // of abstraction over direct packets. A Session basically 'controls' an entity.
 type Session struct {
+	// packetErrors counts packets that failed to be handled (see handlePackets).
+	packetErrors   packetErrors
 	conf           Config
 	border         borderView // the world border wall shown (border.go)
 	once, connOnce sync.Once
@@ -487,10 +489,37 @@ func (s *Session) handlePackets() {
 			if sessionOwnerStopped(err) {
 				return
 			}
+			// A packet the server could not handle is usually a desync (an entity that just went,
+			// a stale slot), not a reason to drop a real player as upstream did. Only a flood of
+			// them, which a normal client never sends, ends the session.
+			if s.packetErrors.tooMany(time.Now()) {
+				s.conf.Log.Warn("process packet: too many packets the server could not handle, closing the connection", "last", err.Error())
+				return
+			}
 			s.conf.Log.Debug("process packet: " + err.Error())
-			return
 		}
 	}
+}
+
+// packetErrors counts packets that failed to be handled, to tell a desync from a misbehaving client.
+type packetErrors struct {
+	start time.Time
+	n     int
+}
+
+// maxPacketErrors within packetErrorWindow end a session.
+const (
+	maxPacketErrors   = 50
+	packetErrorWindow = 10 * time.Second
+)
+
+// tooMany records one failed packet at now and reports whether there were too many lately.
+func (e *packetErrors) tooMany(now time.Time) bool {
+	if now.Sub(e.start) > packetErrorWindow {
+		e.start, e.n = now, 0
+	}
+	e.n++
+	return e.n > maxPacketErrors
 }
 
 // background performs background tasks of the Session. This includes chunk sending and automatic command updating.
