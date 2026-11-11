@@ -1309,6 +1309,15 @@ func (s *Session) ViewBlockUpdate(pos cube.Pos, b world.Block, layer int) {
 // ViewEntityAction ...
 func (s *Session) ViewEntityAction(e world.Entity, a world.EntityAction) {
 	switch act := a.(type) {
+	case interface{ BoatRowTimes() (float32, float32) }: // entity.BoatRowAction (Crossfly Full)
+		if s.drivenBySelf(e) {
+			return // the driver's client turns its own paddles
+		}
+		// As BDS's BoatPaddleAnimationSystem: Animate 128 (row right) and 129 (row left) with the row times.
+		left, right := act.BoatRowTimes()
+		id := s.entityRuntimeID(e)
+		s.writePacket(&packet.Animate{ActionType: 128, EntityRuntimeID: id, Data: right})
+		s.writePacket(&packet.Animate{ActionType: 129, EntityRuntimeID: id, Data: left})
 	case entity.SwingArmAction:
 		if _, ok := e.(Controllable); ok {
 			if s.entityRuntimeID(e) == selfEntityRuntimeID && s.swingingArm.Load() {

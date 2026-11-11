@@ -318,6 +318,13 @@ func (s *Session) handleInput(id int32, body []byte) (bool, error) {
 				s.startGliding(c)
 			}
 		})
+	case v777.ServerboundPlayPaddleBoat:
+		left, right := r.Bool(), r.Bool()
+		if r.Err != nil {
+			return true, r.Err
+		}
+		s.do(func(tx *world.Tx, c session.Controllable) { boatPaddle(tx, c, left, right) })
+		return true, nil
 	case v777.ServerboundPlayMoveVehicle:
 		x, y, z := r.Float64(), r.Float64(), r.Float64()
 		yaw, pitch := r.Float32(), r.Float32()

@@ -17,6 +17,9 @@ func vehicleMove(tx *world.Tx, c session.Controllable, pos mgl64.Vec3, yaw, pitc
 	if !ok || rideable.ControllingRider() != c.H() {
 		return
 	}
+	if isBoat(rideable) {
+		yaw += 90 // Bedrock boats face 90 degrees off Java's (entityYaws)
+	}
 	if cv, ok := rideable.(entity.ClientVehicle); ok {
 		cv.ClientVehicleMove(c, pos, yaw, pitch)
 	}
@@ -30,5 +33,18 @@ func vehicleJump(tx *world.Tx, c session.Controllable, strength float64) {
 	}
 	if j, ok := rideable.(entity.VehicleJumper); ok {
 		j.RiderJump(c, min(max(strength, 0), 1))
+	}
+}
+
+// boatPaddle passes the paddles the driver of a boat works (paddle_boat).
+func boatPaddle(tx *world.Tx, c session.Controllable, left, right bool) {
+	rideable, ok := c.RidingEntity(tx)
+	if !ok {
+		return
+	}
+	if p, ok := rideable.(interface {
+		PaddleInput(rider world.Entity, left, right bool)
+	}); ok {
+		p.PaddleInput(c, left, right)
 	}
 }

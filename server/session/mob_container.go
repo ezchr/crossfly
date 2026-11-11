@@ -47,8 +47,21 @@ func (s *Session) OpenEntityContainer(e world.Entity, tx *world.Tx) bool {
 	s.containerOpened.Store(true)
 	s.openedWindow.Store(w.Inventory)
 	s.openedPos.Store(&pos)
-	s.openedContainerID.Store(uint32(protocol.ContainerTypeHorse))
 	entityWindows.Store(s, &entityWindowState{entity: e.H(), onClose: w.OnClose})
+	if w.Chest {
+		// A chest boat: ContainerOpen with the boat's unique ID, its slots on container LEVEL_ENTITY, as BDS opens
+		// minecraft:inventory of type chest_boat.
+		s.openedContainerID.Store(uint32(protocol.ContainerTypeChestBoat))
+		s.writePacket(&packet.ContainerOpen{
+			WindowID:                id,
+			ContainerType:           protocol.ContainerTypeChestBoat,
+			ContainerPosition:       protocol.BlockPos{int32(pos[0]), int32(pos[1]), int32(pos[2])},
+			ContainerEntityUniqueID: int64(s.entityRuntimeID(e)),
+		})
+		s.sendInv(w.Inventory, uint32(id))
+		return true
+	}
+	s.openedContainerID.Store(uint32(protocol.ContainerTypeHorse))
 
 	slots := make([]any, 0, len(w.Equip))
 	for _, eq := range w.Equip {

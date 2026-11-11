@@ -9,6 +9,7 @@ import (
 	"github.com/df-mc/dragonfly/server/item/inventory"
 	v777 "github.com/df-mc/dragonfly/server/java/protocol/v777"
 	"github.com/df-mc/dragonfly/server/java/protocol/version"
+	"github.com/df-mc/dragonfly/server/player"
 	"github.com/df-mc/dragonfly/server/session"
 	"github.com/df-mc/dragonfly/server/world"
 )
@@ -35,6 +36,13 @@ func (s *Session) OpenEntityContainer(e world.Entity, tx *world.Tx) bool {
 	}
 	w, ok := entity.WindowOf(e, c, entity.WindowLayoutJava)
 	if !ok || w.Inventory == nil {
+		return false
+	}
+	if w.Chest {
+		// A chest boat: a generic chest of its slots, as Java Edition's ChestBoat opens ChestMenu.
+		if p, ok := c.(*player.Player); ok {
+			return OpenInventory(p, tx, "Chest Boat", w.Inventory, w.OnClose)
+		}
 		return false
 	}
 	s.closeMenu(tx, c, true)

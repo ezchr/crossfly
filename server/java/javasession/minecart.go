@@ -54,3 +54,28 @@ func (s *Session) viewMinecart(e world.Entity, id int32) {
 	w.Byte(0xff)
 	s.queue(v777.ClientboundPlaySetEntityData, w)
 }
+
+// Entity data of a boat (AbstractBoat): whether the left and right paddles turn (BOOLEAN).
+const (
+	boatDataPaddleLeft  = 11
+	boatDataPaddleRight = 12
+)
+
+// viewBoat sends which paddles of a boat turn: the client turns them itself.
+func (s *Session) viewBoat(e world.Entity, id int32) {
+	b, ok := e.(interface{ BoatPaddles() (left, right bool) })
+	if !ok {
+		return
+	}
+	left, right := b.BoatPaddles()
+	w := s.packet()
+	w.VarInt(id)
+	w.Byte(boatDataPaddleLeft)
+	w.VarInt(dataTypeBoolean)
+	w.Bool(left)
+	w.Byte(boatDataPaddleRight)
+	w.VarInt(dataTypeBoolean)
+	w.Bool(right)
+	w.Byte(0xff)
+	s.queue(v777.ClientboundPlaySetEntityData, w)
+}

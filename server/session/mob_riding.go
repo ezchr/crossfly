@@ -44,7 +44,8 @@ func (s *Session) vehicleInput(pk *packet.PlayerAuthInput, c Controllable, ridea
 	if cv, ok := rideable.(entity.ClientVehicle); ok && predicted {
 		if rot, ok := pk.VehicleRotation.Value(); ok {
 			pos := vec32To64(pk.Position)
-			if cv.ClientVehicleMove(c, pos, float64(rot.Y()), float64(rot.X())) {
+			// The vehicle's own position is its network position less its offset (a boat's 0.375).
+			if cv.ClientVehicleMove(c, pos.Sub(entityOffset(rideable)), float64(rot.Y()), float64(rot.X())) {
 				// Position is the vehicle's (BDS takes the rider's from the
 				// server). The rider sits on its seat: the seat offset holds the
 				// 1.62 riding height of a player, which handleMovement takes off.
@@ -56,7 +57,15 @@ func (s *Session) vehicleInput(pk *packet.PlayerAuthInput, c Controllable, ridea
 			}
 		}
 	}
+	if p, ok := rideable.(boatPaddler); ok {
+		p.PaddleInput(c, pk.InputData.Load(packet.InputFlagPaddlingLeft), pk.InputData.Load(packet.InputFlagPaddlingRight))
+	}
 	if j, ok := rideable.(entity.VehicleJumpHolder); ok {
 		j.RiderJumpHeld(c, pk.InputData.Load(packet.InputFlagJumping))
 	}
+}
+
+// boatPaddler is a boat: its driver works the paddles.
+type boatPaddler interface {
+	PaddleInput(rider world.Entity, left, right bool)
 }
