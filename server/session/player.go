@@ -723,8 +723,8 @@ func (s *Session) HandleInventories(tx *world.Tx, c Controllable, inv, offHand, 
 }
 
 func (s *Session) broadcastInvFunc(tx *world.Tx, c Controllable) inventory.SlotFunc {
-	return func(slot int, _, after item.Stack) {
-		if slot == int(*s.heldSlot) {
+	return func(slot int, before, after item.Stack) {
+		if slot == int(*s.heldSlot) && !before.LooksSameHeld(after) {
 			for _, viewer := range tx.Viewers(c.Position()) {
 				viewer.ViewEntityItems(c)
 			}
@@ -746,9 +746,11 @@ func (s *Session) broadcastEnderChestFunc(tx *world.Tx, _ Controllable) inventor
 }
 
 func (s *Session) broadcastOffHandFunc(tx *world.Tx, c Controllable) inventory.SlotFunc {
-	return func(slot int, _, after item.Stack) {
-		for _, viewer := range tx.Viewers(c.Position()) {
-			viewer.ViewEntityItems(c)
+	return func(slot int, before, after item.Stack) {
+		if !before.LooksSameHeld(after) {
+			for _, viewer := range tx.Viewers(c.Position()) {
+				viewer.ViewEntityItems(c)
+			}
 		}
 		if !s.inTransaction.Load() {
 			i, _ := s.offHand.Item(0)

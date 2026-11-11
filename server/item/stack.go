@@ -442,6 +442,13 @@ func (s Stack) Comparable(s2 Stack) bool {
 	return true
 }
 
+// LooksSameHeld reports whether s and s2 look the same held or worn by an entity: the same item,
+// count, name, enchantments and data. Only the durability may differ, which other players do not
+// see, so a change between the two need not be shown to them.
+func (s Stack) LooksSameHeld(s2 Stack) bool {
+	return s.Empty() == s2.Empty() && s.Count() == s2.Count() && s.Comparable(s2)
+}
+
 // String implements the fmt.Stringer interface.
 func (s Stack) String() string {
 	if s.item == nil {

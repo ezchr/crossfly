@@ -167,16 +167,18 @@ func newItemState(s *Session) *itemState {
 			st.brewingData = 2
 		}
 	}
-	st.fnInv = func(slot int, _, after item.Stack) {
-		if hs := st.heldSlot.Load(); hs != nil && slot == int(*hs) {
+	st.fnInv = func(slot int, before, after item.Stack) {
+		if hs := st.heldSlot.Load(); hs != nil && slot == int(*hs) && !before.LooksSameHeld(after) {
 			st.broadcast(world.Viewer.ViewEntityItems)
 		}
 		if !st.applying.Load() {
 			s.sendSlot(mainToJava(slot), after)
 		}
 	}
-	st.fnOff = func(_ int, _, after item.Stack) {
-		st.broadcast(world.Viewer.ViewEntityItems)
+	st.fnOff = func(_ int, before, after item.Stack) {
+		if !before.LooksSameHeld(after) {
+			st.broadcast(world.Viewer.ViewEntityItems)
+		}
 		if !st.applying.Load() {
 			s.sendSlot(slotOffhand, after)
 		}

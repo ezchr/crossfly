@@ -4777,7 +4777,10 @@ func (p *Player) Handler() Handler {
 }
 
 // broadcastItems broadcasts the items held to viewers.
-func (p *Player) broadcastItems(int, item.Stack, item.Stack) {
+func (p *Player) broadcastItems(_ int, before, after item.Stack) {
+	if before.LooksSameHeld(after) {
+		return // only the durability changed, which viewers do not see
+	}
 	for _, viewer := range p.viewers() {
 		viewer.ViewEntityItems(p)
 	}
