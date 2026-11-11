@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"math"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/df-mc/dragonfly/server/block/cube"
@@ -274,6 +275,12 @@ func (h *ItemStackRequestHandler) handleTrade(netID uint32, times int, req proto
 		return fmt.Errorf("trade offer %v: first payment slot holds %v, need %v x%v", index, inA, o.Buy, times)
 	}
 	if !o.Buy2.Empty() && !tradeInputMatches(inB, o.Buy2, times) {
+		// The client fills the slot by item id alone, as BDS matches it
+		// (CraftHandlerTrade::_matchesAuxValueTrade2), so with several
+		// enchanted books it may pick the wrong one. Say which one is needed.
+		if !inB.Empty() && len(o.Buy2.Enchantments()) > 0 && inB.Item() == o.Buy2.Item() {
+			s.SendMessage("§cThis trade needs a book with §e" + tradeEnchantNames(o.Buy2) + "§c in the second slot. Put other enchanted books away, or place the right one in that slot.")
+		}
 		return fmt.Errorf("trade offer %v: second payment slot holds %v, need %v x%v", index, inB, o.Buy2, times)
 	}
 	if st.window != nil && st.window.OnTradeTx != nil {
@@ -290,6 +297,31 @@ func (h *ItemStackRequestHandler) handleTrade(netID uint32, times int, req proto
 	}
 	st.offers[index].Uses += times
 	return h.createResults(s, tx, repeatStacks([]item.Stack{o.Sell}, times)...)
+}
+
+// tradeEnchantNames lists the enchantments of s, such as "Efficiency VI".
+func tradeEnchantNames(s item.Stack) string {
+	var names []string
+	for _, e := range s.Enchantments() {
+		names = append(names, e.Type().Name()+" "+romanNumeral(e.Level()))
+	}
+	return strings.Join(names, ", ")
+}
+
+func romanNumeral(n int) string {
+	if n <= 0 || n > 39 {
+		return strconv.Itoa(n)
+	}
+	var b strings.Builder
+	for _, r := range []struct {
+		v int
+		s string
+	}{{10, "X"}, {9, "IX"}, {5, "V"}, {4, "IV"}, {1, "I"}} {
+		for ; n >= r.v; n -= r.v {
+			b.WriteString(r.s)
+		}
+	}
+	return b.String()
 }
 
 func tradeInputMatches(have, want item.Stack, times int) bool {
