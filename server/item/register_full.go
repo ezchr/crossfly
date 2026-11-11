@@ -14,12 +14,16 @@ var registerJavaRedstone, registerMobItems, registerSpawnEggs sync.Once
 // functions of the files that define them.
 var mobItems []func()
 
-// RegisterRedstone registers the items of Crossfly Full's redstone: the minecarts. Call it before the server is
+// RegisterRedstone registers the items of Crossfly Full's redstone and vehicles: the minecarts and boats. Call it before the server is
 // configured, with block.RegisterRedstone.
 func RegisterRedstone() {
 	registerJavaRedstone.Do(func() {
 		for _, k := range MinecartKinds() {
 			world.RegisterItem(Minecart{Kind: k})
+		}
+		for _, w := range BoatWoods() {
+			world.RegisterItem(Boat{Wood: w})
+			world.RegisterItem(Boat{Wood: w, Chest: true})
 		}
 	})
 }

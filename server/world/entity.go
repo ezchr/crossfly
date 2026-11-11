@@ -557,6 +557,9 @@ type EntityRegistryConfig struct {
 	ReelFishingHook func(tx *Tx, owner Entity) (int, bool)
 	// Minecart creates a minecart of a kind (item.MinecartKind). Optional: minecart items do nothing without it.
 	Minecart func(opts EntitySpawnOpts, kind int) *EntityHandle
+	// Boat creates a boat of a wood (item.BoatWood), a chest boat if chest is true. Optional: boat items do nothing
+	// without it.
+	Boat func(opts EntitySpawnOpts, wood int, chest bool) *EntityHandle
 	// CushionPlacement returns where a cushion used on a face of a block at clickPos (relative to the block) goes,
 	// or false if it may not be placed there. Optional: without it, cushions go on top faces where clicked.
 	CushionPlacement func(pos cube.Pos, face cube.Face, clickPos mgl64.Vec3, tx *Tx) (mgl64.Vec3, bool)
