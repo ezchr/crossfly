@@ -240,11 +240,7 @@ func javaMergeItems(to *Ent, tb *ItemBehaviour, from *Ent, fb *ItemBehaviour, tx
 	tb.pickupDelay = max(tb.pickupDelay, fb.pickupDelay)
 	tb.java.age = min(tb.java.age, fb.java.age)
 	_ = from.Close()
-	for _, v := range tx.Viewers(to.data.Pos) {
-		// Item entities show their stack only when they are spawned.
-		v.HideEntity(to)
-		v.ViewEntity(to)
-	}
+	showStackSize(to, tb, tx)
 }
 
 // insideCollision reports whether a block's collision box overlaps box (Level.noCollision, negated).

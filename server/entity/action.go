@@ -56,6 +56,15 @@ type PickedUpAction struct {
 // FireworkExplosionAction is a world.EntityAction that makes a Firework rocket display an explosion particle.
 type FireworkExplosionAction struct{ action }
 
+// StackSizeAction is a world.EntityAction that shows the new count of an item entity's stack, after
+// stacks merged. BDS ItemActor::_merge broadcasts it as ActorEvent 69 (UPDATE_STACK_SIZE) with the count.
+type StackSizeAction struct {
+	// Count is the new count of the stack.
+	Count int
+
+	action
+}
+
 // TotemUseAction is a world.EntityAction that displays the totem use particles and animation.
 type TotemUseAction struct{ action }
 

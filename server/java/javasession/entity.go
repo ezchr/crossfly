@@ -576,6 +576,8 @@ func (s *Session) ViewEntityAction(e world.Entity, a world.EntityAction) {
 		s.queue(v777.ClientboundPlayEntityEvent, w)
 	case entity.FireworkExplosionAction:
 		s.viewFireworkExplosion(e, id) // firework.go
+	case entity.StackSizeAction:
+		s.viewEntityMeta(e, id) // an item entity's item (DATA_ITEM), with its new count
 	case entity.CriticalHitAction:
 		s.animate(id, 1) // CRITICAL_HIT
 	case entity.EnchantedHitAction:

@@ -183,22 +183,36 @@ var ItemMergeRadius float64
 
 // merge merges the item entity with another item entity.
 func (i *ItemBehaviour) merge(e *Ent, other *Ent, tx *world.Tx) bool {
-	pos := e.Position()
 	otherBehaviour := other.Behaviour().(*ItemBehaviour)
 	if otherBehaviour.i.Count() == otherBehaviour.i.MaxCount() || i.i.Count() == i.i.MaxCount() || !i.i.Comparable(otherBehaviour.i) {
 		// Either stack is already filled up to the maximum, meaning we can't
 		// change anything any way, other the stack types weren't comparable.
 		return false
 	}
-	a, b := otherBehaviour.i.AddStack(i.i)
-
-	tx.AddEntity(NewItem(world.EntitySpawnOpts{Position: other.Position(), Velocity: other.Velocity()}, a))
-	if !b.Empty() {
-		tx.AddEntity(NewItem(world.EntitySpawnOpts{Position: pos, Velocity: e.Velocity()}, b))
+	// The larger stack takes in the smaller one where it lies, as BDS ItemActor::_merge does: only the
+	// count of the one kept changes for viewers, instead of both being removed and a new one added.
+	to, tb, from, fb := other, otherBehaviour, e, i
+	if i.i.Count() > otherBehaviour.i.Count() {
+		to, tb, from, fb = e, i, other, otherBehaviour
 	}
-	_ = e.Close()
-	_ = other.Close()
+	a, b := tb.i.AddStack(fb.i)
+	tb.i = a
+	tb.pickupDelay = max(tb.pickupDelay, fb.pickupDelay)
+	showStackSize(to, tb, tx)
+	if b.Empty() {
+		_ = from.Close()
+	} else {
+		fb.i = b
+		showStackSize(from, fb, tx)
+	}
 	return true
+}
+
+// showStackSize shows viewers the new count of the stack of item entity e.
+func showStackSize(e *Ent, b *ItemBehaviour, tx *world.Tx) {
+	for _, v := range tx.Viewers(e.Position()) {
+		v.ViewEntityAction(e, StackSizeAction{Count: b.i.Count()})
+	}
 }
 
 // collect makes a collector collect the item (or at least part of it).
