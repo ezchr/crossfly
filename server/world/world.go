@@ -1106,6 +1106,37 @@ func (w *World) entitiesWithin(tx *Tx, box cube.BBox) iter.Seq[Entity] {
 			w.handleBufs = append(w.handleBufs, buf[:0])
 		}()
 
+		visit := func(c *Column) bool {
+			// A copy: the entities yielded may move or remove
+			// entities of the chunk.
+			buf = append(buf[:0], c.Entities...)
+			for _, handle := range buf {
+				if !box.Vec3Within(handle.data.Pos) {
+					continue
+				}
+				ent, ok := handle.Entity(tx)
+				if ok && !yield(ent) {
+					return false
+				}
+			}
+			return true
+		}
+		xs, zs := int64(maxPos[0])-int64(minPos[0])+1, int64(maxPos[1])-int64(minPos[1])+1
+		if n := int64(len(w.chunks)); xs > n || zs > n || xs*zs > n {
+			// A box spanning more chunks than are loaded (a huge one): only check the loaded chunks.
+			var in []ChunkPos
+			for pos := range w.chunks {
+				if pos[0] >= minPos[0] && pos[0] <= maxPos[0] && pos[1] >= minPos[1] && pos[1] <= maxPos[1] {
+					in = append(in, pos)
+				}
+			}
+			for _, pos := range in {
+				if c, ok := w.chunks[pos]; ok && !visit(c) {
+					return
+				}
+			}
+			return
+		}
 		for x := minPos[0]; x <= maxPos[0]; x++ {
 			for z := minPos[1]; z <= maxPos[1]; z++ {
 				c, ok := w.chunks[ChunkPos{x, z}]
@@ -1113,17 +1144,8 @@ func (w *World) entitiesWithin(tx *Tx, box cube.BBox) iter.Seq[Entity] {
 					// The chunk wasn't loaded, so there are no entities here.
 					continue
 				}
-				// A copy: the entities yielded may move or remove
-				// entities of the chunk.
-				buf = append(buf[:0], c.Entities...)
-				for _, handle := range buf {
-					if !box.Vec3Within(handle.data.Pos) {
-						continue
-					}
-					ent, ok := handle.Entity(tx)
-					if ok && !yield(ent) {
-						return
-					}
+				if !visit(c) {
+					return
 				}
 			}
 		}
