@@ -14,6 +14,7 @@ import (
 	_ "github.com/df-mc/dragonfly/server/mob/jfarm"
 	_ "github.com/df-mc/dragonfly/server/mob/jnether"
 	_ "github.com/df-mc/dragonfly/server/mob/jpets"
+	_ "github.com/df-mc/dragonfly/server/mob/jraider"
 	_ "github.com/df-mc/dragonfly/server/mob/jvillage"
 )
 

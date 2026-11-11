@@ -179,7 +179,14 @@ func (b Bell) ring(pos cube.Pos, tx *world.Tx, face cube.Face) {
 	}
 	tx.PlaySound(pos.Vec3Centre(), sound.BellRing{})
 	postBlockEvent(tx, gameevent.BlockChange, pos, nil)
+	if BellRingHook != nil {
+		BellRingHook(tx, pos, face)
+	}
 }
+
+// BellRingHook, if set, is told when a bell rings, with the side it swings towards. Crossfly Full sets it with
+// mobs=java (villagers hear the bell, raiders glow); nil otherwise.
+var BellRingHook func(tx *world.Tx, pos cube.Pos, face cube.Face)
 
 // BreakInfo ...
 func (b Bell) BreakInfo() BreakInfo {
