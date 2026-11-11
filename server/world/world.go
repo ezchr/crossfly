@@ -1623,18 +1623,8 @@ func showEntity(e Entity, viewer Viewer) {
 	viewer.ViewEntity(e)
 	viewer.ViewEntityItems(e)
 	viewer.ViewEntityArmour(e)
-	// ViewSkin is required here, not just on the initial SetSkin call: addEntityAt (and
-	// therefore every entity re-add, including a player's remove-then-re-add on respawn) calls
-	// showEntity for a viewer that has never seen this entity instance skinned before. Session's
-	// own ViewSkin only fires from SetSkin, which nothing calls again on respawn, so without this
-	// call other players receive a fresh entity spawn with no skin data at all and their client
-	// falls back to the default skin - even though the respawned player still sees their own
-	// correct skin locally. Confirmed live: a player's real (including Persona) skin showed
-	// correctly to others on first join, then silently reverted to the default skin for
-	// everyone else after that player died and respawned. Session.ViewSkin already no-ops for
-	// non-Controllable entities (e.H() type-asserts to Controllable), so this is safe to call
-	// unconditionally for every entity type shown here.
-	viewer.ViewSkin(e)
+	// No ViewSkin here: Session.ViewEntity already sends the skin of a player, on every
+	// (re-)add too, so calling it here sent every skin twice each time a player came into view.
 }
 
 // loadedChunk returns chunk & true only if chunk at position passed is loaded.
