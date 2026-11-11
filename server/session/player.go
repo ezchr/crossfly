@@ -394,8 +394,11 @@ func (s *Session) Disconnect(message string) {
 			HideDisconnectionScreen: message == "",
 			Message:                 message,
 		})
-		_ = s.conn.Flush()
 		s.disconnectSent.Store(true)
+		// Flush off the caller, which is often the world goroutine: a peer that stopped reading
+		// blocks the flush (up to the transport's write timeout) and must not stall the world.
+		// Closing the connection later flushes what is still pending anyway.
+		go func() { _ = s.conn.Flush() }()
 	}
 }
 
