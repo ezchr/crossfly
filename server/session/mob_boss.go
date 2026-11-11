@@ -61,8 +61,8 @@ func (s *Session) HideMobBossBar(e world.Entity) {
 
 // mobBossID is the unique id of a boss the client knows.
 func (s *Session) mobBossID(e world.Entity) (int64, bool) {
-	s.entityMutex.RLock()
-	id, ok := s.entityRuntimeIDs[e.H()]
-	s.entityMutex.RUnlock()
+	s.et.mu.RLock()
+	id, ok := s.et.ids[e.H()]
+	s.et.mu.RUnlock()
 	return int64(id), ok
 }

@@ -451,7 +451,7 @@ func (s *Session) ViewEntityHealth(e world.Entity) {
 		return
 	}
 	id := s.entityRuntimeID(e)
-	if id == 0 || id == selfEntityRuntimeID {
+	if id == 0 || id == s.selfRID {
 		return
 	}
 	attrs := entityAttributes(e)

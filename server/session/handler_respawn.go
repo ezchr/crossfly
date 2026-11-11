@@ -10,9 +10,9 @@ import (
 type RespawnHandler struct{}
 
 // Handle ...
-func (*RespawnHandler) Handle(p packet.Packet, _ *Session, _ *world.Tx, c Controllable) error {
+func (*RespawnHandler) Handle(p packet.Packet, s *Session, _ *world.Tx, c Controllable) error {
 	pk := p.(*packet.Respawn)
-	if pk.EntityRuntimeID != selfEntityRuntimeID {
+	if pk.EntityRuntimeID != s.selfRID {
 		return errSelfRuntimeID
 	}
 	if pk.State != packet.RespawnStateClientReadyToSpawn {

@@ -408,6 +408,9 @@ func listenerConfig(conf Config) minecraft.ListenConfig {
 		Compression:            conf.Compression,
 		Allow:                  conf.Allower.Allow,
 		AcceptedProtocols:      conf.AcceptedProtocols,
+		AllowSubClients:        true,
+		VerifySubClients:       true,
+		SubClientIdentity:      subClientIdentity,
 	}
 	if conf.Log.Enabled(context.Background(), slog.LevelDebug) {
 		cfg.ErrorLog = conf.Log.With("net origin", "gophertunnel")

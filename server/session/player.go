@@ -36,12 +36,12 @@ import (
 // StopShowingEntity stops showing a world.Entity to the Session. It will be completely invisible until a call to
 // StartShowingEntity is made.
 func (s *Session) StopShowingEntity(e world.Entity) {
-	s.entityMutex.Lock()
+	s.et.mu.Lock()
 	_, ok := s.hiddenEntities[e.H().UUID()]
 	if !ok {
 		s.hiddenEntities[e.H().UUID()] = struct{}{}
 	}
-	s.entityMutex.Unlock()
+	s.et.mu.Unlock()
 
 	if !ok {
 		s.HideEntity(e)
@@ -50,12 +50,12 @@ func (s *Session) StopShowingEntity(e world.Entity) {
 
 // StartShowingEntity starts showing a world.Entity to the Session that was previously hidden using StopShowingEntity.
 func (s *Session) StartShowingEntity(e world.Entity) {
-	s.entityMutex.Lock()
+	s.et.mu.Lock()
 	_, ok := s.hiddenEntities[e.H().UUID()]
 	if ok {
 		delete(s.hiddenEntities, e.H().UUID())
 	}
-	s.entityMutex.Unlock()
+	s.et.mu.Unlock()
 
 	if ok {
 		s.ViewEntity(e)
@@ -99,7 +99,7 @@ func (s *Session) SendRespawn(pos mgl64.Vec3, c Controllable) {
 	s.writePacket(&packet.Respawn{
 		Position:        vec64To32(pos.Add(entityOffset(c))),
 		State:           packet.RespawnStateReadyToSpawn,
-		EntityRuntimeID: selfEntityRuntimeID,
+		EntityRuntimeID: s.selfRID,
 	})
 }
 
@@ -402,7 +402,7 @@ func (s *Session) Disconnect(message string) {
 // SendSpeed sends the speed of the player in an UpdateAttributes packet, so that it is updated client-side.
 func (s *Session) SendSpeed(speed float64) {
 	s.writePacket(&packet.UpdateAttributes{
-		EntityRuntimeID: selfEntityRuntimeID,
+		EntityRuntimeID: s.selfRID,
 		Attributes: []protocol.Attribute{{
 			AttributeValue: protocol.AttributeValue{
 				Name:  "minecraft:movement",
@@ -418,7 +418,7 @@ func (s *Session) SendSpeed(speed float64) {
 // SendFood ...
 func (s *Session) SendFood(food int, saturation, exhaustion float64) {
 	s.writePacket(&packet.UpdateAttributes{
-		EntityRuntimeID: selfEntityRuntimeID,
+		EntityRuntimeID: s.selfRID,
 		Attributes: []protocol.Attribute{
 			{
 				AttributeValue: protocol.AttributeValue{
@@ -600,7 +600,7 @@ func (s *Session) SendAbilities(c Controllable) {
 			protocol.AbilityAttackPlayers | protocol.AbilityAttackMobs
 	}
 	pk := &packet.UpdateAbilities{AbilityData: protocol.AbilityData{
-		EntityUniqueID:     selfEntityRuntimeID,
+		EntityUniqueID:     int64(s.selfRID),
 		PlayerPermissions:  playerPermissions(c),
 		CommandPermissions: commandPermissions(c),
 		Layers: []protocol.AbilityLayer{
@@ -633,7 +633,7 @@ var spectatorAbilityLayer = protocol.AbilityLayer{
 // SendHealth sends the health and max health to the player.
 func (s *Session) SendHealth(health, max, absorption float64) {
 	s.writePacket(&packet.UpdateAttributes{
-		EntityRuntimeID: selfEntityRuntimeID,
+		EntityRuntimeID: s.selfRID,
 		Attributes: []protocol.Attribute{{
 			AttributeValue: protocol.AttributeValue{
 				Name:  "minecraft:health",
@@ -662,7 +662,7 @@ func (s *Session) SendEffect(e effect.Effect) {
 		dur = -1
 	}
 	s.writePacket(&packet.MobEffect{
-		EntityRuntimeID: selfEntityRuntimeID,
+		EntityRuntimeID: s.selfRID,
 		Operation:       packet.MobEffectAdd,
 		EffectType:      int32(id),
 		Amplifier:       int32(e.Level() - 1),
@@ -679,7 +679,7 @@ func (s *Session) SendEffectRemoval(e effect.Type) {
 		panic(fmt.Sprintf("unregistered effect type %T", e))
 	}
 	s.writePacket(&packet.MobEffect{
-		EntityRuntimeID: selfEntityRuntimeID,
+		EntityRuntimeID: s.selfRID,
 		Operation:       packet.MobEffectRemove,
 		EffectType:      int32(id),
 	})
@@ -815,7 +815,7 @@ func (s *Session) SendHeldSlot(slot int, c Controllable, force bool) {
 	}
 	mainHand, _ := c.HeldItems()
 	s.writePacket(&packet.MobEquipment{
-		EntityRuntimeID: selfEntityRuntimeID,
+		EntityRuntimeID: s.selfRID,
 		NewItem:         instanceFromItem(s.br, mainHand),
 		InventorySlot:   byte(slot),
 		HotBarSlot:      byte(slot),
@@ -859,7 +859,7 @@ func (s *Session) VerifySlot(slot int, expected item.Stack) error {
 // SendExperience sends the experience level and progress from the given experience manager to the player.
 func (s *Session) SendExperience(level int, progress float64) {
 	s.writePacket(&packet.UpdateAttributes{
-		EntityRuntimeID: selfEntityRuntimeID,
+		EntityRuntimeID: s.selfRID,
 		Attributes: []protocol.Attribute{
 			{
 				AttributeValue: protocol.AttributeValue{
@@ -884,7 +884,7 @@ func (s *Session) SendExperience(level int, progress float64) {
 // SendChargeItemComplete sends a packet to indicate that the item charging process has been completed.
 func (s *Session) SendChargeItemComplete() {
 	s.writePacket(&packet.ActorEvent{
-		EntityRuntimeID: selfEntityRuntimeID,
+		EntityRuntimeID: s.selfRID,
 		EventType:       packet.ActorEventFinishedChargingItem,
 	})
 }

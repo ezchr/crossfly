@@ -73,16 +73,18 @@ func (l *sessionList) Lookup(id uuid.UUID) (*Session, bool) {
 }
 
 func (l *sessionList) sendSessionTo(s, to *Session) {
-	runtimeID := uint64(selfEntityRuntimeID)
+	runtimeID := uint64(s.selfRID)
 
-	to.entityMutex.Lock()
-	if s != to {
-		to.currentEntityRuntimeID += 1
-		runtimeID = to.currentEntityRuntimeID
+	to.et.mu.Lock()
+	if id, ok := to.et.ids[s.ent]; ok && to.et.shared {
+		runtimeID = id // already known to a player on the same console
+	} else if s != to {
+		to.et.current += 1
+		runtimeID = to.et.current
 	}
-	to.entityRuntimeIDs[s.ent] = runtimeID
-	to.entities[runtimeID] = s.ent
-	to.entityMutex.Unlock()
+	to.et.ids[s.ent] = runtimeID
+	to.et.entities[runtimeID] = s.ent
+	to.et.mu.Unlock()
 
 	to.writePacket(&packet.PlayerList{
 		Entries: []protocol.PlayerListEntry{{
@@ -94,15 +96,16 @@ func (l *sessionList) sendSessionTo(s, to *Session) {
 			PlayFabID:      s.conn.IdentityData().PlayFabID,
 			BuildPlatform:  int32(protocol.DeviceUnknown),
 			Skin:           skinToProtocol(s.joinSkin),
+			SubClient:      s.subClient,
 		}},
 	})
 }
 
 func (l *sessionList) unsendSessionFrom(s, from *Session) {
-	from.entityMutex.Lock()
-	delete(from.entities, from.entityRuntimeIDs[s.ent])
-	delete(from.entityRuntimeIDs, s.ent)
-	from.entityMutex.Unlock()
+	from.et.mu.Lock()
+	delete(from.et.entities, from.et.ids[s.ent])
+	delete(from.et.ids, s.ent)
+	from.et.mu.Unlock()
 
 	from.writePacket(&packet.PlayerList{
 		Entries: []protocol.PlayerListEntry{{

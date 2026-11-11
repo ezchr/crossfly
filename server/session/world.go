@@ -44,9 +44,9 @@ type OffsetEntity interface {
 
 // entityHidden checks if a world.Entity is being explicitly hidden from the Session.
 func (s *Session) entityHidden(e world.Entity) bool {
-	s.entityMutex.RLock()
+	s.et.mu.RLock()
 	_, ok := s.hiddenEntities[e.H().UUID()]
-	s.entityMutex.RUnlock()
+	s.et.mu.RUnlock()
 	return ok
 }
 
@@ -65,16 +65,24 @@ func (s *Session) ViewEntity(e world.Entity) {
 
 	_, controllable := e.(Controllable)
 
-	s.entityMutex.Lock()
-	if id, ok := s.entityRuntimeIDs[e.H()]; ok && controllable {
+	s.et.mu.Lock()
+	if id, ok := s.et.ids[e.H()]; ok && (controllable || s.et.shared) {
+		// Shared with split-screen players: the entity keeps the ID the console knows it by. Each
+		// player on the console is still sent the entity for its own view.
 		runtimeID = id
 	} else {
-		s.currentEntityRuntimeID += 1
-		runtimeID = s.currentEntityRuntimeID
-		s.entityRuntimeIDs[e.H()] = runtimeID
-		s.entities[runtimeID] = e.H()
+		s.et.current += 1
+		runtimeID = s.et.current
+		s.et.ids[e.H()] = runtimeID
+		s.et.entities[runtimeID] = e.H()
 	}
-	s.entityMutex.Unlock()
+	if s.et.shared {
+		if _, ok := s.viewed[e.H()]; !ok {
+			s.viewed[e.H()] = struct{}{}
+			s.et.refs[e.H()]++
+		}
+	}
+	s.et.mu.Unlock()
 
 	yaw, pitch := e.Rotation().Elem()
 	metadata := s.entityMetadata(e)
@@ -180,7 +188,7 @@ func (s *Session) ViewEntityGameMode(e world.Entity) {
 	if s.entityHidden(e) {
 		return
 	}
-	if s.entityRuntimeID(e) == selfEntityRuntimeID {
+	if s.entityRuntimeID(e) == s.selfRID {
 		// The player's own game mode went out with SendGameMode, followed by its abilities. An
 		// UpdatePlayerGameType for itself after them makes the client reset its abilities to the
 		// game type's defaults, which drops a custom mode's MayFly (survival flight).
@@ -198,7 +206,7 @@ func (s *Session) ViewEntityGameMode(e world.Entity) {
 
 // HideEntity ...
 func (s *Session) HideEntity(e world.Entity) {
-	if s.entityRuntimeID(e) == selfEntityRuntimeID {
+	if s.entityRuntimeID(e) == s.selfRID {
 		return
 	}
 	if rideable, ok := entity.RideableOf(e); ok {
@@ -214,14 +222,27 @@ func (s *Session) HideEntity(e world.Entity) {
 		}
 	}
 
-	s.entityMutex.Lock()
-	id, ok := s.entityRuntimeIDs[e.H()]
-	if _, controllable := e.(Controllable); !controllable {
-		delete(s.entityRuntimeIDs, e.H())
-		delete(s.entities, id)
+	s.et.mu.Lock()
+	id, ok := s.et.ids[e.H()]
+	last := true
+	if s.et.shared {
+		// The ID is given up only when no player on the console views the entity any longer; this
+		// player's view loses it either way.
+		if _, viewing := s.viewed[e.H()]; viewing {
+			delete(s.viewed, e.H())
+			s.et.refs[e.H()]--
+		}
+		last = s.et.refs[e.H()] <= 0
+		if last {
+			delete(s.et.refs, e.H())
+		}
+	}
+	if _, controllable := e.(Controllable); !controllable && last {
+		delete(s.et.ids, e.H())
+		delete(s.et.entities, id)
 	}
 	delete(s.leashHolders, id)
-	s.entityMutex.Unlock()
+	s.et.mu.Unlock()
 	if !ok {
 		// The entity was already removed some other way. We don't need to send a packet.
 		return
@@ -232,7 +253,7 @@ func (s *Session) HideEntity(e world.Entity) {
 // ViewEntityMovement ...
 func (s *Session) ViewEntityMovement(e world.Entity, pos mgl64.Vec3, rot cube.Rotation, onGround bool) {
 	id := s.entityRuntimeID(e)
-	if (id == selfEntityRuntimeID && s.moving) || s.entityHidden(e) || s.drivenBySelf(e) {
+	if (id == s.selfRID && s.moving) || s.entityHidden(e) || s.drivenBySelf(e) {
 		return
 	}
 	s.viewEntityAbsoluteMovement(id, e, pos, rot, onGround, false)
@@ -302,7 +323,7 @@ func (s *Session) ViewEntityTeleport(e world.Entity, position mgl64.Vec3) {
 	}
 
 	yaw, pitch := e.Rotation().Elem()
-	if id == selfEntityRuntimeID {
+	if id == s.selfRID {
 		s.teleportPos.Store(&position)
 	}
 
@@ -394,7 +415,7 @@ func (s *Session) viewEntityLinks(e world.Entity) {
 // ViewEntityItems ...
 func (s *Session) ViewEntityItems(e world.Entity) {
 	runtimeID := s.entityRuntimeID(e)
-	if runtimeID == selfEntityRuntimeID || s.entityHidden(e) {
+	if runtimeID == s.selfRID || s.entityHidden(e) {
 		// Don't view the items of the entity if the entity is the Controllable entity of the session.
 		return
 	}
@@ -435,7 +456,7 @@ var HideHelmet func(item.Stack) bool
 // ViewEntityArmour ...
 func (s *Session) ViewEntityArmour(e world.Entity) {
 	runtimeID := s.entityRuntimeID(e)
-	if runtimeID == selfEntityRuntimeID || s.entityHidden(e) {
+	if runtimeID == s.selfRID || s.entityHidden(e) {
 		// Don't view the items of the entity if the entity is the Controllable entity of the session.
 		return
 	}
@@ -1295,7 +1316,7 @@ func (s *Session) ViewEntityAction(e world.Entity, a world.EntityAction) {
 	switch act := a.(type) {
 	case entity.SwingArmAction:
 		if _, ok := e.(Controllable); ok {
-			if s.entityRuntimeID(e) == selfEntityRuntimeID && s.swingingArm.Load() {
+			if s.entityRuntimeID(e) == s.selfRID && s.swingingArm.Load() {
 				return
 			}
 			s.writePacket(&packet.Animate{
@@ -1744,10 +1765,10 @@ func (s *Session) handleRuntimeID(e *world.EntityHandle) uint64 {
 	if e == nil {
 		return 0
 	}
-	s.entityMutex.RLock()
-	defer s.entityMutex.RUnlock()
+	s.et.mu.RLock()
+	defer s.et.mu.RUnlock()
 
-	if id, ok := s.entityRuntimeIDs[e]; ok {
+	if id, ok := s.et.ids[e]; ok {
 		return id
 	}
 	s.conf.Log.Debug("entity runtime ID not found", "UUID", e.UUID().String())
@@ -1757,9 +1778,9 @@ func (s *Session) handleRuntimeID(e *world.EntityHandle) uint64 {
 // entityFromRuntimeID attempts to return an entity by its runtime ID. False is returned if no entity with the
 // ID could be found.
 func (s *Session) entityFromRuntimeID(id uint64) (*world.EntityHandle, bool) {
-	s.entityMutex.RLock()
-	e, ok := s.entities[id]
-	s.entityMutex.RUnlock()
+	s.et.mu.RLock()
+	e, ok := s.et.entities[id]
+	s.et.mu.RUnlock()
 	return e, ok
 }
 

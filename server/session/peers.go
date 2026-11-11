@@ -39,10 +39,10 @@ func RemovePeer(p *Peer) {
 		return
 	}
 	for _, s := range sessions.s {
-		s.entityMutex.Lock()
-		delete(s.entities, s.entityRuntimeIDs[p.Handle])
-		delete(s.entityRuntimeIDs, p.Handle)
-		s.entityMutex.Unlock()
+		s.et.mu.Lock()
+		delete(s.et.entities, s.et.ids[p.Handle])
+		delete(s.et.ids, p.Handle)
+		s.et.mu.Unlock()
 		s.writePacket(&packet.PlayerList{Entries: []protocol.PlayerListEntry{{
 			ActionType: protocol.PlayerListActionRemove,
 			UUID:       p.Handle.UUID(),
@@ -53,12 +53,12 @@ func RemovePeer(p *Peer) {
 
 // sendPeerTo lists p for the session to. sessions.mu must be held.
 func (l *sessionList) sendPeerTo(p *Peer, to *Session) {
-	to.entityMutex.Lock()
-	to.currentEntityRuntimeID += 1
-	runtimeID := to.currentEntityRuntimeID
-	to.entityRuntimeIDs[p.Handle] = runtimeID
-	to.entities[runtimeID] = p.Handle
-	to.entityMutex.Unlock()
+	to.et.mu.Lock()
+	to.et.current += 1
+	runtimeID := to.et.current
+	to.et.ids[p.Handle] = runtimeID
+	to.et.entities[runtimeID] = p.Handle
+	to.et.mu.Unlock()
 
 	to.writePacket(&packet.PlayerList{Entries: []protocol.PlayerListEntry{{
 		ActionType:     protocol.PlayerListActionAdd,

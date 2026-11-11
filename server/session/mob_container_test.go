@@ -68,9 +68,9 @@ func TestOpenEntityContainer(t *testing.T) {
 	err := w.Do(func(tx *world.Tx) {
 		viewer := tx.AddEntity(world.EntitySpawnOpts{}.New(windowEntType{}, windowConf{&windowBehaviour{}}))
 		s.ent = viewer.H()
-		s.entityRuntimeIDs[viewer.H()] = selfEntityRuntimeID
+		s.et.ids[viewer.H()] = selfEntityRuntimeID
 		donkey := tx.AddEntity(world.EntitySpawnOpts{Position: mgl64.Vec3{3, 0, 0}}.New(windowEntType{}, windowConf{b}))
-		s.entityRuntimeIDs[donkey.H()] = 7
+		s.et.ids[donkey.H()] = 7
 		if !s.OpenEntityContainer(donkey, tx) {
 			t.Fatal("window not opened")
 		}

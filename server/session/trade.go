@@ -101,7 +101,7 @@ func (s *Session) OpenTrade(tx *world.Tx, trader world.Entity, name string, offe
 	}
 	s.trade.Store(st)
 	s.containerOpened.Store(true)
-	s.setTradeTarget(rid, int64(selfEntityRuntimeID))
+	s.setTradeTarget(rid, int64(s.selfRID))
 	s.sendTradeOffers(st, windowID)
 	s.conf.Log.Debug("trade window opened", "window", windowID, "trader", rid, "offers", len(offers))
 }
@@ -140,7 +140,7 @@ func (s *Session) sendTradeOffers(st *tradeState, windowID byte) {
 		WindowType:       protocol.ContainerTypeTrade,
 		Size:             int32(len(st.offers)),
 		VillagerUniqueID: st.traderID,
-		EntityUniqueID:   int64(selfEntityRuntimeID),
+		EntityUniqueID:   int64(s.selfRID),
 		DisplayName:      st.name,
 		NewTradeUI:       true,
 		SerialisedOffers: data,

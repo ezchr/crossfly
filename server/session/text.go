@@ -150,7 +150,7 @@ func (s *Session) RemoveScoreboard() {
 func (s *Session) SendBossBar(text string, colour uint8, healthPercentage float64) {
 	s.RemoveBossBar()
 	s.writePacket(&packet.BossEvent{
-		BossEntityUniqueID: selfEntityRuntimeID,
+		BossEntityUniqueID: int64(s.selfRID),
 		EventType:          packet.BossEventShow,
 		BossBarTitle:       text,
 		HealthPercentage:   float32(healthPercentage),
@@ -161,7 +161,7 @@ func (s *Session) SendBossBar(text string, colour uint8, healthPercentage float6
 // RemoveBossBar removes any boss bar currently active on the player's screen.
 func (s *Session) RemoveBossBar() {
 	s.writePacket(&packet.BossEvent{
-		BossEntityUniqueID: selfEntityRuntimeID,
+		BossEntityUniqueID: int64(s.selfRID),
 		EventType:          packet.BossEventHide,
 	})
 }

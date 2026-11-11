@@ -19,9 +19,9 @@ func (s *Session) noteLeashHolder(e any, v any) {
 		return
 	}
 	h, _ := v.(*world.EntityHandle)
-	s.entityMutex.Lock()
-	defer s.entityMutex.Unlock()
-	id, ok := s.entityRuntimeIDs[ent.H()]
+	s.et.mu.Lock()
+	defer s.et.mu.Unlock()
+	id, ok := s.et.ids[ent.H()]
 	if !ok {
 		return
 	}
@@ -37,12 +37,12 @@ func (s *Session) noteLeashHolder(e any, v any) {
 
 // viewLeashHolder sends the LEASH_HOLDER of the mobs leashed to e, which came into view.
 func (s *Session) viewLeashHolder(e world.Entity) {
-	s.entityMutex.RLock()
+	s.et.mu.RLock()
 	if len(s.leashHolders) == 0 {
-		s.entityMutex.RUnlock()
+		s.et.mu.RUnlock()
 		return
 	}
-	holder, ok := s.entityRuntimeIDs[e.H()]
+	holder, ok := s.et.ids[e.H()]
 	var mobs []uint64
 	if ok {
 		for id, h := range s.leashHolders {
@@ -51,7 +51,7 @@ func (s *Session) viewLeashHolder(e world.Entity) {
 			}
 		}
 	}
-	s.entityMutex.RUnlock()
+	s.et.mu.RUnlock()
 	for _, id := range mobs {
 		s.writePacket(&packet.SetActorData{
 			EntityRuntimeID: id,

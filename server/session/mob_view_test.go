@@ -128,15 +128,14 @@ func newFakeMob(t *testing.T) *fakeMob {
 // newTestSession returns a Session that collects the packets it writes.
 func newTestSession() *Session {
 	return &Session{
-		conf:             Config{Log: slog.New(slog.DiscardHandler)},
-		packets:          make(chan packet.Packet, 64),
-		closeBackground:  make(chan struct{}),
-		entityRuntimeIDs: map[*world.EntityHandle]uint64{},
-		entities:         map[uint64]*world.EntityHandle{},
-		hiddenEntities:   map[uuid.UUID]struct{}{},
-		br:               world.DefaultBlockRegistry,
-		// Runtime ID 1 is the player itself.
-		currentEntityRuntimeID: selfEntityRuntimeID,
+		conf:            Config{Log: slog.New(slog.DiscardHandler)},
+		packets:         make(chan packet.Packet, 64),
+		closeBackground: make(chan struct{}),
+		et:              newEntityTable(),
+		selfRID:         selfEntityRuntimeID,
+		viewed:          map[*world.EntityHandle]struct{}{},
+		hiddenEntities:  map[uuid.UUID]struct{}{},
+		br:              world.DefaultBlockRegistry,
 	}
 }
 
@@ -210,7 +209,7 @@ func TestAddActorMob(t *testing.T) {
 	s := newTestSession()
 	m := newFakeMob(t)
 	m.target = world.EntitySpawnOpts{}.New(newFakeMobType(t), fakeMobConfig{})
-	s.entityRuntimeIDs[m.target], s.entities[42] = 42, m.target
+	s.et.ids[m.target], s.et.entities[42] = 42, m.target
 	m.colour, m.colour2 = item.ColourRed(), item.ColourBlue()
 	m.sheared, m.tamed, m.climbing, m.ignited, m.powered, m.isBaby = true, true, true, true, true, true
 
@@ -268,7 +267,7 @@ func TestAddActorMob(t *testing.T) {
 	}
 
 	// The target the viewer does not know is no target.
-	delete(s.entityRuntimeIDs, m.target)
+	delete(s.et.ids, m.target)
 	s.ViewEntityState(m)
 	if got := only[*packet.SetActorData](t, s).EntityMetadata[protocol.EntityDataKeyTarget]; got != int64(0) {
 		t.Errorf("unknown target sent as %v", got)

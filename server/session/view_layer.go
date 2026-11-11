@@ -82,8 +82,8 @@ func (s *Session) ViewLayerEntityChanged(e world.Entity) {
 
 // viewingEntity checks if this session currently has a runtime ID assigned to the entity handle.
 func (s *Session) viewingEntity(handle *world.EntityHandle) bool {
-	s.entityMutex.RLock()
-	_, ok := s.entityRuntimeIDs[handle]
-	s.entityMutex.RUnlock()
+	s.et.mu.RLock()
+	_, ok := s.et.ids[handle]
+	s.et.mu.RUnlock()
 	return ok
 }

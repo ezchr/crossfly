@@ -164,7 +164,7 @@ func (h *InventoryTransactionHandler) handleUseItemOnEntityTransaction(data *pro
 	s.swingingArm.Store(true)
 	defer s.swingingArm.Store(false)
 
-	if data.TargetEntityRuntimeID == selfEntityRuntimeID {
+	if data.TargetEntityRuntimeID == s.selfRID {
 		return fmt.Errorf("invalid entity interaction: players cannot interact with themselves")
 	}
 

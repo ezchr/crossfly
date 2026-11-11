@@ -262,7 +262,7 @@ func (h PlayerAuthInputHandler) handleUseItemData(data protocol.UseItemTransacti
 // handleBlockActions handles a slice of protocol.PlayerBlockAction present in a PlayerAuthInput packet.
 func (h PlayerAuthInputHandler) handleBlockActions(a []protocol.PlayerBlockAction, s *Session, c Controllable) error {
 	for _, action := range a {
-		if err := handlePlayerAction(action.Action, action.Face, action.BlockPos, selfEntityRuntimeID, s, c); err != nil {
+		if err := handlePlayerAction(action.Action, action.Face, action.BlockPos, s.selfRID, s, c); err != nil {
 			return err
 		}
 	}

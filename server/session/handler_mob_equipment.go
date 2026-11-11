@@ -14,7 +14,7 @@ type MobEquipmentHandler struct{}
 func (*MobEquipmentHandler) Handle(p packet.Packet, s *Session, tx *world.Tx, c Controllable) error {
 	pk := p.(*packet.MobEquipment)
 
-	if pk.EntityRuntimeID != selfEntityRuntimeID {
+	if pk.EntityRuntimeID != s.selfRID {
 		return errSelfRuntimeID
 	}
 	switch pk.WindowID {

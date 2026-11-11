@@ -21,7 +21,7 @@ func (*PlayerActionHandler) Handle(p packet.Packet, s *Session, _ *world.Tx, c C
 
 // handlePlayerAction handles an action performed by a player, found in packet.PlayerAction and packet.PlayerAuthInput.
 func handlePlayerAction(action int32, face int32, pos protocol.BlockPos, entityRuntimeID uint64, s *Session, c Controllable) error {
-	if entityRuntimeID != selfEntityRuntimeID {
+	if entityRuntimeID != s.selfRID {
 		return errSelfRuntimeID
 	}
 	switch action {

@@ -29,7 +29,7 @@ func TestBehaviourAttackPose(t *testing.T) {
 	s := newTestSession()
 	m := &fakeMob{h: world.EntitySpawnOpts{}.New(&fakeMobType{id: "minecraft:vindicator"}, fakeMobConfig{})}
 	target := world.EntitySpawnOpts{}.New(newFakeMobType(t), fakeMobConfig{})
-	s.entityRuntimeIDs[target], s.entities[42] = 42, target
+	s.et.ids[target], s.et.entities[42] = 42, target
 	e := struct {
 		world.Entity // only the world.Entity methods of the fake: the behaviour has the rest
 		behaviour2

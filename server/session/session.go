@@ -52,14 +52,15 @@ type Session struct {
 
 	teleportPos atomic.Pointer[mgl64.Vec3]
 
-	entityMutex sync.RWMutex
-	// currentEntityRuntimeID holds the runtime ID assigned to the last entity. It is incremented for every
-	// entity spawned to the session.
-	currentEntityRuntimeID uint64
-	// entityRuntimeIDs holds the runtime IDs of entities shown to the session.
-	entityRuntimeIDs map[*world.EntityHandle]uint64
-	entities         map[uint64]*world.EntityHandle
-	hiddenEntities   map[uuid.UUID]struct{}
+	// et holds the runtime IDs of entities shown to the session (entity_table.go). Its mutex also
+	// guards hiddenEntities, leashHolders and viewed. selfRID is the runtime ID of the session's own
+	// player, and viewed the entities it views while it shares et with split-screen players.
+	et      *entityTable
+	selfRID uint64
+	viewed  map[*world.EntityHandle]struct{}
+	// subClient is set for a split-screen guest: its player list entry says so, as BDS sets it.
+	subClient      bool
+	hiddenEntities map[uuid.UUID]struct{}
 	// leashHolders are the leash holders of the leashed mobs shown, by the mob's runtime ID (mob_leash.go).
 	leashHolders map[uint64]*world.EntityHandle
 
@@ -159,7 +160,8 @@ type Conn interface {
 // Nop represents a no-operation session. It does not do anything when sending a packet to it.
 var Nop = &Session{conf: Config{Log: slog.New(slog.DiscardHandler)}}
 
-// selfEntityRuntimeID is the entity runtime (or unique) ID of the controllable that the session holds.
+// selfEntityRuntimeID is the entity runtime (or unique) ID of the controllable that the session holds, except
+// for a split-screen guest, which has its own in Session.selfRID.
 const selfEntityRuntimeID = 1
 
 // errSelfRuntimeID is an error returned during packet handling for fields that refer to the player itself and
@@ -196,27 +198,26 @@ func (conf Config) New(conn Conn) *Session {
 
 	s := &Session{}
 	*s = Session{
-		openChunkTransactions:  make([]map[uint64]struct{}, 0, 8),
-		closeBackground:        make(chan struct{}),
-		handlers:               map[uint32]packetHandler{},
-		packets:                make(chan packet.Packet, 256),
-		entityRuntimeIDs:       map[*world.EntityHandle]uint64{},
-		entities:               map[uint64]*world.EntityHandle{},
-		hiddenEntities:         map[uuid.UUID]struct{}{},
-		blobs:                  map[uint64][]byte{},
-		chunkRadius:            int32(r),
-		maxChunkRadius:         int32(conf.MaxChunkRadius),
-		emoteChatMuted:         conf.EmoteChatMuted,
-		conn:                   conn,
-		currentEntityRuntimeID: 1,
-		heldSlot:               new(uint32),
-		recipes:                make(map[uint32]recipe.Recipe),
-		conf:                   conf,
-		hudUpdates:             make(map[hud.Element]bool),
-		hiddenHud:              make(map[hud.Element]struct{}),
-		debugShapes:            make(map[int]debug.Shape),
-		debugShapeUpdates:      make([]debugShapeUpdate, 0, 256),
+		openChunkTransactions: make([]map[uint64]struct{}, 0, 8),
+		closeBackground:       make(chan struct{}),
+		handlers:              map[uint32]packetHandler{},
+		packets:               make(chan packet.Packet, 256),
+		viewed:                map[*world.EntityHandle]struct{}{},
+		hiddenEntities:        map[uuid.UUID]struct{}{},
+		blobs:                 map[uint64][]byte{},
+		chunkRadius:           int32(r),
+		maxChunkRadius:        int32(conf.MaxChunkRadius),
+		emoteChatMuted:        conf.EmoteChatMuted,
+		conn:                  conn,
+		heldSlot:              new(uint32),
+		recipes:               make(map[uint32]recipe.Recipe),
+		conf:                  conf,
+		hudUpdates:            make(map[hud.Element]bool),
+		hiddenHud:             make(map[hud.Element]struct{}),
+		debugShapes:           make(map[int]debug.Shape),
+		debugShapeUpdates:     make([]debugShapeUpdate, 0, 256),
 	}
+	s.attachEntityTable()
 	s.viewLayer = world.NewViewLayer(s)
 	s.openedWindow.Store(inventory.New(1, nil))
 	s.openedPos.Store(&cube.Pos{})
@@ -302,8 +303,12 @@ func (s *Session) watchStallEvery(conn stallTarget, every, limit time.Duration) 
 // other players on join.
 func (s *Session) SetHandle(handle *world.EntityHandle, skin skin.Skin) {
 	s.ent = handle
-	s.entityRuntimeIDs[handle] = selfEntityRuntimeID
-	s.entities[selfEntityRuntimeID] = handle
+	s.et.mu.Lock()
+	s.et.ids[handle] = s.selfRID
+	s.et.entities[s.selfRID] = handle
+	// The player's own ID stays taken while it is on the console.
+	s.et.refs[handle]++
+	s.et.mu.Unlock()
 
 	s.joinSkin = skin
 	sessions.Add(s)
@@ -396,10 +401,7 @@ func (s *Session) close(tx *world.Tx, c Controllable) {
 	// entity runtime IDs.
 	sessions.Remove(s, c)
 	forgetMaps(s)
-	s.entityMutex.Lock()
-	clear(s.entityRuntimeIDs)
-	clear(s.entities)
-	s.entityMutex.Unlock()
+	s.detachEntityTable()
 }
 
 // CloseConnection closes the underlying connection of the session so that the session ends up being closed
@@ -614,7 +616,7 @@ func (s *Session) changeDimension(dim int32, silent bool, c Controllable) {
 	// As of v1.19.50, the dimension ack that is meant to be sent by the client is now sent by the server. The client
 	// still sends the ack, but after the server has sent it. Thanks to Mojang for another groundbreaking change.
 	s.writePacket(&packet.PlayerAction{
-		EntityRuntimeID: selfEntityRuntimeID,
+		EntityRuntimeID: s.selfRID,
 		ActionType:      protocol.PlayerActionDimensionChangeDone,
 	})
 }

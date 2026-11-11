@@ -516,6 +516,9 @@ func (srv *Server) finaliseConn(ctx context.Context, conn session.Conn, l Listen
 	data.Yaw, data.Pitch = float32(d.Rotation.Yaw()), float32(d.Rotation.Pitch())
 
 	data.EmoteChatMuted = srv.conf.MuteEmoteChat
+	// A split-screen guest shares the entities of its console and has an ID of its own there.
+	rid := session.SelfRuntimeID(conn)
+	data.EntityUniqueID, data.EntityRuntimeID = int64(rid), rid
 
 	if err := conn.StartGameContext(ctx, data); err != nil {
 		_ = l.Disconnect(conn, "Connection timeout.")
