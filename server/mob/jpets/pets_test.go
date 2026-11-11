@@ -422,6 +422,12 @@ func TestFoxSleepsInShade(t *testing.T) {
 	arena(w)
 	w.Do(func(tx *world.Tx) {
 		w.Fill(tx, cube.Pos{-6, 4, -6}, cube.Pos{6, 4, 6}, block.Stone{})
+		// Walls keep the fox under the roof: on grass a fox in the sun finds
+		// no hiding spot (FleeSunGoal wants a walk target value below 0).
+		w.Fill(tx, cube.Pos{-6, 1, -6}, cube.Pos{6, 3, -6}, block.Stone{})
+		w.Fill(tx, cube.Pos{-6, 1, 6}, cube.Pos{6, 3, 6}, block.Stone{})
+		w.Fill(tx, cube.Pos{-6, 1, -6}, cube.Pos{-6, 3, 6}, block.Stone{})
+		w.Fill(tx, cube.Pos{6, 1, -6}, cube.Pos{6, 3, 6}, block.Stone{})
 	})
 	r := spawnJava(t, w, "minecraft:fox", mgl64.Vec3{0.5, 1, 0.5})
 	if _, ok := w.TickUntil(3600, func(tx *world.Tx) bool {
