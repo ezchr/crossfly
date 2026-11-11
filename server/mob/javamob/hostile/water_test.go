@@ -50,7 +50,7 @@ func TestSquidSwims(t *testing.T) {
 		w.Tick(10)
 		p := positionOf(t, w, s)
 		moved = max(moved, p.Sub(start).Len())
-		if p[1] < 1 || p[1] > 6 {
+		if p[1] < 1 || p[1] > 7 {
 			t.Fatalf("squid left the water: %v", p)
 		}
 	}
@@ -109,7 +109,7 @@ func TestCodSwimsAndSchools(t *testing.T) {
 		w.Tick(10)
 		p := positionOf(t, w, refs[0])
 		moved = max(moved, p.Sub(start).Len())
-		if p[1] < 0.9 || p[1] > 6 {
+		if p[1] < 0.9 || p[1] > 7 { // the surface is at y 6; a fish may break it for a moment
 			t.Fatalf("cod left the water: %v", p)
 		}
 	}

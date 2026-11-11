@@ -59,18 +59,22 @@ func TestSlimeHops(t *testing.T) {
 	w.Do(func(tx *world.Tx) { w.Floor(tx, 0, 16, block.Stone{}) })
 	s := spawnSlime(t, w, 2, mgl64.Vec3{0.5, 1, 0.5})
 	start := s.Pos()
-	jumped := false
+	jumped, moved := false, 0.0
 	w.Each(200, func(tx *world.Tx, _ int) bool {
-		if s.PosTx(tx)[1] > 1.3 {
+		p := s.PosTx(tx)
+		if p[1] > 1.3 {
 			jumped = true
 		}
+		// The furthest it got: hops in random directions may bring it back.
+		d := p.Sub(start)
+		moved = max(moved, d[0]*d[0]+d[2]*d[2])
 		return true
 	})
 	if !jumped {
 		t.Errorf("the slime never jumped")
 	}
-	if d := s.Pos().Sub(start); d[0]*d[0]+d[2]*d[2] < 1 {
-		t.Errorf("the slime did not move: %v", d)
+	if moved < 1 {
+		t.Errorf("the slime did not move: squared distance at most %.2f", moved)
 	}
 }
 
