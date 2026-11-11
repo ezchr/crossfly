@@ -53,6 +53,7 @@ type ExperienceOrbBehaviour struct {
 
 	lastSearch time.Time
 	target     *world.EntityHandle
+	mergeTicks int
 }
 
 // PortalTravelComputer returns the interdimensional travel state for the behaviour.
@@ -73,8 +74,44 @@ func (exp *ExperienceOrbBehaviour) Tick(e *Ent, tx *world.Tx) *Movement {
 // followBox is the bounding box used to search for collectors to follow for experience orbs.
 var followBox = cube.Box(-8, -8, -8, 8, 8, 8)
 
+// OrbMergeRadius, when over 0, is how far apart (in blocks) experience orbs merge into one
+// carrying their total, as Paper's merge-radius for experience (3 by default there). 0 keeps
+// vanilla Bedrock behaviour here: orbs never merge. Set it before the server starts.
+var OrbMergeRadius float64
+
+// tryMerge merges e into another orb within OrbMergeRadius: both are replaced by one orb with
+// their total experience. It reports whether e was merged (and closed).
+func (exp *ExperienceOrbBehaviour) tryMerge(e *Ent, tx *world.Tx) bool {
+	pos := e.Position()
+	for other := range tx.EntitiesWithin(cube.Box(-OrbMergeRadius, -OrbMergeRadius, -OrbMergeRadius, OrbMergeRadius, OrbMergeRadius, OrbMergeRadius).Translate(pos)) {
+		if other.H() == e.H() || other.H().Type() != ExperienceOrbType {
+			continue
+		}
+		o, ok := other.(*Ent)
+		if !ok {
+			continue
+		}
+		ob, ok := o.Behaviour().(*ExperienceOrbBehaviour)
+		if !ok || o.Position().Sub(pos).Len() > OrbMergeRadius {
+			continue
+		}
+		total := exp.conf.Experience + ob.conf.Experience
+		tx.AddEntity(NewExperienceOrb(world.EntitySpawnOpts{Position: o.Position(), Velocity: o.Velocity()}, total))
+		_ = e.Close()
+		_ = o.Close()
+		return true
+	}
+	return false
+}
+
 // tick finds a target for the experience orb and moves the orb towards it.
 func (exp *ExperienceOrbBehaviour) tick(e *Ent, tx *world.Tx) {
+	if OrbMergeRadius > 0 {
+		exp.mergeTicks++
+		if exp.mergeTicks%10 == 1 && exp.tryMerge(e, tx) {
+			return
+		}
+	}
 	targetEnt, ok := exp.target.Entity(tx)
 	target, _ := targetEnt.(experienceCollector)
 

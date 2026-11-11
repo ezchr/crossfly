@@ -142,9 +142,25 @@ func (i *ItemBehaviour) checkNearby(e *Ent, tx *world.Tx) {
 	pos := e.Position()
 	bbox := e.H().Type().BBox(e)
 	grown := bbox.GrowVec3(mgl64.Vec3{1, 0.5, 1}).Translate(pos)
+	// mergeBox is where other item stacks merge with this one: the pickup range, as in vanilla,
+	// or ItemMergeRadius around the item when a server sets it (Paper).
+	mergeBox := grown
+	if ItemMergeRadius > 0 {
+		mergeBox = bbox.Grow(ItemMergeRadius).Translate(pos)
+	}
 
-	for other := range tx.EntitiesWithin(bbox.Translate(pos).Grow(2)) {
-		if e.H() == other.H() || !other.H().Type().BBox(other).Translate(other.Position()).IntersectsWith(grown) {
+	for other := range tx.EntitiesWithin(bbox.Translate(pos).Grow(max(2, ItemMergeRadius+1))) {
+		if e.H() == other.H() {
+			continue
+		}
+		otherBox := other.H().Type().BBox(other).Translate(other.Position())
+		if other.H().Type() == ItemType && ItemMergeRadius > 0 {
+			if otherBox.IntersectsWith(mergeBox) && i.merge(e, other.(*Ent), tx) {
+				return
+			}
+			continue
+		}
+		if !otherBox.IntersectsWith(grown) {
 			continue
 		}
 		if collector, ok := other.(Collector); ok {
@@ -159,6 +175,11 @@ func (i *ItemBehaviour) checkNearby(e *Ent, tx *world.Tx) {
 		}
 	}
 }
+
+// ItemMergeRadius, when over 0, is how far apart (in blocks, between hitboxes) two dropped stacks of
+// the same item merge, as Paper's merge-radius (2.5 by default there). 0 keeps vanilla: stacks
+// merge only within pickup range. Set it before the server starts.
+var ItemMergeRadius float64
 
 // merge merges the item entity with another item entity.
 func (i *ItemBehaviour) merge(e *Ent, other *Ent, tx *world.Tx) bool {
