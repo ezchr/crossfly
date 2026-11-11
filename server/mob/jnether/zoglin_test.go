@@ -23,7 +23,12 @@ func TestZoglinHuntsPlayer(t *testing.T) {
 	p := w.AddPlayer("tester", mgl64.Vec3{0.5, 1, 0.5})
 	p.SetMaxHealth(1000)
 	z := spawnJ(t, w, ZoglinID, mgl64.Vec3{8.5, 1, 0.5})
-	withJ(t, w, z, func(m *javamob.Mob) { m.SetBaby(false) })
+	withJ(t, w, z, func(m *javamob.Mob) {
+		// Zoglin.setBaby(false) keeps a spawned baby's 0.5 damage (as in Java).
+		m.SetBaby(false)
+		m.Attributes().Instance(javamob.AttrAttackDamage).SetBase(6)
+		m.SyncAttributes()
+	})
 	start := p.Health()
 	fought, hitAt := false, 0
 	for i := 0; i < 400 && hitAt == 0; i++ {
