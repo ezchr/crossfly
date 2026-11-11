@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"fmt"
 	"image/color"
+	"math"
 	"math/rand/v2"
 	"strings"
 	"time"
@@ -1763,6 +1764,16 @@ func (s *Session) entityFromRuntimeID(id uint64) (*world.EntityHandle, bool) {
 }
 
 // vec32To64 converts a mgl32.Vec3 to a mgl64.Vec3.
+// finiteVec32 reports whether every component of v is finite.
+func finiteVec32(v mgl32.Vec3) bool {
+	for _, f := range v {
+		if math.IsNaN(float64(f)) || math.IsInf(float64(f), 0) {
+			return false
+		}
+	}
+	return true
+}
+
 func vec32To64(vec3 mgl32.Vec3) mgl64.Vec3 {
 	return mgl64.Vec3{float64(vec3[0]), float64(vec3[1]), float64(vec3[2])}
 }

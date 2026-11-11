@@ -157,6 +157,9 @@ func (h *InventoryTransactionHandler) handleNormalTransaction(pk *packet.Invento
 
 // handleUseItemOnEntityTransaction ...
 func (h *InventoryTransactionHandler) handleUseItemOnEntityTransaction(data *protocol.UseItemOnEntityTransactionData, s *Session, tx *world.Tx, c Controllable) error {
+	if !finiteVec32(data.ClickedPosition) {
+		return nil
+	}
 	s.clearShieldUsePending()
 	s.swingingArm.Store(true)
 	defer s.swingingArm.Store(false)
@@ -215,6 +218,9 @@ func (h *InventoryTransactionHandler) handleUseItemOnEntityTransaction(data *pro
 
 // handleUseItemTransaction ...
 func (h *InventoryTransactionHandler) handleUseItemTransaction(data *protocol.UseItemTransactionData, s *Session, c Controllable) error {
+	if !finiteVec32(data.ClickedPosition) {
+		return nil
+	}
 	pos := cube.Pos{int(data.BlockPosition[0]), int(data.BlockPosition[1]), int(data.BlockPosition[2])}
 	if data.ClientPrediction == protocol.ClientPredictionSuccess || data.ActionType == protocol.UseItemActionBreakBlock {
 		// Suppress echoing the swing animation only when the client has already predicted it locally.

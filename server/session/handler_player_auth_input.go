@@ -42,6 +42,15 @@ func (h PlayerAuthInputHandler) handleMovement(pk *packet.PlayerAuthInput, s *Se
 		}
 	}
 
+	for _, v := range [...]*mgl32.Vec2{&pk.MoveVector, &pk.AnalogueMoveVector, &pk.RawMoveVector} {
+		if !finiteVec32(mgl32.Vec3{v[0], v[1]}) {
+			*v = mgl32.Vec2{}
+		}
+	}
+	if rot, ok := pk.VehicleRotation.Value(); ok && !finiteVec32(mgl32.Vec3{rot[0], rot[1]}) {
+		pk.VehicleRotation = protocol.Optional[mgl32.Vec2]{}
+	}
+
 	if rideable, ok := c.RidingEntity(tx); ok {
 		if controller := rideable.ControllingRider(); controller == c.H() {
 			// The move vector is only filled in for vehicles the client steers itself (horses,
