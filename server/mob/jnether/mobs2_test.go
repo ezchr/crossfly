@@ -17,13 +17,28 @@ import (
 )
 
 // TestGhastShoots: a ghast that sees a player within 64 opens its mouth
-// after 10 ticks and fires a large fireball at tick 20.
+// after 10 ticks and fires a large fireball at tick 20. The target goal
+// only looks every few ticks and only within 4 blocks of height, so a ghast
+// that floats up first never targets (vanilla); up to 5 ghasts are tried.
 func TestGhastShoots(t *testing.T) {
+	for try := 0; try < 5; try++ {
+		charged, shot := ghastShootTry(t)
+		if shot == 0 {
+			continue
+		}
+		if !charged {
+			t.Error("the ghast never opened its mouth")
+		}
+		return
+	}
+	t.Fatal("no fireball in 10 seconds from any of 5 ghasts")
+}
+
+func ghastShootTry(t *testing.T) (charged bool, shot int) {
 	w := mobtest.New(t, mobtest.Options{})
 	w.Do(func(tx *world.Tx) { w.Floor(tx, 0, 24, block.Stone{}) })
 	w.AddPlayer("tester", mgl64.Vec3{0.5, 1, 0.5})
 	g := spawnJ(t, w, "minecraft:ghast", mgl64.Vec3{14.5, 4, 0.5})
-	charged, shot := false, 0
 	for i := 0; i < 200 && shot == 0; i++ {
 		w.Tick(1)
 		withJ(t, w, g, func(m *javamob.Mob) {
@@ -37,12 +52,7 @@ func TestGhastShoots(t *testing.T) {
 			}
 		})
 	}
-	if shot == 0 {
-		t.Fatal("no fireball in 10 seconds")
-	}
-	if !charged {
-		t.Error("the ghast never opened its mouth")
-	}
+	return charged, shot
 }
 
 // TestGhastReflectedFireball: a large fireball a player sent back deals
