@@ -509,6 +509,9 @@ func (p *Player) ScoreTag() string {
 // SetSpeed sets the speed of the player. The value passed is the blocks/tick speed that the player will then
 // obtain.
 func (p *Player) SetSpeed(speed float64) {
+	if !finite(speed) {
+		return
+	}
 	p.speed = speed
 	p.conn().SendSpeed(speed)
 }
@@ -522,6 +525,9 @@ func (p *Player) Speed() float64 {
 // SetFlightSpeed sets the flight speed of the player. The value passed represents the base speed, which is
 // multiplied by 10 to obtain the actual blocks/tick speed that the player will then obtain while flying.
 func (p *Player) SetFlightSpeed(flightSpeed float64) {
+	if !finite(flightSpeed) {
+		return
+	}
 	p.flightSpeed = flightSpeed
 	p.conn().SendAbilities(p)
 }
@@ -593,7 +599,7 @@ func (p *Player) addHealth(health float64) {
 // amount. If the health passed is negative, Heal will not do anything.
 // Heal returns the amount of health regenerated.
 func (p *Player) Heal(health float64, source world.HealingSource) float64 {
-	if p.Dead() || health < 0 || !p.GameMode().AllowsTakingDamage() {
+	if p.Dead() || !(health >= 0) || !p.GameMode().AllowsTakingDamage() {
 		return 0
 	}
 	ctx := NewEventContext(p.tx, p)
@@ -676,7 +682,7 @@ func (p *Player) blocksUnder() (low, high cube.Pos) {
 // If the damage passed is negative, Hurt will not do anything. Hurt returns the
 // final damage dealt to the Player and a result describing the outcome.
 func (p *Player) Hurt(dmg float64, src world.DamageSource) (float64, world.HurtResult) {
-	if _, ok := p.Effect(effect.FireResistance); (ok && src.Fire()) || p.Dead() || !p.GameMode().AllowsTakingDamage() || dmg < 0 {
+	if _, ok := p.Effect(effect.FireResistance); (ok && src.Fire()) || p.Dead() || !p.GameMode().AllowsTakingDamage() || !(dmg >= 0) {
 		return 0, world.HurtIgnored
 	}
 	if dmg = p.scaleMobDamage(dmg, src); dmg == 0 {
@@ -814,13 +820,20 @@ func (p *Player) Explode(src world.ExplosionSource, impact float64) {
 	if result.Blocked() {
 		impact *= shieldExplosionKnockBackMultiplier
 	}
-	p.knockBack(explosionPos, impact, diff[1]/diff.Len()*impact)
+	height := 0.0
+	if l := diff.Len(); l > 0 {
+		height = diff[1] / l * impact
+	}
+	p.knockBack(explosionPos, impact, height)
 }
 
 // SetAbsorption sets the absorption health of a player. This extra health shows as golden hearts and do not
 // actually increase the maximum health. Once the hearts are lost, they will not regenerate.
 // Nothing happens if a negative number is passed.
 func (p *Player) SetAbsorption(health float64) {
+	if math.IsNaN(health) {
+		return
+	}
 	p.absorptionHealth = max(health, 0)
 	p.conn().SendHealth(p.Health(), p.MaxHealth(), p.absorptionHealth)
 }
@@ -843,6 +856,9 @@ func (p *Player) KnockBack(src mgl64.Vec3, force, height float64) {
 // knockBack is an unexported function that is used to knock the player back. This function does not check if the player
 // can take damage or not.
 func (p *Player) knockBack(src mgl64.Vec3, force, height float64) {
+	if !finiteVec3(src) || !finite(force) || !finite(height) {
+		return
+	}
 	velocity := p.Position().Sub(src)
 	velocity[1] = 0
 
@@ -3084,6 +3100,10 @@ func (p *Player) forceTeleport(pos mgl64.Vec3) {
 
 // teleport teleports the player to a target position in the world without updating non-positional state.
 func (p *Player) teleport(pos mgl64.Vec3) {
+	if !finiteVec3(pos) {
+		logNonFinite("teleport", pos)
+		return
+	}
 	for _, v := range p.viewers() {
 		v.ViewEntityTeleport(p, pos)
 	}
@@ -3096,6 +3116,10 @@ func (p *Player) teleport(pos mgl64.Vec3) {
 // position of the player.
 // Move also rotates the player, adding deltaYaw and deltaPitch to the respective values.
 func (p *Player) Move(deltaPos mgl64.Vec3, deltaYaw, deltaPitch float64) {
+	if !finiteVec3(deltaPos) || !finite(deltaYaw) || !finite(deltaPitch) {
+		logNonFinite("move", deltaPos)
+		return
+	}
 	if p.Dead() || (deltaPos.ApproxEqual(mgl64.Vec3{}) && mgl64.FloatEqual(deltaYaw, 0) && mgl64.FloatEqual(deltaPitch, 0)) {
 		p.onGround = true
 		p.updateFallState(deltaPos.Y())
@@ -3209,6 +3233,10 @@ func (p *Player) Velocity() mgl64.Vec3 {
 // SetVelocity updates the player's velocity. If there is an attached session, this will just send
 // the velocity to the player session for the player to update.
 func (p *Player) SetVelocity(velocity mgl64.Vec3) {
+	if !finiteVec3(velocity) {
+		logNonFinite("velocity", velocity)
+		return
+	}
 	if p.conn() == session.Nop {
 		p.data.Vel = velocity
 		return
@@ -4264,6 +4292,10 @@ func (p *Player) checkEntitySteppers() {
 
 // checkOnGround checks if the player is currently considered to be on the ground.
 func (p *Player) checkOnGround(deltaPos mgl64.Vec3) bool {
+	if deltaPos.Len() > 3 {
+		// Only the end of a long move is checked: its whole box could span thousands of chunks.
+		deltaPos = mgl64.Vec3{}
+	}
 	box := Type.BBox(p).Translate(p.Position()).Extend(mgl64.Vec3{0, -0.05}).Extend(deltaPos.Mul(-1.0))
 	b := box.Grow(1)
 
@@ -4293,6 +4325,9 @@ func (p *Player) Scale() float64 {
 // SetScale changes the scale modifier of the Player. The default value for a normal scale is 1. A scale of 0
 // will make the Player completely invisible.
 func (p *Player) SetScale(s float64) {
+	if !finite(s) || s < 0 {
+		return
+	}
 	p.scale = s
 	p.updateState()
 }

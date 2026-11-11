@@ -1,5 +1,7 @@
 package entity
 
+import "math"
+
 // HealthManager handles the health of an entity.
 type HealthManager struct {
 	health float64
@@ -23,6 +25,9 @@ func (m *HealthManager) Health() float64 {
 // exceeds the max, health will be set to the max. If the health is instead negative and results in a health
 // lower than 0, the final health will be 0.
 func (m *HealthManager) AddHealth(health float64) {
+	if math.IsNaN(health) {
+		return
+	}
 	m.health = max(min(m.health+health, m.max), 0)
 }
 
@@ -34,7 +39,8 @@ func (m *HealthManager) MaxHealth() float64 {
 // SetMaxHealth changes the max health of an entity to the maximum passed. If the maximum is set to 0 or
 // lower, SetMaxHealth will default to a value of 1.
 func (m *HealthManager) SetMaxHealth(max float64) {
-	if max <= 0 {
+	if !(max > 0) || math.IsInf(max, 1) {
+		// Also catches NaN.
 		max = 1
 	}
 	m.max = max

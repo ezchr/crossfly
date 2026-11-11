@@ -1,6 +1,7 @@
 package player
 
 import (
+	"math"
 	"sync"
 )
 
@@ -72,8 +73,16 @@ func (m *hungerManager) exhaust(points float64) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
+	if math.IsNaN(points) || math.IsInf(points, 0) {
+		return
+	}
 	m.exhaustionLevel += points
-	for m.exhaustionLevel >= 4 {
+	for i := 0; m.exhaustionLevel >= 4; i++ {
+		if i == 41 {
+			// Food and saturation are both 0 by now: a huge value would loop for ages.
+			m.exhaustionLevel = math.Mod(m.exhaustionLevel, 4)
+			break
+		}
 		// Maximum exhaustion value is 4, so keep removing one saturation point until the exhaustion level
 		// is below 4.
 		m.exhaustionLevel -= 4

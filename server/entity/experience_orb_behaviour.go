@@ -107,7 +107,7 @@ func (exp *ExperienceOrbBehaviour) moveToTarget(e *Ent, target experienceCollect
 		dst[1] += o.EyeHeight() / 2
 	}
 	diff := dst.Sub(pos).Mul(0.125)
-	if dist := diff.LenSqr(); dist < 1 {
+	if dist := diff.LenSqr(); dist < 1 && dist > 0 {
 		e.SetVelocity(e.Velocity().Add(diff.Normalize().Mul(0.2 * math.Pow(1-math.Sqrt(dist), 2))))
 	}
 

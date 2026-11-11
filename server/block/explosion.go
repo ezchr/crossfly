@@ -128,6 +128,10 @@ func (c ExplosionConfig) Explode(tx *world.Tx, src world.ExplosionSource) {
 		}
 	}
 	size, explosionPos := src.Size(), src.Position()
+	if math.IsNaN(size) || math.IsInf(size, 0) || math.IsNaN(explosionPos.Len()) || math.IsInf(explosionPos.Len(), 0) {
+		// The rays of an infinite blast never run out.
+		return
+	}
 	gameevent.Post(tx, gameevent.Explode, explosionPos, explosionBreaker(src, c.Source))
 	if c.ItemDropChance == 0 {
 		c.ItemDropChance = 1.0 / size

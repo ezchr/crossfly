@@ -92,6 +92,9 @@ func (e *Ent) Velocity() mgl64.Vec3 {
 // SetVelocity sets the velocity of the entity. The values in the Vec3 passed represent the speed on
 // that axis in blocks/tick.
 func (e *Ent) SetVelocity(v mgl64.Vec3) {
+	if !finiteVec3(v) {
+		return
+	}
 	e.data.Vel = v
 }
 
@@ -186,6 +189,9 @@ func (e *Ent) Scale() float64 {
 
 // Teleport teleports the entity to the position given.
 func (e *Ent) Teleport(pos mgl64.Vec3) {
+	if !finiteVec3(pos) {
+		return
+	}
 	viewers := e.tx.Viewers(e.data.Pos)
 	e.data.Pos = pos
 	for _, v := range viewers {
