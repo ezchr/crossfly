@@ -10,6 +10,7 @@ import (
 	"github.com/df-mc/dragonfly/server/player/hud"
 	"github.com/df-mc/dragonfly/server/player/input"
 	"github.com/df-mc/dragonfly/server/world"
+	"github.com/go-gl/mathgl/mgl64"
 )
 
 // Methods the Java session does not implement yet: they do nothing. Generated with
@@ -28,6 +29,7 @@ func (*Session) RemoveDebugShape(_ debug.Shape)                         {}
 func (*Session) RemoveViewLayer(_ world.Entity)                         {}
 func (*Session) SendDebugShapes(_ world.Dimension)                      {}
 func (*Session) SendHudUpdates()                                        {}
+func (*Session) FlushEntityMovement(_ mgl64.Vec3)                       {}
 func (*Session) SendInputLocks()                                        {}
 func (*Session) ShowHudElement(_ hud.Element)                           {}
 func (*Session) Transfer(_ net.IP, _ int)                               {}

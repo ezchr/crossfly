@@ -64,6 +64,8 @@ type Session struct {
 	hiddenEntities   map[uuid.UUID]struct{}
 	// leashHolders are the leash holders of the leashed mobs shown, by the mob's runtime ID (mob_leash.go).
 	leashHolders map[uint64]*world.EntityHandle
+	// moves are the moves of other entities not sent yet (movement_batch.go).
+	moves moveBatch
 
 	// heldSlot is the slot in the inventory that the controllable is holding.
 	heldSlot                     *uint32

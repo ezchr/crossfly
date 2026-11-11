@@ -228,6 +228,7 @@ func (s *Session) HideEntity(e world.Entity) {
 		// The entity was already removed some other way. We don't need to send a packet.
 		return
 	}
+	s.dropMove(id, true)
 	s.writePacket(&packet.RemoveActor{EntityUniqueID: int64(id)})
 }
 
@@ -259,12 +260,19 @@ func (s *Session) viewEntityAbsoluteMovement(id uint64, e world.Entity, pos mgl6
 	}
 	// The rotation is pitch, yaw and head yaw, read by BDS into
 	// MoveActorAbsoluteData. The body yaw is not sent: clients turn the body.
-	s.writePacket(&packet.MoveActorAbsolute{
+	pk := &packet.MoveActorAbsolute{
 		EntityRuntimeID: id,
 		Position:        vec64To32(pos.Add(entityOffset(e))),
 		Rotation:        vec64To32(mgl64.Vec3{rot.Pitch(), rot.Yaw(), entityHeadYaw(e, rot.Yaw())}),
 		Flags:           flags,
-	})
+	}
+	if authoritative || id == selfEntityRuntimeID {
+		// Server-made moves and teleports go at once: they are corrections the client must not miss.
+		s.dropMove(id, false)
+		s.writePacket(pk)
+		return
+	}
+	s.queueMove(pk)
 }
 
 // ViewEntityVelocity ...
@@ -306,6 +314,8 @@ func (s *Session) ViewEntityTeleport(e world.Entity, position mgl64.Vec3) {
 	yaw, pitch := e.Rotation().Elem()
 	if id == selfEntityRuntimeID {
 		s.teleportPos.Store(&position)
+	} else {
+		s.dropMove(id, false)
 	}
 
 	s.writePacket(&packet.SetActorMotion{EntityRuntimeID: id})

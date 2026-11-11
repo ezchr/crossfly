@@ -72,6 +72,7 @@ type Session interface {
 	SendHealth(health float64, max float64, absorption float64)
 	SendHeldSlot(slot int, c session.Controllable, force bool)
 	SendHudUpdates()
+	FlushEntityMovement(viewer mgl64.Vec3)
 	SendInputLocks()
 	SendJukeboxPopup(message string)
 	SendMessage(message string)
