@@ -44,6 +44,10 @@ type BreakContext struct {
 	Flying bool
 	// Airborne is true if the player is not on the ground, which slows mining by 5x.
 	Airborne bool
+	// Java is true for a Java Edition player, whose client breaks blocks by Java's rules
+	// (Player.getDestroySpeed): a tool of the right kind always gives its speed, the tier only
+	// decides the drops, and Haste/Mining Fatigue only change the speed, not the progress again.
+	Java bool
 }
 
 // BreakDuration returns the duration that breaking the block passed takes when being broken using the item
@@ -67,11 +71,11 @@ func BreakDuration(b world.Block, i item.Stack, ctx BreakContext) time.Duration 
 	speed := 1.0
 	if info.Effective(t) {
 		speed = t.BaseMiningEfficiency(b)
-		if !canHarvest {
+		if !canHarvest && !ctx.Java {
 			// A tool of the correct type but wrong tier (e.g. a wooden pickaxe on diamond ore) grants no
-			// speed bonus in Bedrock Edition.
+			// speed bonus in Bedrock Edition (Java keeps it, see BreakContext.Java).
 			speed = 1
-		} else if e, ok := i.Enchantment(enchantment.Efficiency); ok {
+		} else if e, ok := i.Enchantment(enchantment.Efficiency); ok && (canHarvest || ctx.Java) {
 			speed += enchantment.Efficiency.Addend(e.Level())
 		}
 	}
@@ -98,10 +102,10 @@ func BreakDuration(b world.Block, i item.Stack, ctx BreakContext) time.Duration 
 	} else {
 		damage /= 100
 	}
-	if positive > 0 {
+	if positive > 0 && !ctx.Java {
 		damage *= math.Pow(1.2, float64(positive))
 	}
-	if ctx.MiningFatigueLevel > 0 {
+	if ctx.MiningFatigueLevel > 0 && !ctx.Java {
 		damage *= math.Pow(0.7, float64(ctx.MiningFatigueLevel))
 	}
 	if damage >= 1 {

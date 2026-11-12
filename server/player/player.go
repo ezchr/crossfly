@@ -77,7 +77,7 @@ type playerData struct {
 	invisible, immobile, onGround, usingItem bool
 	// eatTicks counts the ticks the held food or drink has been in use, for eating effects.
 	eatTicks int
-	shield shieldState
+	shield   shieldState
 
 	sleeping bool
 	sleepPos cube.Pos
@@ -2777,6 +2777,8 @@ func (p *Player) breakContext() block.BreakContext {
 		// Like vanilla, riding players are never on the ground and mine as slowly as players in the air.
 		Airborne: !p.OnGround() || p.riddenEntity != nil,
 		Flying:   p.Flying(),
+		// A Java Edition player has a session that is not a Bedrock one.
+		Java: p.s != nil && p.session() == session.Nop,
 	}
 	if e, ok := p.Effect(effect.Haste); ok {
 		ctx.HasteLevel = e.Level()
