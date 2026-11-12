@@ -276,10 +276,10 @@ func (s *Session) addSpecificMetadata(e any, m protocol.EntityMetadata) {
 		}
 		m[protocol.EntityDataKeyVisibleMobEffects] = packedEffects
 	}
-	if v, ok := e.(variable); ok {
+	if v, ok := lookupBehaviour[variable](e); ok {
 		m[protocol.EntityDataKeyVariant] = v.Variant()
 	}
-	if mv, ok := e.(markVariable); ok {
+	if mv, ok := lookupBehaviour[markVariable](e); ok {
 		m[protocol.EntityDataKeyMarkVariant] = mv.MarkVariant()
 	}
 }

@@ -178,7 +178,7 @@ func (s *Session) addMobMetadata(e any, m protocol.EntityMetadata) {
 		m[protocol.EntityDataKeyTarget] = id
 	}
 	// Villager trade level (server/mob villagers).
-	if t, ok := e.(interface{ TradeTier() int32 }); ok {
+	if t, ok := lookupBehaviour[interface{ TradeTier() int32 }](e); ok {
 		m[protocol.EntityDataKeyTradeTier] = t.TradeTier()
 	}
 	if t, ok := e.(interface{ MaxTradeTier() int32 }); ok {
@@ -193,6 +193,20 @@ func (s *Session) addMobMetadata(e any, m protocol.EntityMetadata) {
 	if c, ok := e.(SecondColouredEntity); ok {
 		m[protocol.EntityDataKeyColorTwoIndex] = c.MobColour2().Uint8()
 	}
+}
+
+// lookupBehaviour returns e or, for an *entity.Ent, its behaviour as T.
+func lookupBehaviour[T any](e any) (T, bool) {
+	if v, ok := e.(T); ok {
+		return v, true
+	}
+	if ent, ok := e.(interface{ Behaviour() entity.Behaviour }); ok {
+		if v, ok := ent.Behaviour().(T); ok {
+			return v, true
+		}
+	}
+	var zero T
+	return zero, false
 }
 
 // lookupEntity returns e or the behaviour of e as T.
