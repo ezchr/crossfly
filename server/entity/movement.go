@@ -215,5 +215,14 @@ func blockBBoxsAround(tx *world.Tx, box cube.BBox) []cube.BBox {
 			}
 		}
 	}
+	// A column holding a border block collides over its full height (BDS BlockSource::_fetchBorderBlockCollisions,
+	// which spans -FLT_MAX to FLT_MAX; the box below only needs to span the area checked).
+	for x := minX; x < maxX; x++ {
+		for z := minZ; z < maxZ; z++ {
+			if tx.HasBorderBlock(x, z) {
+				blockBBoxs = append(blockBBoxs, cube.Box(float64(x), min[1]-1, float64(z), float64(x+1), max[1]+1, float64(z+1)))
+			}
+		}
+	}
 	return blockBBoxs
 }

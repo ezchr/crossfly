@@ -94,6 +94,9 @@ func (Wall) SideClosed(cube.Pos, cube.Pos, *world.Tx) bool {
 	return false
 }
 
+// wallBlock makes other walls and border blocks connect to the wall.
+func (Wall) wallBlock() {}
+
 // ConnectionType returns the connection type of the wall in the given direction.
 func (w Wall) ConnectionType(direction cube.Direction) WallConnectionType {
 	switch direction {
@@ -137,7 +140,7 @@ func (w Wall) calculateConnections(tx *world.Tx, pos cube.Pos) (Wall, bool) {
 		// glass panes and iron bars) as well as the sides of fence gates.
 		connected := side.Model().FaceSolid(sidePos, face.Opposite(), tx)
 		if !connected {
-			if _, ok := tx.Block(sidePos).(Wall); ok {
+			if _, ok := tx.Block(sidePos).(interface{ wallBlock() }); ok {
 				connected = true
 			} else if gate, ok := tx.Block(sidePos).(WoodFenceGate); ok {
 				connected = gate.Facing.Face().Axis() != face.Axis()

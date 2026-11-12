@@ -154,7 +154,7 @@ func (s *Session) sendBlobHashes(pos world.ChunkPos, dim world.Dimension, c *chu
 				Position:      protocol.ChunkPos(pos),
 				SubChunkLimit: protocol.Option(s.subChunkLimit(pos, c)),
 				BlobHashes:    []uint64{hash},
-				RawPayload:    []byte{0},
+				RawPayload:    borderPayload(c),
 				CacheEnabled:  true,
 			})
 			return
@@ -185,8 +185,8 @@ func (s *Session) sendBlobHashes(pos world.ChunkPos, dim world.Dimension, c *chu
 	}
 	s.blobMu.Unlock()
 
-	// Length of 1 byte for the border block count.
-	raw := bytes.NewBuffer(make([]byte, 1, 32))
+	// The border block count and columns.
+	raw := bytes.NewBuffer(append(make([]byte, 0, 32), borderPayload(c)...))
 	enc := nbt.NewEncoderWithEncoding(raw, nbt.NetworkLittleEndian)
 	for bp, b := range blockEntities {
 		if n, ok := b.(world.NBTer); ok {
@@ -217,7 +217,7 @@ func (s *Session) sendNetworkChunk(pos world.ChunkPos, dim world.Dimension, c *c
 			SubChunkCount: 0,
 			Position:      protocol.ChunkPos(pos),
 			SubChunkLimit: protocol.Option(s.subChunkLimit(pos, c)),
-			RawPayload:    append(chunk.EncodeBiomes(c, chunk.NetworkEncoding), 0),
+			RawPayload:    append(chunk.EncodeBiomes(c, chunk.NetworkEncoding), borderPayload(c)...),
 		})
 		return
 	}
@@ -229,8 +229,8 @@ func (s *Session) sendNetworkChunk(pos world.ChunkPos, dim world.Dimension, c *c
 	}
 	_, _ = chunkBuf.Write(data.Biomes)
 
-	// Length of 1 byte for the border block count.
-	chunkBuf.WriteByte(0)
+	// The border block count and columns.
+	_, _ = chunkBuf.Write(borderPayload(c))
 
 	enc := nbt.NewEncoderWithEncoding(chunkBuf, nbt.NetworkLittleEndian)
 	for bp, b := range blockEntities {
@@ -283,4 +283,12 @@ func (s *Session) subChunkLimit(pos world.ChunkPos, c *chunk.Chunk) int32 {
 	}
 	s.subLimits[pos] = n
 	return n
+}
+
+// borderPayload returns the border block section of a LevelChunk payload: the number of columns of the chunk that
+// hold a border block, then one byte per column, x | z<<4 (BDS LevelChunk::serializeBorderBlocks). The client
+// makes these columns walls over the full height of the world.
+func borderPayload(c *chunk.Chunk) []byte {
+	cols := world.BorderColumns(c)
+	return append([]byte{byte(len(cols))}, cols...)
 }

@@ -55,9 +55,12 @@ type playerData struct {
 	scale             float64
 
 	gameMode world.GameMode
-	skin     skin.Skin
-	s        Session
-	h        Handler
+	// worldBuilder is the world builder ability (BDS Actor::isWorldBuilder): it lets the player build and break
+	// regardless of allow, deny and border blocks.
+	worldBuilder bool
+	skin         skin.Skin
+	s            Session
+	h            Handler
 
 	inv, offHand, enderChest, ui *inventory.Inventory
 	armour                       *inventory.Armour
@@ -2711,6 +2714,11 @@ func (p *Player) StartBreaking(pos cube.Pos, face cube.Face) {
 		// The block was either out of range or air, so it can't be broken by the player.
 		return
 	}
+	if !p.buildPermitted(pos) {
+		// An allow, deny or border block forbids breaking here (BDS GameMode::_canDestroy).
+		p.resendNearbyBlocks(pos, face)
+		return
+	}
 	if _, ok := p.tx.Block(pos.Side(face)).(block.Fire); ok {
 		ctx := NewEventContext(p.tx, p)
 		if p.Handler().HandleFireExtinguish(ctx, pos); ctx.Cancelled() {
@@ -2860,7 +2868,7 @@ func (p *Player) PlaceBlock(pos cube.Pos, b world.Block, ctx *item.UseContext) {
 // placeBlock makes the player place the block passed at the position passed, granted it is within the range
 // of the player. A bool is returned indicating if a block was placed successfully.
 func (p *Player) placeBlock(pos cube.Pos, b world.Block, ignoreBBox bool) bool {
-	if !p.canReach(pos.Vec3Centre()) || !p.GameMode().AllowsEditing() {
+	if !p.canReach(pos.Vec3Centre()) || !p.GameMode().AllowsEditing() || !p.buildPermitted(pos) {
 		p.resendNearbyBlocks(pos, cube.Faces()...)
 		return false
 	}
@@ -2885,6 +2893,21 @@ func (p *Player) placeBlock(pos cube.Pos, b world.Block, ignoreBBox bool) bool {
 	p.SwingArm()
 	return true
 }
+
+// buildPermitted reports whether allow, deny and border blocks let the player place or break a block at pos
+// (BDS BlockSource::checkBlockPermissions and checkBlockDestroyPermissions). World builders always may. The default
+// with no allow or deny block below is true: BDS only makes it the privileged builder ability in an immutable world
+// or in adventure mode, and adventure mode cannot edit here anyway.
+func (p *Player) buildPermitted(pos cube.Pos) bool {
+	return p.worldBuilder || p.tx.BuildPermitted(pos, true)
+}
+
+// SetWorldBuilder sets the world builder ability of the player: a world builder may place and break blocks
+// regardless of allow, deny and border blocks, as with /wb on Bedrock Edition.
+func (p *Player) SetWorldBuilder(v bool) { p.worldBuilder = v }
+
+// WorldBuilder reports whether the player has the world builder ability (SetWorldBuilder).
+func (p *Player) WorldBuilder() bool { return p.worldBuilder }
 
 // obstructedPos checks if the position passed is obstructed if the block
 // passed is attempted to be placed. The function returns true as the first
@@ -2927,7 +2950,7 @@ func (p *Player) BreakBlock(pos cube.Pos) {
 		// Don't do anything if the position broken is already air.
 		return
 	}
-	if !p.canReach(pos.Vec3Centre()) || !p.GameMode().AllowsEditing() {
+	if !p.canReach(pos.Vec3Centre()) || !p.GameMode().AllowsEditing() || !p.buildPermitted(pos) {
 		p.resendNearbyBlocks(pos)
 		return
 	}
