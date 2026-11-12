@@ -1109,15 +1109,23 @@ func (p *Player) respawn(f func(p *Player)) {
 	}
 	p.dismountEntity(p.tx, false)
 
+	stored := p.tx.World().PlayerSpawn(p.UUID())
+	_, storedBed := p.tx.Block(stored).(block.Bed)
+	_, storedAnchor := p.tx.Block(stored).(block.RespawnAnchor)
 	blockPos, w, spawnObstructed, _ := p.spawnLocation(true)
 	pos := blockPos.Vec3Middle()
 
 	if spawnObstructed {
+		// The message only when a bed or anchor really is there but unusable: a spawn point that
+		// is simply not the world spawn (one imported from another world, or a world whose spawn
+		// was moved) showed it on every respawn. The spawn point then goes back to the world
+		// spawn, as vanilla resets it, so the message is never repeated.
 		if dim, ok := p.tx.World().PlayerSpawnDimension(p.UUID()); ok && dim == world.Nether {
 			p.Messaget(chat.MessageRespawnAnchorNotValid)
-		} else {
+		} else if storedBed || storedAnchor {
 			p.Messaget(chat.MessageBedNotValid)
 		}
+		p.tx.World().SetPlayerSpawn(p.UUID(), w.Spawn())
 	}
 
 	p.addHealth(p.MaxHealth())
