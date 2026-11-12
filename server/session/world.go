@@ -1489,6 +1489,13 @@ func (s *Session) CloseContainer(tx *world.Tx) {
 	s.closeCurrentContainer(tx, false)
 }
 
+// CloseBlockContainerAt closes the player's open block container if it is the one at pos.
+func (s *Session) CloseBlockContainerAt(tx *world.Tx, pos cube.Pos) {
+	if s.containerOpened.Load() && *s.openedPos.Load() == pos {
+		s.closeCurrentContainer(tx, false)
+	}
+}
+
 // OpenBlockContainer ...
 func (s *Session) OpenBlockContainer(pos cube.Pos, tx *world.Tx) {
 	// One click on a trader can also use the block behind it. Opening that block would end the

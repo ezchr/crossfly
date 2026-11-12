@@ -3447,6 +3447,14 @@ func (p *Player) OpenBlockContainer(pos cube.Pos, tx *world.Tx) {
 	}
 }
 
+// CloseBlockContainer closes the block container at pos if the player has it open: a container
+// removed while open otherwise stays drawn on the client.
+func (p *Player) CloseBlockContainer(pos cube.Pos, tx *world.Tx) {
+	if p.conn() != session.Nop {
+		p.session().CloseBlockContainerAt(tx, pos)
+	}
+}
+
 // OpenTrade opens a villager-style trading window with trader. onTrade runs
 // for each completed trade (offer index, times traded); returning false
 // refuses it. See session.Session.OpenTrade.
