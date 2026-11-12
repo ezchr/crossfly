@@ -21,27 +21,31 @@ type moveBatch struct {
 	sent map[uint64]int64
 }
 
-// Distance tiers of entity moves sent to Bedrock viewers: entities within MoveNearDistance blocks of
-// the viewer move every tick (combat stays exact), up to MoveFarDistance every MoveMidInterval ticks,
-// beyond that every MoveFarInterval ticks. Set them before the server starts. Teleports, server-made
-// moves and the first move after an entity is shown are never held back, and the last position of an
-// entity that stopped is sent on its next due tick.
+// Distance tiers of entity moves sent to Bedrock viewers: within MoveNearDistance (8) blocks of the
+// viewer an entity moves every tick (combat and anything in reach stays exact), up to
+// MoveMidDistance (16) every 2 ticks, up to MoveFarDistance (32) every 3, beyond that every 4.
+// Set them before the server starts. Teleports, server-made moves and the first move after an
+// entity is shown are never held back, and the last position of an entity that stopped is sent
+// on its next due tick.
 var (
-	MoveNearDistance = 16.0
-	MoveFarDistance  = 48.0
-	MoveMidInterval  = int64(2)
-	MoveFarInterval  = int64(4)
+	MoveNearDistance   = 8.0
+	MoveMidDistance    = 16.0
+	MoveFarDistance    = 32.0
+	MoveMidInterval    = int64(2)
+	MoveFarInterval    = int64(3)
+	MoveBeyondInterval = int64(4)
 )
 
-// moveInterval returns how many ticks apart moves of an entity dist blocks away are sent.
 func moveInterval(dist float64) int64 {
 	switch {
 	case dist <= MoveNearDistance:
 		return 1
-	case dist <= MoveFarDistance:
+	case dist <= MoveMidDistance:
 		return max(MoveMidInterval, 1)
-	default:
+	case dist <= MoveFarDistance:
 		return max(MoveFarInterval, 1)
+	default:
+		return max(MoveBeyondInterval, 1)
 	}
 }
 

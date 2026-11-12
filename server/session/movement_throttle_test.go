@@ -7,12 +7,12 @@ import (
 )
 
 // TestMoveDistanceTiers counts the moves a viewer gets in 40 ticks of an entity moving every tick at
-// 10, 30 and 100 blocks: every tick, every 2 ticks and every 4 ticks.
+// 5, 12, 24 and 100 blocks: every tick, every 2, every 3 and every 4 ticks.
 func TestMoveDistanceTiers(t *testing.T) {
 	for _, c := range []struct {
 		dist float32
 		want int
-	}{{10, 40}, {30, 20}, {100, 10}} {
+	}{{5, 40}, {12, 20}, {24, 13}, {100, 10}} {
 		s := batchSession()
 		s.queueMove(move(3, c.dist))
 		drainMoves(s)
