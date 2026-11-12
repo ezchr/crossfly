@@ -12,17 +12,24 @@ import (
 // jump arrives as the player command start_riding_jump.
 
 // vehicleMove passes the vehicle c steers the position its client moved it to.
-func vehicleMove(tx *world.Tx, c session.Controllable, pos mgl64.Vec3, yaw, pitch float64) {
+//
+// A move into a border column stops at it: the position the vehicle was stopped at is returned with true, for the
+// client to be put back there.
+func vehicleMove(tx *world.Tx, c session.Controllable, pos mgl64.Vec3, yaw, pitch float64) (mgl64.Vec3, bool) {
 	rideable, ok := c.RidingEntity(tx)
 	if !ok || rideable.ControllingRider() != c.H() {
-		return
+		return mgl64.Vec3{}, false
 	}
+	from := rideable.Position()
+	delta, clipped := borderClip(tx, rideable, pos.Sub(from))
+	pos = from.Add(delta)
 	if isBoat(rideable) {
 		yaw += 90 // Bedrock boats face 90 degrees off Java's (entityYaws)
 	}
 	if cv, ok := rideable.(entity.ClientVehicle); ok {
 		cv.ClientVehicleMove(c, pos, yaw, pitch)
 	}
+	return rideable.Position(), clipped
 }
 
 // vehicleJump makes the vehicle c steers jump with strength 0..1.

@@ -205,6 +205,11 @@ const selfEntityID = 1
 
 // teleport moves the client to an absolute position; its moves are ignored until it accepts.
 func (s *Session) teleport(x, y, z float64, yaw, pitch float32) {
+	s.teleportFlags(x, y, z, yaw, pitch, 0)
+}
+
+// teleportFlags is teleport with Java's relative flags: what they name is relative to what the client has.
+func (s *Session) teleportFlags(x, y, z float64, yaw, pitch float32, relative int32) {
 	id := s.teleportID.Add(1)
 	s.pendingTeleport.Store(id)
 	p := s.packet()
@@ -217,6 +222,6 @@ func (s *Session) teleport(x, y, z float64, yaw, pitch float32) {
 	p.Float64(0)
 	p.Float32(yaw)
 	p.Float32(pitch)
-	p.Int32(0) // nothing relative
+	p.Int32(relative)
 	s.queue(v777.ClientboundPlayPlayerPosition, p)
 }

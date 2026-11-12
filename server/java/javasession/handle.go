@@ -120,8 +120,10 @@ func (s *Session) move(pos *mgl64.Vec3, rot *[2]float32, flags byte) error {
 			return // moved to another world: the next tick's switchWorld teleports the client
 		}
 		var delta mgl64.Vec3
+		clipped := false
 		if pos != nil {
-			delta = pos.Sub(c.Position())
+			// A border column is a wall the Java client does not know: the move stops at it.
+			delta, clipped = borderClip(tx, c, pos.Sub(c.Position()))
 		}
 		var dyaw, dpitch float64
 		if rot != nil {
@@ -130,6 +132,9 @@ func (s *Session) move(pos *mgl64.Vec3, rot *[2]float32, flags byte) error {
 		}
 		c.Move(delta, dyaw, dpitch)
 		s.landed(c, flags&moveFlagOnGround != 0)
+		if clipped {
+			s.snapBack(c)
+		}
 	})
 	if err != nil && !stopped(err) {
 		s.log.Debug("move", "err", err)

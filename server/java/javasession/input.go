@@ -335,7 +335,9 @@ func (s *Session) handleInput(id int32, body []byte) (bool, error) {
 			return true, nil // ignored: the vehicle stays where the server has it
 		}
 		s.do(func(tx *world.Tx, c session.Controllable) {
-			vehicleMove(tx, c, mgl64.Vec3{x, y, z}, float64(yaw), float64(pitch))
+			if at, ok := vehicleMove(tx, c, mgl64.Vec3{x, y, z}, float64(yaw), float64(pitch)); ok {
+				s.snapBackVehicle(at, yaw, pitch) // stopped at a border column
+			}
 		})
 		return true, nil
 	case v777.ServerboundPlayClientCommand:
