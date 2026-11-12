@@ -7,6 +7,7 @@ import (
 	"io"
 	"log/slog"
 	"net"
+	rdebug "runtime/debug"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -441,11 +442,58 @@ func (s *Session) Latency() time.Duration {
 // withControllable runs f with the current Controllable on its world owner.
 // It is for off-owner session goroutines; callbacks that already have a
 // *world.Tx should use it directly instead.
-func (s *Session) withControllable(ctx context.Context, f func(tx *world.Tx, c Controllable) error) error {
-	_, err := world.CallRef(ctx, world.NewEntityRef[Controllable](s.ent), func(tx *world.Tx, c Controllable) (struct{}, error) {
+//
+// A panic in f does not leave withControllable: world.CallRef re-raises it on
+// this goroutine (after the world logged it with its stack), where nothing
+// would recover it and the whole process would exit. It is returned as a
+// *sessionPanic instead, so that only this player's session ends.
+func (s *Session) withControllable(ctx context.Context, f func(tx *world.Tx, c Controllable) error) (err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			err = &sessionPanic{value: r, stack: rdebug.Stack()}
+		}
+	}()
+	_, err = world.CallRef(ctx, world.NewEntityRef[Controllable](s.ent), func(tx *world.Tx, c Controllable) (struct{}, error) {
 		return struct{}{}, f(tx, c)
 	})
 	return err
+}
+
+// sessionPanic is the error for work of a session that panicked: handling a client packet (packet
+// is then its type) or other work run for the session on its player's world.
+type sessionPanic struct {
+	packet string
+	value  any
+	stack  []byte
+}
+
+// Error ...
+func (p *sessionPanic) Error() string {
+	if p.packet != "" {
+		return fmt.Sprintf("%s: handler panicked: %v", p.packet, p.value)
+	}
+	return fmt.Sprintf("session task panicked: %v", p.value)
+}
+
+// handlePacketRecovered handles a packet like handlePacket, but returns a panic of the handler as a
+// *sessionPanic. It runs on the world owner and recovers there, so the world does not log the panic
+// as one of its own tasks and the transaction ends normally.
+func (s *Session) handlePacketRecovered(pk packet.Packet, tx *world.Tx, c Controllable) (err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			err = &sessionPanic{packet: fmt.Sprintf("%T", pk), value: r, stack: rdebug.Stack()}
+		}
+	}()
+	return s.handlePacket(pk, tx, c)
+}
+
+// disconnectAfterPanic logs a panic of the session's work with the player and packet and disconnects
+// the player. A panic means the server cannot handle what the client did: keeping the session would
+// only repeat it, and the rest of the server carries on.
+func (s *Session) disconnectAfterPanic(what string, p *sessionPanic) {
+	s.conf.Log.Error(what+": panic, disconnecting the player", "packet", p.packet, "panic", fmt.Sprint(p.value), "stack", string(p.stack))
+	s.Disconnect("Internal server error.")
+	s.CloseConnection()
 }
 
 // sessionOwnerStopped reports whether err means the session's player can no
@@ -470,7 +518,7 @@ func (s *Session) handlePackets() {
 			_ = c.Close()
 			return nil
 		}); err != nil && !sessionOwnerStopped(err) {
-			s.conf.Log.Debug("close controllable: " + err.Error())
+			s.logCloseError("close controllable", err)
 		}
 		// Because the player might no longer be in the same world after
 		// closing, we create a new transaction
@@ -478,7 +526,7 @@ func (s *Session) handlePackets() {
 			s.Close(tx, c)
 			return nil
 		}); err != nil && !sessionOwnerStopped(err) {
-			s.conf.Log.Debug("close session: " + err.Error())
+			s.logCloseError("close session", err)
 		}
 	}()
 	for {
@@ -487,10 +535,17 @@ func (s *Session) handlePackets() {
 			return
 		}
 		err = s.withControllable(context.Background(), func(tx *world.Tx, c Controllable) error {
-			return s.handlePacket(pk, tx, c)
+			return s.handlePacketRecovered(pk, tx, c)
 		})
 		if err != nil {
 			if sessionOwnerStopped(err) {
+				return
+			}
+			if p, ok := errors.AsType[*sessionPanic](err); ok {
+				if p.packet == "" {
+					p.packet = fmt.Sprintf("%T", pk)
+				}
+				s.disconnectAfterPanic("process packet", p)
 				return
 			}
 			// A packet the server could not handle is usually a desync (an entity that just went,
@@ -503,6 +558,16 @@ func (s *Session) handlePackets() {
 			s.conf.Log.Debug("process packet: " + err.Error())
 		}
 	}
+}
+
+// logCloseError logs an error closing the session's player: a panic as an error with its stack (the
+// player's data may not have been saved), anything else at debug level.
+func (s *Session) logCloseError(what string, err error) {
+	if p, ok := errors.AsType[*sessionPanic](err); ok {
+		s.conf.Log.Error(what+": panic", "panic", fmt.Sprint(p.value), "stack", string(p.stack))
+		return
+	}
+	s.conf.Log.Debug(what + ": " + err.Error())
 }
 
 // packetErrors counts packets that failed to be handled, to tell a desync from a misbehaving client.
@@ -543,7 +608,9 @@ func (s *Session) background() {
 		enums, enumValues = s.enums(c)
 		return nil
 	}); err != nil {
-		if !sessionOwnerStopped(err) {
+		if p, ok := errors.AsType[*sessionPanic](err); ok {
+			s.disconnectAfterPanic("prepare command updates", p)
+		} else if !sessionOwnerStopped(err) {
 			s.conf.Log.Debug("prepare command updates: " + err.Error())
 		}
 		return
@@ -569,7 +636,9 @@ func (s *Session) background() {
 				s.sendChunks(tx, c)
 				return nil
 			}); err != nil {
-				if !sessionOwnerStopped(err) {
+				if p, ok := errors.AsType[*sessionPanic](err); ok {
+					s.disconnectAfterPanic("update session background", p)
+				} else if !sessionOwnerStopped(err) {
 					s.conf.Log.Debug("update session background: " + err.Error())
 				}
 				return
