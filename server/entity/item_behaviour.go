@@ -128,9 +128,14 @@ func (i *ItemBehaviour) Explode(e *Ent, _ world.ExplosionSource, impact float64)
 // tick checks if the item can be picked up or merged with nearby item stacks.
 func (i *ItemBehaviour) tick(e *Ent, tx *world.Tx) {
 	if i.pickupDelay == 0 {
-		i.checkNearby(e, tx)
-	} else if i.pickupDelay < math.MaxInt16*(time.Second/20) {
+		i.checkNearby(e, tx, true)
+		return
+	}
+	if i.pickupDelay < math.MaxInt16*(time.Second/20) {
 		i.pickupDelay -= time.Second / 20
+		// Stacks merge during the pickup delay too, as in Java (ItemEntity.mergeWithNeighbours runs
+		// unless the delay is infinite): items dropped one after another pile into one stack at once.
+		i.checkNearby(e, tx, false)
 	}
 }
 
@@ -138,7 +143,7 @@ func (i *ItemBehaviour) tick(e *Ent, tx *world.Tx) {
 // stacks. If a collector is found in range, the item will be picked up. If
 // another item stack with the same item type is found in range, the item
 // stacks will merge.
-func (i *ItemBehaviour) checkNearby(e *Ent, tx *world.Tx) {
+func (i *ItemBehaviour) checkNearby(e *Ent, tx *world.Tx, collect bool) {
 	pos := e.Position()
 	bbox := e.H().Type().BBox(e)
 	grown := bbox.GrowVec3(mgl64.Vec3{1, 0.5, 1}).Translate(pos)
@@ -164,6 +169,9 @@ func (i *ItemBehaviour) checkNearby(e *Ent, tx *world.Tx) {
 			continue
 		}
 		if collector, ok := other.(Collector); ok {
+			if !collect {
+				continue // still in its pickup delay: only merging
+			}
 			// A collector was within range to pick up the entity.
 			i.collect(e, collector, tx)
 			return
