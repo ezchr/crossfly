@@ -1,8 +1,6 @@
 package block
 
 import (
-	"fmt"
-
 	"github.com/df-mc/dragonfly/server/internal/nbtconv"
 	"github.com/df-mc/dragonfly/server/item"
 )
@@ -23,14 +21,20 @@ func (b BannerPatternLayer) EncodeNBT() map[string]any {
 	}
 }
 
-// DecodeNBT decodes the given NBT map into a BannerPatternLayer and returns it.
+// DecodeNBT decodes the given NBT map into a BannerPatternLayer and returns it. An unknown pattern id
+// leaves the layer unchanged.
 func (b BannerPatternLayer) DecodeNBT(data map[string]any) any {
-	id := nbtconv.String(data, "Pattern")
-	pattern, exists := BannerPatternByID(id)
-	if !exists {
-		panic(fmt.Errorf("unknown banner pattern id %q", id))
+	if layer, ok := decodeBannerPatternLayer(data); ok {
+		return layer
 	}
-	b.Type = pattern
-	b.Colour = invertColourID(int16(nbtconv.Int32(data, "Color")))
 	return b
+}
+
+// decodeBannerPatternLayer decodes a layer, reporting false if its pattern id is unknown.
+func decodeBannerPatternLayer(data map[string]any) (BannerPatternLayer, bool) {
+	pattern, exists := BannerPatternByID(nbtconv.String(data, "Pattern"))
+	if !exists {
+		return BannerPatternLayer{}, false
+	}
+	return BannerPatternLayer{Type: pattern, Colour: invertColourID(int16(nbtconv.Int32(data, "Color")))}, true
 }

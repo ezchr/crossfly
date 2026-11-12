@@ -89,9 +89,9 @@ func (s Skull) EncodeItem() (name string, meta int16) {
 
 // DecodeNBT ...
 func (s Skull) DecodeNBT(data map[string]interface{}) interface{} {
-	if t := skull(nbtconv.Uint8(data, "SkullType")); t != 255 {
+	if t := skull(nbtconv.Uint8(data, "SkullType")); int(t) < len(SkullTypes()) {
 		// Used to upgrade pre-1.21.40 skulls after their flattening. Any skull placed since will set
-		// SkullType to 255.
+		// SkullType to 255; other unknown types (client packets can hold any) are ignored too.
 		s.Type = SkullType{t}
 	}
 	s.Attach.o = cube.OrientationFromYaw(float64(nbtconv.Float32(data, "Rotation")))

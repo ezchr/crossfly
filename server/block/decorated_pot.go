@@ -1,7 +1,6 @@
 package block
 
 import (
-	"fmt"
 	"github.com/df-mc/dragonfly/server/block/cube"
 	"github.com/df-mc/dragonfly/server/block/model"
 	"github.com/df-mc/dragonfly/server/internal/nbtconv"
@@ -190,15 +189,13 @@ func (p DecoratedPot) DecodeNBT(data map[string]any) any {
 			if i >= len(p.Decorations) {
 				break
 			}
-			it, ok := world.ItemByName(name.(string), 0)
-			if !ok {
-				panic(fmt.Errorf("unknown item %s", name))
+			// A sherd that does not name a pot decoration (client packets can hold anything) is
+			// left plain, as brick.
+			s, _ := name.(string)
+			it, _ := world.ItemByName(s, 0)
+			if decoration, ok := it.(PotDecoration); ok {
+				p.Decorations[i] = decoration
 			}
-			decoration, ok := it.(PotDecoration)
-			if !ok {
-				panic(fmt.Errorf("item %s is not a pot decoration", name))
-			}
-			p.Decorations[i] = decoration
 		}
 	}
 	return p

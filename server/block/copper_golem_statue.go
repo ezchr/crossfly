@@ -131,7 +131,10 @@ func (c CopperGolemStatue) RandomTick(pos cube.Pos, tx *world.Tx, r *rand.Rand) 
 
 // DecodeNBT ...
 func (c CopperGolemStatue) DecodeNBT(data map[string]any) any {
-	c.Pose = CopperGolemPose{pose(nbtconv.Int32(data, "Pose"))}
+	// Poses out of range (client packets can hold any) keep the statue's pose.
+	if p := nbtconv.Int32(data, "Pose"); p >= 0 && int(p) < len(CopperGolemPoses()) {
+		c.Pose = CopperGolemPose{pose(p)}
+	}
 	return c
 }
 

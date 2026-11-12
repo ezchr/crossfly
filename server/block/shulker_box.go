@@ -277,7 +277,10 @@ func (s ShulkerBox) EncodeItem() (id string, meta int16) {
 func (s ShulkerBox) DecodeNBT(data map[string]any) any {
 	s = s.initialised()
 	nbtconv.InvFromNBT(s.inventory, nbtconv.Slice(data, "Items"))
-	s.Facing = cube.Face(nbtconv.Uint8(data, "facing"))
+	// Faces out of range (client packets can hold any) keep the box's facing.
+	if f := nbtconv.Uint8(data, "facing"); int(f) < len(cube.Faces()) {
+		s.Facing = cube.Face(f)
+	}
 	s.CustomName = nbtconv.String(data, "CustomName")
 	return s
 }

@@ -38,7 +38,11 @@ func (w WrittenBook) DecodeNBT(data map[string]any) any {
 	if pages, ok := data["pages"].([]any); ok {
 		w.Pages = make([]string, len(pages))
 		for i, page := range pages {
-			w.Pages[i] = page.(map[string]any)["text"].(string)
+			// A page that is not a compound with a text string (client packets can hold anything)
+			// is read as empty, keeping the page numbers of the others.
+			if m, ok := page.(map[string]any); ok {
+				w.Pages[i], _ = m["text"].(string)
+			}
 		}
 	}
 	w.Title, _ = data["title"].(string)

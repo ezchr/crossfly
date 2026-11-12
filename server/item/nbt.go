@@ -3,6 +3,7 @@ package item
 import (
 	"bytes"
 	"encoding/gob"
+	"reflect"
 	"sort"
 
 	"github.com/df-mc/dragonfly/server/world"
@@ -162,7 +163,7 @@ func writeDisplay(m map[string]any, s Stack) {
 // writeDamage writes the damage to a Stack (either an int16 for disk or int32 for network) to a map for NBT
 // encoding.
 func writeDamage(m map[string]any, s Stack, disk bool) {
-	if v, ok := m["Damage"]; !ok || v.(int16) == 0 {
+	if v, _ := m["Damage"].(int16); v == 0 {
 		if _, ok := s.Item().(Durable); ok {
 			if disk {
 				m["Damage"] = int16(s.MaxDurability() - s.Durability())
@@ -200,7 +201,9 @@ func readItemStack(m, t map[string]any) Stack {
 		return Stack{}
 	}
 	if n, ok := it.(world.NBTer); ok {
-		it = n.DecodeNBT(t).(world.Item)
+		if decoded, ok := n.DecodeNBT(t).(world.Item); ok {
+			it = decoded
+		}
 	}
 	return NewStack(it, int(nbtUint8(m, "Count")))
 }
@@ -251,7 +254,10 @@ func readDisplay(m map[string]any, s *Stack) {
 		} else if lore, ok := display["Lore"].([]any); ok {
 			loreLines := make([]string, 0, len(lore))
 			for _, l := range lore {
-				loreLines = append(loreLines, l.(string))
+				// Lines of another type (client packets can hold any) are left out.
+				if line, ok := l.(string); ok {
+					loreLines = append(loreLines, line)
+				}
 			}
 			*s = s.WithLore(loreLines...)
 		}
@@ -259,25 +265,41 @@ func readDisplay(m map[string]any, s *Stack) {
 }
 
 // readDragonflyData reads data written to the dragonflyData field in the NBT of an item and adds it to the Stack
-// passed.
+// passed. The NBT comes from client packets as well as from saves, so data that is not a byte list or does not
+// decode is ignored rather than trusted.
 func readDragonflyData(m map[string]any, s *Stack) {
-	if customData, ok := m["dragonflyData"]; ok {
-		d, ok := customData.([]byte)
-		if !ok {
-			if itf, ok := customData.([]any); ok {
-				for _, v := range itf {
-					b, _ := v.(byte)
-					d = append(d, b)
-				}
+	customData, ok := m["dragonflyData"]
+	if !ok {
+		return
+	}
+	var d []byte
+	switch v := customData.(type) {
+	case []byte:
+		d = v
+	case []any:
+		d = make([]byte, 0, len(v))
+		for _, e := range v {
+			b, ok := e.(byte)
+			if !ok {
+				return
 			}
+			d = append(d, b)
 		}
-		var values []mapValue
-		if err := gob.NewDecoder(bytes.NewBuffer(d)).Decode(&values); err != nil {
-			panic("error decoding item user data: " + err.Error())
+	default:
+		// A TAG_Byte_Array decodes to a [N]byte array.
+		rv := reflect.ValueOf(customData)
+		if rv.Kind() != reflect.Array || rv.Type().Elem().Kind() != reflect.Uint8 {
+			return
 		}
-		for _, val := range values {
-			*s = s.WithValue(val.K, val.V)
-		}
+		d = make([]byte, rv.Len())
+		reflect.Copy(reflect.ValueOf(d), rv)
+	}
+	var values []mapValue
+	if err := gob.NewDecoder(bytes.NewReader(d)).Decode(&values); err != nil {
+		return
+	}
+	for _, val := range values {
+		*s = s.WithValue(val.K, val.V)
 	}
 }
 

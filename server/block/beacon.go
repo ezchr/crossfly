@@ -49,12 +49,18 @@ func (b Beacon) Activate(pos cube.Pos, _ cube.Face, tx *world.Tx, u item.User, _
 
 // DecodeNBT ...
 func (b Beacon) DecodeNBT(data map[string]any) any {
-	b.level = int(nbtconv.Int32(data, "Levels"))
+	// Client packets can hold any values: the level is kept within 0-4 and instant effects (which
+	// a beacon cannot give) are ignored.
+	b.level = int(min(max(nbtconv.Int32(data, "Levels"), 0), 4))
 	if primary, ok := effect.ByID(int(nbtconv.Int32(data, "Primary"))); ok {
-		b.Primary = primary.(effect.LastingType)
+		if lasting, ok := primary.(effect.LastingType); ok {
+			b.Primary = lasting
+		}
 	}
 	if secondary, ok := effect.ByID(int(nbtconv.Int32(data, "Secondary"))); ok {
-		b.Secondary = secondary.(effect.LastingType)
+		if lasting, ok := secondary.(effect.LastingType); ok {
+			b.Secondary = lasting
+		}
 	}
 	return b
 }
