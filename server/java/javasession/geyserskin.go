@@ -168,7 +168,7 @@ func (s *Session) deferForSkin(p *player.Player) bool {
 	}
 	s.deferred[h] = struct{}{}
 	s.entMu.Unlock()
-	go func() {
+	s.goSafe("showing a player once their skin is known", func() {
 		deadline := time.Now().Add(skinWaitForTab)
 		for time.Now().Before(deadline) {
 			if _, settled := bedrockSkinProps(xuid); settled {
@@ -195,7 +195,7 @@ func (s *Session) deferForSkin(p *player.Player) bool {
 			s.ViewEntityState(e)
 			return struct{}{}, nil
 		})
-	}()
+	})
 	return true
 }
 
@@ -258,7 +258,7 @@ func (s *Session) reskinPlayer(h *world.EntityHandle) {
 	if !shown {
 		return
 	}
-	go func() {
+	s.goSafe("showing a player with a new skin", func() {
 		_, _ = world.CallRef(context.Background(), world.NewEntityRef[world.Entity](h), func(tx *world.Tx, e world.Entity) (struct{}, error) {
 			p, ok := e.(*player.Player)
 			if !ok {
@@ -285,7 +285,7 @@ func (s *Session) reskinPlayer(h *world.EntityHandle) {
 			s.ViewEntityState(e)
 			return struct{}{}, nil
 		})
-	}()
+	})
 }
 
 // BedrockTextures gives the signed skin texture Java players are shown for the Bedrock player xuid,

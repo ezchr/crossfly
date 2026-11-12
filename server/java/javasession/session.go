@@ -407,6 +407,19 @@ func (s *Session) withPlayer(f func(tx *world.Tx, c session.Controllable)) (err 
 	return err
 }
 
+// goSafe runs f on a goroutine of its own, logging a panic in it (world.CallRef re-panics a
+// task's panic in its caller) instead of letting it end the process.
+func (s *Session) goSafe(what string, f func()) {
+	go func() {
+		defer func() {
+			if r := recover(); r != nil {
+				s.log.Error("panic "+what, "panic", r, "stack", string(debug.Stack()))
+			}
+		}()
+		f()
+	}()
+}
+
 func stopped(err error) bool {
 	return errors.Is(err, world.ErrEntityClosed) || errors.Is(err, world.ErrWorldClosed) || errors.Is(err, world.ErrTaskCancelled)
 }
@@ -504,10 +517,11 @@ func (s *Session) readLoop() {
 		s.cleanup()
 		s.log.Info("left")
 	}()
+	handling := int32(-1) // the id of the packet being handled, as the client sent it
 	defer func() {
 		// A packet our decoding or handling code chokes on drops the client, not the server.
 		if r := recover(); r != nil {
-			s.log.Error("panic handling packet", "panic", r, "stack", string(debug.Stack()))
+			s.log.Error("panic handling packet", "id", handling, "panic", r, "stack", string(debug.Stack()))
 			s.Disconnect("Internal server error")
 		}
 	}()
@@ -524,6 +538,17 @@ func (s *Session) readLoop() {
 	done := make(chan struct{})
 	defer close(done)
 	go func() {
+		// The reader is a goroutine of its own: a panic in it would end the process, so it is
+		// handed to the loop below as a read error, which drops this client.
+		defer func() {
+			if r := recover(); r != nil {
+				s.log.Error("panic reading packet", "id", s.conn.LastPacketID(), "panic", r, "stack", string(debug.Stack()))
+				select {
+				case in <- inPacket{err: errPanic}:
+				case <-done:
+				}
+			}
+		}()
 		for {
 			id, body, err := s.conn.ReadPacket()
 			if err == nil {
@@ -545,10 +570,15 @@ func (s *Session) readLoop() {
 	}()
 	for pk := range in {
 		id, body, err := pk.id, pk.body, pk.err
+		if errors.Is(err, errPanic) {
+			s.Disconnect("Internal server error")
+			return
+		}
 		if err != nil {
 			s.log.Debug("read", "err", err)
 			return
 		}
+		handling = id
 		if nid := s.ver.ServerboundPlay(id); nid >= 0 {
 			err = s.handle(nid, body)
 		} else {

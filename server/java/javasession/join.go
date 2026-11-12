@@ -3,6 +3,7 @@ package javasession
 import (
 	"errors"
 	"log/slog"
+	"runtime/debug"
 	"strings"
 
 	"github.com/df-mc/dragonfly/server"
@@ -64,6 +65,14 @@ func Run(conf Config) {
 }
 
 func join(conf Config, tabs *tabList, jp *jserver.Player) {
+	// Each join has a goroutine of its own: a panic (in the skin conversion, a callback, loading
+	// the player) drops this player instead of ending the process.
+	defer func() {
+		if r := recover(); r != nil {
+			conf.Log.Error("panic joining java player", "player", jp.Profile.Name, "panic", r, "stack", string(debug.Stack()))
+			_ = jp.Conn.Close()
+		}
+	}()
 	identity := conf.Identity
 	if identity == nil {
 		identity = ViaBedrockIdentity
