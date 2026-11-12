@@ -167,8 +167,12 @@ func (s *Stack) Remove(t int32) {
 	s.Removed.Add(t)
 }
 
-// Reset empties the stack, keeping its slices for reuse.
+// Reset empties the stack, keeping its slices for reuse. What they held is dropped, so a stack
+// reused for every packet does not keep the last one's strings and component data alive.
 func (s *Stack) Reset() {
+	clear(s.Lore)
+	clear(s.CustomModelData.Strings)
+	clear(s.Raw)
 	*s = Stack{
 		Order:        s.Order[:0],
 		Lore:         s.Lore[:0],
@@ -437,8 +441,14 @@ func (s *Stack) decode(r *wire.Reader, delimited bool, p *Proto) {
 		fail(r, fmt.Errorf("%w: item id %d", ErrInvalid, s.ID))
 		return
 	}
+	// A patch holds each component type at most once (vanilla keeps it in a map), so it never has
+	// more components than the version has types.
+	types := int32(ComponentTypes)
+	if p != nil {
+		types = max(types, int32(len(p.compsIn)))
+	}
 	pos, neg := r.VarInt(), r.VarInt()
-	if pos < 0 || neg < 0 || int(pos)+int(neg) > r.Len() {
+	if pos < 0 || neg < 0 || pos > types || neg > types || int(pos)+int(neg) > r.Len() {
 		fail(r, fmt.Errorf("%w: %d/%d components", ErrInvalid, pos, neg))
 		return
 	}
@@ -467,6 +477,13 @@ func (s *Stack) decode(r *wire.Reader, delimited bool, p *Proto) {
 			fail(r, fmt.Errorf("%w: component type %d", ErrInvalid, t))
 		}
 		if r.Err != nil {
+			return
+		}
+		// A repeated component would append to the lists of the first (lore, raw components), and
+		// encoding the stack writes all of a list once per repeat: a packet of repeats grew the
+		// stack many times its size and encoded to terabytes.
+		if s.Added.Has(t) || s.rawIndex(t) >= 0 {
+			fail(r, fmt.Errorf("%w: component %s twice", ErrInvalid, componentNames[t]))
 			return
 		}
 		if delimited {
