@@ -117,4 +117,5 @@ var allParticles = []world.Particle{
 	particle.LavaDrip{}, particle.Lava{}, particle.DustPlume{},
 	particle.HugeExplosion{}, particle.EndermanTeleport{}, particle.SnowballPoof{}, particle.EggSmash{},
 	particle.Splash{}, particle.Effect{Colour: color.RGBA{G: 255, A: 255}}, particle.EntityFlame{},
+	particle.MobSpawnerSpawn{Width: 1, Height: 2},
 }

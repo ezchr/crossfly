@@ -77,6 +77,8 @@ func (s *Session) ViewParticle(pos mgl64.Vec3, p world.Particle) {
 		s.simpleParticle(ptDustPlume, pos, 0)
 	case particle.HugeExplosion:
 		s.simpleParticle(ptExplosionEmitter, pos, 0)
+	case particle.MobSpawnerSpawn:
+		s.levelEvent(levelEventMobSpawnerSpawn, cube.PosFromVec3(pos), 0, false)
 	case particle.EndermanTeleport:
 		// 128 portal particles around pos (the destination packed as no difference: 127 each).
 		s.levelEvent(levelEventEndermanTeleport, cube.PosFromVec3(pos), 0x7f7f7f, false)

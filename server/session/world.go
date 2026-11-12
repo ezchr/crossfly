@@ -605,6 +605,12 @@ func (s *Session) ViewParticle(pos mgl64.Vec3, p world.Particle) {
 			EventType: packet.LevelEventParticlesTeleport,
 			Position:  vec64To32(pos),
 		})
+	case particle.MobSpawnerSpawn:
+		s.writePacket(&packet.LevelEvent{
+			EventType: packet.LevelEventParticlesMobBlockSpawn,
+			Position:  vec64To32(pos),
+			EventData: int32(pa.Width + pa.Height<<8),
+		})
 	case particle.Flame:
 		if pa.Colour != (color.RGBA{}) {
 			s.writePacket(&packet.LevelEvent{

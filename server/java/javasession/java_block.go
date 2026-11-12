@@ -18,6 +18,11 @@ type JavaBlock interface {
 // sendBlockEntity sends the block entity of a JavaBlock at pos, for a block that just changed.
 func (s *Session) sendBlockEntity(pos cube.Pos, jb JavaBlock) {
 	typ, data := javaBlockEntityData(jb)
+	s.sendBlockEntityData(pos, typ, data)
+}
+
+// sendBlockEntityData sends the block entity of type typ with the network NBT data at pos.
+func (s *Session) sendBlockEntityData(pos cube.Pos, typ string, data []byte) {
 	if typ == "" || data == nil {
 		return
 	}

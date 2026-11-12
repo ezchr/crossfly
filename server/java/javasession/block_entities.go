@@ -91,6 +91,11 @@ func (s *Session) addBlockEntities(col *jchunk.Column, blocks map[cube.Pos]world
 		if java == "" {
 			continue
 		}
+		if data == nil {
+			if _, extra := blockEntityExtra(b); extra != nil {
+				data = extra
+			}
+		}
 		typ := s.ver.BuiltinID("minecraft:block_entity_type", java)
 		if typ < 0 {
 			continue // this client's version has no such block entity

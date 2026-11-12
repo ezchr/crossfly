@@ -6,6 +6,7 @@
 package vanilla
 
 import (
+	"github.com/df-mc/dragonfly/server/block"
 	"github.com/df-mc/dragonfly/server/mob/javamob"
 
 	// The Java mob packages, one line each.
@@ -19,4 +20,7 @@ import (
 )
 
 // Install registers the Java mob types of every linked package in package mob (javamob.Install).
-func Install() { javamob.Install() }
+func Install() {
+	javamob.Install()
+	block.SetJavaSpawnerHost(SpawnerHost{})
+}

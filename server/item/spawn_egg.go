@@ -30,11 +30,24 @@ type MobSpawner interface {
 // mobSpawner is the MobSpawner of the spawn eggs, set by RegisterSpawnEggs.
 var mobSpawner MobSpawner
 
+// MobSetter is a block whose mob a spawn egg used on it sets: the monster spawner.
+type MobSetter interface {
+	// WithMob returns the block set to the mob of the entity identifier passed.
+	WithMob(mob string) world.Block
+}
+
 // UseOnBlock spawns the egg's mob on the face of the block clicked, as BDS's ActorPlacerItem: in the
 // middle of the block next to the face, half a block higher on top of a fence.
 func (s SpawnEgg) UseOnBlock(pos cube.Pos, face cube.Face, _ mgl64.Vec3, tx *world.Tx, user User, ctx *UseContext) bool {
 	if mobSpawner == nil {
 		return false
+	}
+	if ms, ok := tx.Block(pos).(MobSetter); ok {
+		// ActorPlacerItem::_useOn on a mob spawner (MobSpawnerBlockActor::setMob), Java SpawnEggItem.useOn on a
+		// Spawner: the spawner takes the egg's mob instead of a mob spawning, in every game mode.
+		tx.SetBlock(pos, ms.WithMob(s.Mob), nil)
+		ctx.SubtractFromCount(1)
+		return true
 	}
 	at := pos.Side(face)
 	spawnPos := mgl64.Vec3{float64(at[0]) + 0.5, float64(at[1]), float64(at[2]) + 0.5}

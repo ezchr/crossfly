@@ -59,3 +59,10 @@ type Effect struct {
 
 // EntityFlame is a particle shown when an entity is set on fire.
 type EntityFlame struct{ particle }
+
+// MobSpawnerSpawn is the burst of flames and smoke a monster spawner shows when it spawns a mob. Width and Height
+// are the size of the mob, in blocks rounded up (Bedrock spreads the particles over it).
+type MobSpawnerSpawn struct {
+	particle
+	Width, Height int
+}

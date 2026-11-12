@@ -641,6 +641,8 @@ func (s *Session) ViewBlockUpdate(pos cube.Pos, b world.Block, layer int) {
 	s.queue(v777.ClientboundPlayBlockUpdate, w)
 	if jb, ok := b.(JavaBlock); ok {
 		s.sendBlockEntity(pos, jb)
+	} else if typ, data := blockEntityExtra(b); data != nil {
+		s.sendBlockEntityData(pos, typ, data)
 	}
 	s.updateSnowyBelow(pos, bi.snowCover[rid])
 }

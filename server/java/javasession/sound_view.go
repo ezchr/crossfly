@@ -37,6 +37,7 @@ const (
 	levelEventDestroyNoSound     = 2014
 	levelEventDragonEggTeleport  = 2015
 	levelEventEndermanTeleport   = 2018
+	levelEventMobSpawnerSpawn    = 2004 // LevelEvent.PARTICLES_MOBBLOCK_SPAWN
 	levelEventDestroyProgress    = 2019 // crack particles on a face
 	levelEventWaxOn              = 3003
 	levelEventWaxOff             = 3004

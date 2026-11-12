@@ -12,6 +12,7 @@ import (
 // (piston.go and minecart.go in Crossfly Full).
 
 func javaBlockEntityData(JavaBlock) (string, []byte) { return "", nil }
+func blockEntityExtra(world.Block) (string, []byte)  { return "", nil }
 func (s *Session) viewMinecart(world.Entity, int32)  {}
 func (s *Session) viewBoat(world.Entity, int32)      {}
 

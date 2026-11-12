@@ -131,6 +131,9 @@ type env struct {
 	gameTime           int64
 	dayTime            int
 	spawn              cube.Pos
+	// spawner is set for the checks of a monster spawner (EntitySpawnReason.SPAWNER): the spawn rules that
+	// test EntitySpawnReason.isSpawner skip what they skip for it.
+	spawner bool
 }
 
 func (e *env) peaceful() bool { return e.difficulty == 0 }

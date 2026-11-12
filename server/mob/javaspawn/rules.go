@@ -153,7 +153,7 @@ func alwaysSpawn(*env, *EntityType, cube.Pos) bool { return true }
 
 // checkMobSpawnRules is Mob.checkMobSpawnRules.
 func checkMobSpawnRules(e *env, t *EntityType, pos cube.Pos) bool {
-	return isValidSpawn(e.tx, pos.Side(cube.FaceDown), t)
+	return e.spawner || isValidSpawn(e.tx, pos.Side(cube.FaceDown), t)
 }
 
 // checkMonsterSpawnRules is Monster.checkMonsterSpawnRules.
@@ -169,7 +169,7 @@ func checkAnyLightMonsterSpawnRules(e *env, t *EntityType, pos cube.Pos) bool {
 // checkSurfaceMonstersSpawnRules is Monster.checkSurfaceMonstersSpawnRules
 // (husk, parched, camel husk).
 func checkSurfaceMonstersSpawnRules(e *env, t *EntityType, pos cube.Pos) bool {
-	return checkMonsterSpawnRules(e, t, pos) && e.canSeeSky(pos)
+	return checkMonsterSpawnRules(e, t, pos) && (e.spawner || e.canSeeSky(pos))
 }
 
 // isBrightEnoughToSpawn is Animal.isBrightEnoughToSpawn:
@@ -258,6 +258,9 @@ func checkEndermiteSpawnRules(e *env, t *EntityType, pos cube.Pos) bool {
 	if !checkAnyLightMonsterSpawnRules(e, t, pos) {
 		return false
 	}
+	if e.spawner {
+		return true
+	}
 	c := mgl64.Vec3{float64(pos[0]) + .5, float64(pos[1]) + .5, float64(pos[2]) + .5}
 	for _, p := range e.st.players {
 		if !p.creative && p.pos.Sub(c).LenSqr() < 25 {
@@ -300,7 +303,7 @@ func checkStraySpawnRules(e *env, t *EntityType, pos cube.Pos) bool {
 	for javaName(e.tx.Block(check)) == "powder_snow" {
 		check = check.Side(cube.FaceUp)
 	}
-	return checkMonsterSpawnRules(e, t, pos) && e.canSeeSky(check.Side(cube.FaceDown))
+	return checkMonsterSpawnRules(e, t, pos) && (e.spawner || e.canSeeSky(check.Side(cube.FaceDown)))
 }
 
 // checkStriderSpawnRules is Strider.checkStriderSpawnRules: air above the
@@ -323,7 +326,7 @@ func checkGuardianSpawnRules(e *env, _ *EntityType, pos cube.Pos) bool {
 	}
 	w, _ := fluidAt(e.tx, pos)
 	wb, _ := fluidAt(e.tx, pos.Side(cube.FaceDown))
-	return w && wb
+	return (e.spawner || w) && wb
 }
 
 // checkDrownedSpawnRules is Drowned.checkDrownedSpawnRules for a natural
@@ -350,6 +353,9 @@ func checkDrownedSpawnRules(e *env, _ *EntityType, pos cube.Pos) bool {
 func checkSlimeSpawnRules(e *env, t *EntityType, pos cube.Pos) bool {
 	if e.peaceful() {
 		return false
+	}
+	if e.spawner {
+		return checkMobSpawnRules(e, t, pos)
 	}
 	if e.biomeAt(pos).tags["allows_surface_slime_spawns"] && pos[1] > 50 && pos[1] < 70 {
 		if e.rnd.Float32() < e.surfaceSlimeChance && e.maxLocalRawBrightness(pos) <= e.rnd.IntN(8) {

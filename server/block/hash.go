@@ -264,6 +264,7 @@ const (
 	hashBell
 	hashRespawnAnchor
 	hashHeavyCore
+	hashMobSpawner
 	hashCustomBlockBase
 )
 
