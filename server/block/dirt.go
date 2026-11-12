@@ -68,7 +68,12 @@ func (d Dirt) EncodeBlock() (string, map[string]any) {
 func spreadDirt(b world.Block, pos cube.Pos, tx *world.Tx, r *rand.Rand, minY int) {
 	aboveLight := tx.Light(pos.Side(cube.FaceUp))
 	if aboveLight < 4 {
-		tx.SetBlock(pos, Dirt{}, nil)
+		// Darkness alone does not kill it: BDS GrassBlock::_canBeGrass keeps grass whose block above
+		// lets light through (air, glass, water...) however dark it is, and only turns it to dirt
+		// under a block that stops light. A roofed area's grass floor stays grass.
+		if lightBlocking(tx.Block(pos.Side(cube.FaceUp))) {
+			tx.SetBlock(pos, Dirt{}, nil)
+		}
 		return
 	}
 	if aboveLight < 9 {
@@ -103,4 +108,14 @@ func supportsVegetation(vegetation, block world.Block) bool {
 type Soil interface {
 	// SoilFor returns whether the vegetation can exist on the block.
 	SoilFor(world.Block) bool
+}
+
+// lightBlocking reports whether b stops light fully: a block that diffuses light reports its own
+// level, air lets it through, and any other block is treated as opaque, as the light engine does.
+func lightBlocking(b world.Block) bool {
+	if d, ok := b.(LightDiffuser); ok {
+		return d.LightDiffusionLevel() >= 15
+	}
+	_, air := b.(Air)
+	return !air
 }
