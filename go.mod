@@ -55,3 +55,5 @@ require (
 	golang.org/x/time v0.14.0 // indirect
 	gopkg.in/yaml.v2 v2.3.0 // indirect
 )
+
+replace github.com/sandertv/gophertunnel => github.com/ezchr/gophertunnel v1.63.1-0.20261112222249-7f20514a27c2
