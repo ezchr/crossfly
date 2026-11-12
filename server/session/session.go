@@ -35,6 +35,7 @@ import (
 type Session struct {
 	// packetErrors counts packets that failed to be handled (see handlePackets).
 	packetErrors   packetErrors
+	blockPreviews  atomic.Pointer[map[cube.Pos]world.Block]
 	conf           Config
 	border         borderView // the world border wall shown (border.go)
 	once, connOnce sync.Once
@@ -316,6 +317,7 @@ func (s *Session) SetHandle(handle *world.EntityHandle, skin skin.Skin) {
 // Spawn makes the Controllable passed spawn in the world.World.
 // The function passed will be called when the session stops running.
 func (s *Session) Spawn(c Controllable, tx *world.Tx) {
+	s.SetBlockPreviews(nil)
 	s.SendHealth(c.Health(), c.MaxHealth(), c.Absorption())
 	s.SendExperience(c.ExperienceLevel(), c.ExperienceProgress())
 	s.SendFood(c.Food(), 0, 0)
@@ -609,6 +611,7 @@ func (s *Session) sendChunks(tx *world.Tx, c Controllable) {
 
 // handleWorldSwitch handles the player of the Session switching worlds.
 func (s *Session) handleWorldSwitch(w *world.World, tx *world.Tx, c Controllable) {
+	s.SetBlockPreviews(nil)
 	if s.conn.ClientCacheEnabled() {
 		s.blobMu.Lock()
 		s.blobs = map[uint64][]byte{}

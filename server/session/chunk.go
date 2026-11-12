@@ -18,6 +18,7 @@ const subChunkRequests = true
 
 // ViewChunk ...
 func (s *Session) ViewChunk(pos world.ChunkPos, dim world.Dimension, blockEntities map[cube.Pos]world.Block, c *chunk.Chunk) {
+	defer s.showBlockPreviews(pos.X(), pos.Z(), -2048, 2047)
 	if !s.conn.ClientCacheEnabled() {
 		s.sendNetworkChunk(pos, dim, c, blockEntities)
 		return
@@ -59,6 +60,10 @@ func (s *Session) ViewSubChunks(centre world.SubChunkPos, offsets []protocol.Sub
 		CacheEnabled:    s.conn.ClientCacheEnabled(),
 		SubChunkEntries: entries,
 	})
+	for _, offset := range offsets {
+		y := int(centre.Y()) + int(offset[1])
+		s.showBlockPreviews(centre.X()+int32(offset[0]), centre.Z()+int32(offset[2]), y<<4, (y<<4)+15)
+	}
 }
 
 func (s *Session) subChunkEntry(offset protocol.SubChunkOffset, ind int16, col *world.Column, transaction map[uint64]struct{}) protocol.SubChunkEntry {

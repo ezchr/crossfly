@@ -1294,6 +1294,13 @@ func (s *Session) ViewBrewingUpdate(prevBrewTime, brewTime time.Duration, prevFu
 
 // ViewBlockUpdate ...
 func (s *Session) ViewBlockUpdate(pos cube.Pos, b world.Block, layer int) {
+	if layer == 0 {
+		if previews := s.blockPreviews.Load(); previews != nil {
+			if preview := (*previews)[pos]; preview != nil {
+				b = preview
+			}
+		}
+	}
 	blockPos := protocol.BlockPos{int32(pos[0]), int32(pos[1]), int32(pos[2])}
 	s.writePacket(&packet.UpdateBlock{
 		Position:          blockPos,

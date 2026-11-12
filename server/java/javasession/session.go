@@ -6,6 +6,7 @@ package javasession
 import (
 	"context"
 	"errors"
+	"github.com/df-mc/dragonfly/server/block/cube"
 	"log/slog"
 	"math"
 	"net"
@@ -30,6 +31,7 @@ import (
 
 // Session is one Java Edition player's connection.
 type Session struct {
+	blockPreviews atomic.Pointer[map[cube.Pos]world.Block]
 	// borderVersion and borderSent: the world border last sent (border.go).
 	borderVersion atomic.Uint64
 	borderSent    atomic.Bool
@@ -104,9 +106,9 @@ type Session struct {
 	// towards raining and thunder (time.go). weatherSent: the client has had its level info.
 	rainLevel, thunderLevel float32
 	weatherSent             bool
-	lastCentre  world.ChunkPos
-	centreSent  bool
-	closeOnce   sync.Once
+	lastCentre              world.ChunkPos
+	centreSent              bool
+	closeOnce               sync.Once
 
 	// Chunk sending: the client says how many chunks per tick it can take (in thousandths);
 	// one batch waits for its acknowledgement at a time.
@@ -360,6 +362,7 @@ func (s *Session) Close(tx *world.Tx, c session.Controllable) {
 
 // Spawn starts the session once the player entity is in the world.
 func (s *Session) Spawn(c session.Controllable, tx *world.Tx) {
+	s.SetBlockPreviews(nil)
 	s.ent = c.H()
 	s.spawned.Store(true)
 	trackJavaSession(s.id, s)

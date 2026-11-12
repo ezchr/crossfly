@@ -44,6 +44,8 @@ import (
 )
 
 type playerData struct {
+	blockPreviews map[cube.Pos]world.Block
+	previewWorld  *world.World
 	// cur is the *Player last opened (ptype.Open).
 	cur *Player
 
@@ -2097,6 +2099,9 @@ func (p *Player) SetShieldBlockingInput(down bool) {
 // returns immediately.
 // UseItemOnBlock does nothing if the block at the cube.Pos passed is of the type block.Air.
 func (p *Player) UseItemOnBlock(pos cube.Pos, face cube.Face, clickPos mgl64.Vec3) {
+	if p.previewClick(pos, face, &clickPos, false) {
+		return
+	}
 	if _, ok := p.tx.Block(pos).(block.Air); ok || !p.canReach(pos.Vec3Centre()) {
 		// The client used its item on a block that does not exist server-side or one it couldn't reach. Stop trying
 		// to use the item immediately.
@@ -2709,6 +2714,9 @@ func entityVelocity(e world.Entity) mgl64.Vec3 {
 // immediately and the block will not be broken. StartBreaking will stop the breaking of any block that the
 // player might be breaking before this method is called.
 func (p *Player) StartBreaking(pos cube.Pos, face cube.Face) {
+	if p.previewClick(pos, face, nil, false) {
+		return
+	}
 	p.AbortBreaking()
 	if _, air := p.tx.Block(pos).(block.Air); air || !p.canReach(pos.Vec3Centre()) {
 		// The block was either out of range or air, so it can't be broken by the player.
@@ -2945,6 +2953,9 @@ func (p *Player) obstructedPos(pos cube.Pos, b world.Block) (obstructed, selfOnl
 // BreakBlock makes the player break a block in the world at a position passed. If the player is unable to
 // reach the block passed, the method returns immediately.
 func (p *Player) BreakBlock(pos cube.Pos) {
+	if p.previewClick(pos, cube.FaceUp, nil, true) {
+		return
+	}
 	b := p.tx.Block(pos)
 	if _, air := b.(block.Air); air {
 		// Don't do anything if the position broken is already air.
@@ -3677,6 +3688,7 @@ func (p *Player) Tick(tx *world.Tx, current int64) {
 
 	if p.prevWorld != tx.World() && p.prevWorld != nil {
 		p.StopGliding()
+		p.SetBlockPreviews(nil)
 		p.Handler().HandleChangeWorld(p, p.prevWorld, tx.World())
 	}
 	p.prevWorld = tx.World()
@@ -4904,6 +4916,9 @@ func (p *Player) resendNearbyBlock(pos cube.Pos) {
 		return
 	}
 	b := p.tx.Block(pos)
+	if p.hasBlockPreview(pos) {
+		b = p.blockPreviews[pos]
+	}
 	p.conn().ViewBlockUpdate(pos, b, 0)
 	if _, ok := b.(world.LiquidDisplacer); ok {
 		liq, _ := p.tx.Liquid(pos)

@@ -106,6 +106,7 @@ func (s *Session) ViewChunk(pos world.ChunkPos, dim world.Dimension, blockEntiti
 	s.chunks.sent[pos] = struct{}{}
 	s.chunks.sentMu.Unlock()
 	s.showFrames(blockEntities)
+	s.showBlockPreviews(pos.X(), pos.Z(), -2048, 2047)
 }
 
 // forgetFarChunks unloads the chunks the loader dropped around a new centre: those further than

@@ -37,6 +37,7 @@ func (s *Session) writeRespawn(dim string, c session.Controllable, keep byte) {
 
 // switchWorld follows the player into another world (portals, teleports between worlds).
 func (s *Session) switchWorld(tx *world.Tx, w *world.World, c session.Controllable) {
+	s.SetBlockPreviews(nil)
 	s.closeWindows(tx, c)
 	// Every world change gets the client a new level, even into the same dimension: forgetting the
 	// chunks alone left a client moved between two overworlds waiting for chunks that never came

@@ -615,6 +615,13 @@ const animate262SwingMainHand = 0
 
 // ViewBlockUpdate sends a changed block.
 func (s *Session) ViewBlockUpdate(pos cube.Pos, b world.Block, layer int) {
+	if layer == 0 {
+		if previews := s.blockPreviews.Load(); previews != nil {
+			if preview := (*previews)[pos]; preview != nil {
+				b = preview
+			}
+		}
+	}
 	if layer != 0 {
 		return // water layer changes: waterlogging fixer to come
 	}
