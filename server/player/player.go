@@ -75,6 +75,8 @@ type playerData struct {
 
 	sneaking, sprinting, swimming, gliding, crawling, flying,
 	invisible, immobile, onGround, usingItem bool
+	// eatTicks counts the ticks the held food or drink has been in use, for eating effects.
+	eatTicks int
 	shield shieldState
 
 	sleeping bool
@@ -1949,15 +1951,19 @@ func (p *Player) UseItem() {
 		}
 		if !p.usingItem {
 			// Consumable starts being consumed: Set the start timestamp and update the using state to viewers.
-			p.usingItem, p.usingSince = true, time.Now()
+			p.usingItem, p.usingSince, p.eatTicks = true, time.Now(), 0
 			p.updateState()
 			return
 		}
 		// The player is currently using the item held. This is a signal the item was consumed, so we
 		// consume it and start using it again.
 		useCtx, dur := p.useContext(), p.useDuration()
-		if dur < usable.ConsumeDuration() {
-			// The required duration for consuming this item was not met, so we don't consume it.
+		if dur < usable.ConsumeDuration()-consumeGrace {
+			// Finished too early to be real. The client already ate it and stopped eating, so stop here
+			// too (the session resends the inventory, putting the item back): left in use, the next tap
+			// (a start) would be taken for a finish and eat at once.
+			p.usingItem = false
+			p.updateState()
 			return
 		}
 		// Reset the duration for the next item to be consumed.
@@ -2235,6 +2241,12 @@ func (p *Player) AttackEntity(e world.Entity) bool {
 // its own cooldown land a tick or two early, which would otherwise drop the
 // jab (and its Lunge) entirely.
 const spearCooldownGrace = 100 * time.Millisecond
+
+// consumeGrace is how much sooner than its consume duration a Bedrock client's "finished eating"
+// may arrive: the client counts its own ticks, and jitter on the start packet makes the server
+// measure a bite that took the full time as slightly shorter. Refusing it put the food back in the
+// client's hand.
+const consumeGrace = 5 * time.Second / 20
 
 // spearLagAllowance is how much further than the spear's reach an entity the
 // client says it jabbed may be on the server: where the server has a target
@@ -3597,9 +3609,13 @@ func (p *Player) Tick(tx *world.Tx, current int64) {
 	}
 
 	held, _ := p.HeldItems()
-	if current%4 == 0 && p.usingItem {
-		if _, ok := held.Item().(item.Consumable); ok {
-			// Eating particles seem to happen roughly every 4 ticks.
+	if !p.usingItem {
+		p.eatTicks = 0
+	} else if c, ok := held.Item().(item.Consumable); ok {
+		p.eatTicks++
+		// As BDS (PlayerItemInUse::checkShouldUse): effects once the remaining use ticks are 25 or
+		// fewer and divisible by 4, so none for the first few ticks of a bite.
+		if remaining := int(c.ConsumeDuration()/(time.Second/20)) - p.eatTicks; remaining <= 25 && remaining >= 0 && remaining%4 == 0 {
 			for _, v := range p.viewers() {
 				v.ViewEntityAction(p, entity.EatAction{})
 			}
