@@ -12,6 +12,7 @@ import (
 	"net"
 	"slices"
 	"sync"
+	"sync/atomic"
 
 	"github.com/df-mc/dragonfly/server/java/protocol/internal/cfb8"
 )
@@ -33,6 +34,7 @@ type Conn struct {
 	frame     []byte // last frame read
 	inflated  []byte // last decompressed packet
 	maxPacket int    // SetMaxPacket; 0 = protocol limits
+	lastID    atomic.Int32
 	zr        io.ReadCloser
 	decrypt   cipher.Stream
 	threshold int // -1 = no compression; shared by both directions
@@ -50,6 +52,7 @@ type Conn struct {
 // NewConn wraps a TCP connection.
 func NewConn(nc net.Conn) *Conn {
 	c := &Conn{nc: nc, threshold: -1}
+	c.lastID.Store(-1)
 	c.br = bufio.NewReaderSize(readerFunc(c.readRaw), 1<<15)
 	c.out = nc
 	c.bw = bufio.NewWriterSize(writerFunc(c.writeRaw), 1<<15)
@@ -164,6 +167,10 @@ func (c *Conn) SetMaxPacket(n int) {
 	c.rmu.Unlock()
 }
 
+// LastPacketID is the id of the packet ReadPacket returned last (-1 before the first), as the
+// client sent it: for logging what a connection was doing when it failed.
+func (c *Conn) LastPacketID() int32 { return c.lastID.Load() }
+
 // ReadPacket reads the next packet. body is only valid until the next ReadPacket.
 func (c *Conn) ReadPacket() (id int32, body []byte, err error) {
 	c.rmu.Lock()
@@ -230,6 +237,7 @@ func (c *Conn) ReadPacket() (id int32, body []byte, err error) {
 	if r.Err != nil {
 		return 0, nil, r.Err
 	}
+	c.lastID.Store(id)
 	return id, payload[r.Off:], nil
 }
 

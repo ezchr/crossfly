@@ -18,6 +18,7 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
+	"runtime/debug"
 	"strings"
 	"sync"
 	"time"
@@ -251,7 +252,7 @@ func (l *Listener) handle(nc net.Conn, ip string) {
 	c := wire.NewConn(nc)
 	// Login and configuration packets are small; the play limits apply from the hand-off.
 	c.SetMaxPacket(maxPrePlayPacket)
-	p, err := l.negotiate(c, ip, start.Add(l.cfg.LoginTimeout))
+	p, err := l.negotiateSafe(c, ip, start.Add(l.cfg.LoginTimeout))
 	l.limits.release(ip)
 	if err != nil {
 		if !errors.Is(err, errStatusDone) && !errors.Is(err, io.EOF) {
@@ -267,6 +268,23 @@ func (l *Listener) handle(nc net.Conn, ip string) {
 	case <-l.ctx.Done():
 		c.Close()
 	}
+}
+
+// errPanic is returned by negotiateSafe when negotiating panicked.
+var errPanic = errors.New("panic during login")
+
+// negotiateSafe is negotiate with a panic (in this package or in a callback such as Status) turned
+// into an error. Each connection has a goroutine of its own, so an unrecovered panic there would
+// take the whole server down instead of dropping this client.
+func (l *Listener) negotiateSafe(c *wire.Conn, ip string, deadline time.Time) (p *Player, err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			l.cfg.Log.Error("panic during java login", "addr", c.NetConn().RemoteAddr(), "packet", c.LastPacketID(),
+				"panic", r, "stack", string(debug.Stack()))
+			p, err = nil, fmt.Errorf("%w: %v", errPanic, r)
+		}
+	}()
+	return l.negotiate(c, ip, deadline)
 }
 
 // maxPrePlayPacket is the largest packet accepted before play. The largest a vanilla client sends
