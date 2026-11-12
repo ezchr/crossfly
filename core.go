@@ -6,6 +6,7 @@ import (
 	"log/slog"
 
 	"github.com/df-mc/dragonfly/server"
+	"github.com/df-mc/dragonfly/server/player"
 )
 
 // fullReleases is where Crossfly Full is released.
@@ -17,6 +18,8 @@ const fullReleases = "https://github.com/ezchr/crossfly/releases"
 type Edition struct{}
 
 func defaultEdition() Edition { return Edition{} }
+
+func (Edition) acceptPlayer(*player.Player) {}
 
 // register registers nothing: Crossfly Core has no blocks, items or entities beyond Dragonfly's.
 func (Edition) register(*slog.Logger) error { return nil }

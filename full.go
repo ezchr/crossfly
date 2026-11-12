@@ -8,6 +8,7 @@ import (
 	"os"
 
 	"github.com/df-mc/dragonfly/commands"
+	"github.com/df-mc/dragonfly/plugins/warps"
 	"github.com/df-mc/dragonfly/server"
 	"github.com/df-mc/dragonfly/server/block"
 	"github.com/df-mc/dragonfly/server/entity"
@@ -19,6 +20,7 @@ import (
 	"github.com/df-mc/dragonfly/server/mob/jraider"
 	"github.com/df-mc/dragonfly/server/mob/spawn"
 	"github.com/df-mc/dragonfly/server/mob/vanilla"
+	"github.com/df-mc/dragonfly/server/player"
 	"github.com/df-mc/dragonfly/server/world"
 )
 
@@ -32,6 +34,7 @@ type Edition struct {
 	Redstone      redstoneConfig
 	Capes         capesConfig
 	ExtraCommands extraCommandsConfig
+	Warps         warpConfig
 }
 
 // commandsConfig holds the settings of the commands.
@@ -75,6 +78,20 @@ type extraCommandsConfig struct {
 	Enabled bool `comment:"Enabled registers /setblock and /fill, and with the mobs on /summon and /mobdebug (for operators)."`
 }
 
+// warpConfig controls walk-in warp pads and their private glass area editor.
+type warpConfig struct {
+	Enabled bool   `comment:"Enabled registers administrator /warp commands and walk-in trigger areas. Disabled adds no player handlers."`
+	File    string `comment:"File stores the warp areas and destinations as JSON."`
+}
+
+var warpPads *warps.Manager
+
+func (Edition) acceptPlayer(p *player.Player) {
+	if warpPads != nil {
+		p.Handle(warpPads.Wrap(p.Handler()))
+	}
+}
+
 func defaultEdition() Edition {
 	return Edition{
 		Commands:      commandsConfig{OperatorsFile: "ops.json"},
@@ -83,6 +100,7 @@ func defaultEdition() Edition {
 		Redstone:      redstoneConfig{Behaviour: "java"},
 		Capes:         capesConfig{JavaCapes: true},
 		ExtraCommands: extraCommandsConfig{Enabled: true},
+		Warps:         warpConfig{Enabled: true, File: "warps.json"},
 	}
 }
 
@@ -169,6 +187,15 @@ func (e Edition) configure(conf *server.Config) error {
 // once the server runs.
 func (e Edition) start(srv *server.Server, log *slog.Logger) {
 	commands.Register(srv, operators)
+	if e.Warps.Enabled {
+		var err error
+		warpPads, err = warps.Open(warps.Config{File: e.Warps.File, Worlds: map[string]*world.World{"overworld": srv.World(), "nether": srv.Nether(), "end": srv.End()}, Admin: operators.Is})
+		if err != nil {
+			log.Error("warps not loaded", "err", err)
+		} else {
+			warpPads.Register()
+		}
+	}
 	// Java mob mode has its own natural spawning (package mob/javaspawn hooks in here).
 	if e.mobs() && !e.javaMobs() && e.Mobs.NaturalSpawning {
 		for _, w := range []*world.World{srv.World(), srv.Nether(), srv.End()} {

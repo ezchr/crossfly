@@ -97,7 +97,7 @@ func main() {
 
 	srv.Listen()
 	for p := range srv.Accept() {
-		_ = p
+		fc.Edition.acceptPlayer(p)
 	}
 }
 
