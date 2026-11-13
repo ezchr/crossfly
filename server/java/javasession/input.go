@@ -23,6 +23,10 @@ type inputState struct {
 	// eatStart is when the player started eating or drinking (zero when not): Java clients never
 	// say they finished, so the server finishes it, as vanilla does (continueEating).
 	eatStart time.Time
+	// swingOwed is set by a packet after which a 26.3 client swings its arm (and so sends punch):
+	// using an item, on a block or an entity, attacking, digging, dropping. That punch is the swing
+	// of that action, not a swing at the air. Read loop only.
+	swingOwed bool
 }
 
 // validFace reports whether a face from the client is one of the six.
@@ -87,6 +91,10 @@ func (s *Session) handleInput(id int32, body []byte) (bool, error) {
 		}
 		pos := cube.Pos{x, y, z}
 		s.fxDestroyAction(action, pos)
+		switch action {
+		case actionStartDestroy, actionAbortDestroy, actionStopDestroy, actionDropAll, actionDropItem:
+			s.input.swingOwed = true
+		}
 		s.do(func(tx *world.Tx, c session.Controllable) {
 			// Bedrock clients drive the breaking animation with start/continue/stop and send the
 			// actual break separately (Dragonfly's BreakBlock). A Java client breaks on START in
@@ -137,6 +145,7 @@ func (s *Session) handleInput(id int32, body []byte) (bool, error) {
 		if r.Err != nil || !validFace(face) {
 			return true, r.Err
 		}
+		s.input.swingOwed = true
 		if hand == 0 {
 			pos := cube.Pos{x, y, z}
 			// The click position is within the block; clamp what a hostile client sends (NaN too).
@@ -162,6 +171,7 @@ func (s *Session) handleInput(id int32, body []byte) (bool, error) {
 		if r.Err != nil {
 			return true, r.Err
 		}
+		s.input.swingOwed = true
 		if hand == 0 {
 			s.fxUsedItem()
 			s.do(func(tx *world.Tx, c session.Controllable) {
@@ -177,6 +187,7 @@ func (s *Session) handleInput(id int32, body []byte) (bool, error) {
 		if r.Err != nil {
 			return true, r.Err
 		}
+		s.input.swingOwed = true
 		s.do(func(tx *world.Tx, c session.Controllable) {
 			e, ok := s.entityByID(tx, target)
 			if !ok {
@@ -199,11 +210,19 @@ func (s *Session) handleInput(id int32, body []byte) (bool, error) {
 		}
 		pos := cube.Pos{x, y, z}
 		s.do(func(tx *world.Tx, c session.Controllable) { c.PickBlock(pos) })
+	case v777.ServerboundPlayClientTickEnd:
+		s.input.swingOwed = false
 	case v777.ServerboundPlayPunch:
-		// The client keeps punching while it holds the attack key on a block it mines: that is the
-		// arm swinging, not a miss (a miss sounds and starts the attack cooldown every tick).
+		// 26.3 sends punch for every main-hand swing (ServerGamePacketListenerImpl.handlePunch only
+		// swings): after a right click that placed a block or used an item too. Only a punch with
+		// nothing before it in the client tick is a swing at the air; the others are the swing of
+		// that action, and were played as a hit (the attack sound, the shield delay, punch-air
+		// handlers). The client keeps punching while it holds the attack key on a block it mines:
+		// that is the arm swinging too, not a miss.
+		owed := s.input.swingOwed
+		s.input.swingOwed = false
 		s.do(func(tx *world.Tx, c session.Controllable) {
-			if s.input.breaking { // set in these tasks too (block_dig)
+			if owed || s.input.breaking { // breaking is set in these tasks too (block_dig)
 				c.SwingArm()
 				return
 			}
@@ -217,6 +236,7 @@ func (s *Session) handleInput(id int32, body []byte) (bool, error) {
 		if r.Err != nil {
 			return true, r.Err
 		}
+		s.input.swingOwed = true
 		if hand == 0 {
 			clicked := mgl64.Vec3{cx, cy, cz}
 			s.do(func(tx *world.Tx, c session.Controllable) {
