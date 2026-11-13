@@ -139,10 +139,14 @@ func TestHurtsWithoutDamage(t *testing.T) {
 	hookWorld(t, func(tx *world.Tx) {
 		hook := tx.AddEntity(world.EntitySpawnOpts{}.New(FishingHookType, fishingHookConfig{}))
 		snowball := tx.AddEntity(NewSnowball(world.EntitySpawnOpts{}, nil))
-		if !HurtsWithoutDamage(ProjectileDamageSource{Projectile: hook}) {
-			t.Error("hook hit does not hurt")
+		egg := tx.AddEntity(NewEgg(world.EntitySpawnOpts{}, nil))
+		pearl := tx.AddEntity(world.EntitySpawnOpts{}.New(EnderPearlType, enderPearlConf))
+		for name, e := range map[string]world.Entity{"hook": hook, "snowball": snowball, "egg": egg} {
+			if !HurtsWithoutDamage(ProjectileDamageSource{Projectile: e}) {
+				t.Errorf("%s hit does not hurt", name)
+			}
 		}
-		if HurtsWithoutDamage(ProjectileDamageSource{Projectile: snowball}) || HurtsWithoutDamage(VoidDamageSource{}) {
+		if HurtsWithoutDamage(ProjectileDamageSource{Projectile: pearl}) || HurtsWithoutDamage(VoidDamageSource{}) {
 			t.Error("other sources hurt without damage")
 		}
 	})

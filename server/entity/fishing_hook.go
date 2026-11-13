@@ -153,11 +153,19 @@ func ReelFishingHook(tx *world.Tx, owner world.Entity) (int, bool) {
 }
 
 // HurtsWithoutDamage reports whether src hurts what it hits although it deals no damage: the hit of a fishing hook,
-// which hurts for 0 (and so knocks back) as FishingHook::_hitCheck does. Living entities that drop hits of 0 damage
-// take these.
+// which hurts for 0 (and so knocks back) as FishingHook::_hitCheck does, and of a snowball or an egg, whose
+// impact_damage is 0 for anything but a blaze and still knocks back (knockback true). Living entities that drop
+// hits of 0 damage take these.
 func HurtsWithoutDamage(src world.DamageSource) bool {
 	s, ok := src.(ProjectileDamageSource)
-	return ok && s.Projectile != nil && s.Projectile.H().Type() == FishingHookType
+	if !ok || s.Projectile == nil {
+		return false
+	}
+	switch s.Projectile.H().Type() {
+	case FishingHookType, SnowballType, EggType:
+		return true
+	}
+	return false
 }
 
 var (
