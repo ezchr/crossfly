@@ -4,6 +4,7 @@ import (
 	"sync"
 
 	"github.com/go-gl/mathgl/mgl64"
+	"github.com/sandertv/gophertunnel/minecraft/protocol"
 	"github.com/sandertv/gophertunnel/minecraft/protocol/packet"
 )
 
@@ -36,13 +37,32 @@ var (
 	MoveBeyondInterval = int64(4)
 )
 
-func moveInterval(dist float64) int64 {
+// MoveTiers are the distances of the tiers for one viewer: moves every tick up to Near, every
+// MoveMidInterval ticks up to Mid, every MoveFarInterval up to Far, every MoveBeyondInterval beyond.
+type MoveTiers struct{ Near, Mid, Far float64 }
+
+// MoveTiersForDevice gives the tiers of a viewer by the device they play on, so that weak devices
+// can get fewer moves than strong ones. nil, or ok false: MoveNearDistance, MoveMidDistance and
+// MoveFarDistance. Set it before the server starts.
+var MoveTiersForDevice func(protocol.DeviceOS) (tiers MoveTiers, ok bool)
+
+// moveTiers returns the tiers of this session.
+func (s *Session) moveTiers() MoveTiers {
+	if MoveTiersForDevice != nil && s.conn != nil {
+		if t, ok := MoveTiersForDevice(s.conn.ClientData().DeviceOS); ok {
+			return t
+		}
+	}
+	return MoveTiers{Near: MoveNearDistance, Mid: MoveMidDistance, Far: MoveFarDistance}
+}
+
+func (t MoveTiers) interval(dist float64) int64 {
 	switch {
-	case dist <= MoveNearDistance:
+	case dist <= t.Near:
 		return 1
-	case dist <= MoveMidDistance:
+	case dist <= t.Mid:
 		return max(MoveMidInterval, 1)
-	case dist <= MoveFarDistance:
+	case dist <= t.Far:
 		return max(MoveFarInterval, 1)
 	default:
 		return max(MoveBeyondInterval, 1)
@@ -89,6 +109,7 @@ func (s *Session) FlushEntityMovement(viewer mgl64.Vec3) {
 	if s == Nop {
 		return
 	}
+	tiers := s.moveTiers()
 	b := &s.moves
 	b.mu.Lock()
 	b.tick++
@@ -96,7 +117,7 @@ func (s *Session) FlushEntityMovement(viewer mgl64.Vec3) {
 	for id, pk := range b.pending {
 		p := pk.Position
 		dist := mgl64.Vec3{float64(p[0]), float64(p[1]), float64(p[2])}.Sub(viewer).Len()
-		if b.tick-b.sent[id] < moveInterval(dist) {
+		if b.tick-b.sent[id] < tiers.interval(dist) {
 			continue
 		}
 		out = append(out, pk)

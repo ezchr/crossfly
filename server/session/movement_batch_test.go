@@ -5,6 +5,7 @@ import (
 
 	"github.com/go-gl/mathgl/mgl32"
 	"github.com/go-gl/mathgl/mgl64"
+	"github.com/sandertv/gophertunnel/minecraft/protocol"
 	"github.com/sandertv/gophertunnel/minecraft/protocol/packet"
 )
 
@@ -70,5 +71,32 @@ func TestMoveDroppedOnRemove(t *testing.T) {
 	s.queueMove(move(7, 2))
 	if n := len(drainMoves(s)); n != 1 {
 		t.Fatalf("shown again: %d moves at once, want 1", n)
+	}
+}
+
+// TestMoveTiersForDevice: a viewer whose device has wide tiers gets the move of an entity 20 blocks
+// away every tick, one on the default tiers every third tick.
+func TestMoveTiersForDevice(t *testing.T) {
+	defer func() { MoveTiersForDevice = nil }()
+	for _, wide := range []bool{true, false} {
+		MoveTiersForDevice = func(protocol.DeviceOS) (MoveTiers, bool) {
+			return MoveTiers{Near: 24, Mid: 32, Far: 48}, wide
+		}
+		s := batchSession()
+		s.conn = &panicTestConn{}
+		s.queueMove(move(7, 20))
+		drainMoves(s)
+		n := 0
+		for tick := 0; tick < 12; tick++ {
+			s.queueMove(move(7, 20+float32(tick)*0.01))
+			s.FlushEntityMovement(mgl64.Vec3{})
+			n += len(drainMoves(s))
+		}
+		if wide && n != 12 {
+			t.Fatalf("wide tiers: %d moves in 12 ticks at 20 blocks, want 12", n)
+		}
+		if !wide && n != 4 {
+			t.Fatalf("default tiers: %d moves in 12 ticks at 20 blocks, want 4 (every 3rd tick)", n)
+		}
 	}
 }
