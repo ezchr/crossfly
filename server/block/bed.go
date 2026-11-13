@@ -210,6 +210,14 @@ func (b Bed) EntityLand(_ cube.Pos, _ *world.Tx, e world.Entity, distance *float
 }
 
 // velocityEntity represents an entity that can maintain a velocity.
+// movesClientSide reports whether e is moved by a client (a connected player): such an entity slows
+// itself in cobwebs and berry bushes. Sending it a velocity there every tick replaces the motion the
+// client had slowed, so it falls through a cobweb much faster than it should.
+func movesClientSide(e world.Entity) bool {
+	c, ok := e.(interface{ MovesClientSide() bool })
+	return ok && c.MovesClientSide()
+}
+
 type velocityEntity interface {
 	// Velocity returns the current velocity of the entity.
 	Velocity() mgl64.Vec3

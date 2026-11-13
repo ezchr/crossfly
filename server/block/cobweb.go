@@ -21,7 +21,7 @@ func (Cobweb) EntityInside(_ cube.Pos, _ *world.Tx, e world.Entity) {
 	if fallEntity, ok := e.(fallDistanceEntity); ok {
 		fallEntity.ResetFallDistance()
 	}
-	if v, ok := e.(velocityEntity); ok {
+	if v, ok := e.(velocityEntity); ok && !movesClientSide(e) {
 		vel := v.Velocity()
 		vel[0] *= 0.25
 		vel[1] *= 0.05

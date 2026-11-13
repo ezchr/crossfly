@@ -3306,6 +3306,12 @@ func (p *Player) Velocity() mgl64.Vec3 {
 	return p.data.Vel
 }
 
+// MovesClientSide reports whether a client moves this player: its own game slows it in cobwebs and
+// bushes, so the server must not also send it a velocity for those.
+func (p *Player) MovesClientSide() bool {
+	return p.conn() != session.Nop
+}
+
 // SetVelocity updates the player's velocity. If there is an attached session, this will just send
 // the velocity to the player session for the player to update.
 func (p *Player) SetVelocity(velocity mgl64.Vec3) {
