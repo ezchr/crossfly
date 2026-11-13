@@ -93,6 +93,11 @@ type Session struct {
 	moving                         bool
 	shieldUse                      shieldUseState
 
+	// anvilShown is whether the client was last sent an anvil input or material that differs from the
+	// real item (AnvilInputs); anvilResync counts down the requests whose slots are sent again after.
+	anvilShown  atomic.Bool
+	anvilResync atomic.Int32
+
 	lastChunkPos world.ChunkPos
 
 	recipes map[uint32]recipe.Recipe

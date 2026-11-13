@@ -249,10 +249,13 @@ func (s *Session) renameItem(tx *world.Tx, c session.Controllable, name string) 
 // anvilResult is the anvil's result, its level cost and how many materials a repair uses
 // (handler_anvil.go's handleCraftRecipeOptional, computed up front). p is the client's protocol (its
 // item names).
-func anvilResult(input, material item.Stack, name *string, creative bool, p *jitem.Proto) (item.Stack, int, int) {
-	if input.Empty() {
+func anvilResult(realInput, realMaterial item.Stack, name *string, creative bool, p *jitem.Proto) (item.Stack, int, int) {
+	if realInput.Empty() {
 		return item.Stack{}, 0, 0
 	}
+	// The items as the anvil counts them under session.AnvilRules (the items themselves without
+	// rules), so a Java player gets the result and the cost a Bedrock player gets.
+	input, material := session.AnvilInputs(realInput, realMaterial)
 	result := input
 	anvilCost := input.AnvilCost()
 	if !material.Empty() {
@@ -279,7 +282,7 @@ func anvilResult(input, material item.Stack, name *string, creative bool, p *jit
 				result, actionCost = repairItemWithDurable(input, material, result)
 			}
 			var compatible, incompatible bool
-			result, compatible, incompatible, actionCost = mergeEnchantments(input, material, result, actionCost, enchantedBook)
+			result, compatible, incompatible, actionCost = session.AnvilMergeEnchantments(realInput, input, material, result, actionCost, enchantedBook)
 			if !durable && incompatible && !compatible {
 				return item.Stack{}, 0, 0
 			}
@@ -310,9 +313,12 @@ func anvilResult(input, material item.Stack, name *string, creative bool, p *jit
 	if cost >= 40 && !creative {
 		return item.Stack{}, cost, 0 // "Too Expensive!"
 	}
-	updated := result.AnvilCost()
-	if !material.Empty() && updated < material.AnvilCost() {
-		updated = material.AnvilCost()
+	if !session.AnvilKeepsLevels(realInput, result) {
+		return item.Stack{}, 0, 0
+	}
+	updated := realInput.AnvilCost()
+	if !realMaterial.Empty() && updated < realMaterial.AnvilCost() {
+		updated = realMaterial.AnvilCost()
 	}
 	if renameCost != actionCost {
 		updated = updated*2 + 1
@@ -360,50 +366,6 @@ func repairItemWithDurable(input, durable, result item.Stack) (item.Stack, int) 
 		cost += 2
 	}
 	return result, cost
-}
-
-// mergeEnchantments merges the material's enchantments onto the result (handler_anvil.go).
-func mergeEnchantments(input, material, result item.Stack, cost int, enchantedBook bool) (item.Stack, bool, bool, int) {
-	var hasCompatible, hasIncompatible bool
-	for _, enchant := range material.Enchantments() {
-		enchantType := enchant.Type()
-		compatible := enchantType.CompatibleWithItem(input.Item())
-		if _, ok := input.Item().(item.EnchantedBook); ok {
-			compatible = true
-		}
-		for _, other := range input.Enchantments() {
-			if otherType := other.Type(); enchantType != otherType && !enchantType.CompatibleWithEnchantment(otherType) {
-				compatible = false
-				cost++
-			}
-		}
-		if !compatible {
-			hasIncompatible = true
-			continue
-		}
-		hasCompatible = true
-		resultLevel := enchant.Level()
-		levelCost := resultLevel
-		if existing, ok := input.Enchantment(enchantType); ok {
-			if existing.Level() > resultLevel || (existing.Level() == resultLevel && resultLevel >= enchantType.MaxLevel()) {
-				hasIncompatible = true
-				continue
-			} else if existing.Level() == resultLevel {
-				resultLevel++
-			}
-			levelCost = resultLevel - existing.Level()
-		}
-		rarityCost := enchantType.Rarity().Cost()
-		if enchantedBook {
-			rarityCost = max(1, rarityCost/2)
-		}
-		result = result.WithEnchantments(item.NewEnchantment(enchantType, resultLevel))
-		cost += rarityCost * levelCost
-		if input.Count() > 1 {
-			cost = 40
-		}
-	}
-	return result, hasCompatible, hasIncompatible, cost
 }
 
 // grindResult is the grindstone's result (handler_grindstone.go).

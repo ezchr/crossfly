@@ -65,6 +65,18 @@ func (h *ItemStackRequestHandler) Handle(p packet.Packet, s *Session, tx *world.
 func (h *ItemStackRequestHandler) handleRequest(req protocol.ItemStackRequest, s *Session, tx *world.Tx, c Controllable) (err error) {
 	h.currentRequest = req.RequestID
 	defer func() {
+		if s.anvilResync.Load() > 0 {
+			// The client was shown an anvil item differently (anvil_rules.go): the slots this request
+			// changed are sent as they really are, after the response, so the client has the stack
+			// network IDs they are sent with.
+			changed := make(map[byte][]byte, len(h.changes))
+			for container, slots := range h.changes {
+				for slot := range slots {
+					changed[container] = append(changed[container], slot)
+				}
+			}
+			defer s.resyncAnvilSlots(changed, tx)
+		}
 		if err != nil {
 			h.reject(req.RequestID, s, tx)
 			h.heldItemChanged = false

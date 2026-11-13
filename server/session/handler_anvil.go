@@ -46,77 +46,15 @@ func (h *ItemStackRequestHandler) handleCraftRecipeOptional(a *protocol.CraftRec
 		Container: protocol.FullContainerName{ContainerID: protocol.ContainerAnvilMaterial},
 		Slot:      anvilMaterialSlot,
 	}, s, tx)
-	result := input
-
-	// The sum of the input's anvil cost as well as the material's anvil cost.
-	anvilCost := input.AnvilCost()
-	if !material.Empty() {
-		anvilCost += material.AnvilCost()
+	var name string
+	rename := len(filterStrings) > 0
+	if rename {
+		name = filterStrings[int(a.FilterStringIndex)]
 	}
-
-	// The material input may be empty (if the player is only renaming, for example).
-	var actionCost, renameCost, repairCount int
-	if !material.Empty() {
-		// First check if we are trying to repair the item with a material.
-		if repairable, ok := input.Item().(item.Repairable); ok && repairable.RepairableBy(material) {
-			result, actionCost, repairCount, err = repairItemWithMaterial(input, material, result)
-			if err != nil {
-				return err
-			}
-		} else {
-			_, book := material.Item().(item.EnchantedBook)
-			_, durable := input.Item().(item.Durable)
-			inputName, inputMeta := input.Item().EncodeItem()
-			materialName, materialMeta := material.Item().EncodeItem()
-			sameType := inputName == materialName && inputMeta == materialMeta
-
-			// Ensure that the input item is repairable, or the material item is an enchanted book. If not, this is an
-			// invalid scenario, and we should return an error.
-			enchantedBook := book && len(material.Enchantments()) > 0
-			if !enchantedBook && (!sameType || !durable) {
-				return fmt.Errorf("input item is not repairable/same type or material item is not an enchanted book")
-			}
-
-			// If the material is another durable item, we just need to increase the durability of the result by the
-			// material's durability at 12%.
-			if durable && !enchantedBook {
-				result, actionCost = repairItemWithDurable(input, material, result)
-			}
-
-			// Merge enchantments on the material item onto the result item.
-			var hasCompatible, hasIncompatible bool
-			result, hasCompatible, hasIncompatible, actionCost = mergeEnchantments(input, material, result, actionCost, enchantedBook)
-
-			// If we don't have any compatible enchantments and the input item isn't durable, then this is an invalid
-			// scenario, and we should return an error.
-			if !durable && hasIncompatible && !hasCompatible {
-				return fmt.Errorf("no compatible enchantments but have incompatible ones")
-			}
-		}
-	}
-
-	// If we have a filter string, then the client is intending to rename the item.
-	if len(filterStrings) > 0 {
-		renameCost = 1
-		actionCost += renameCost
-		result = result.WithCustomName(filterStrings[int(a.FilterStringIndex)])
-	}
-
-	// Calculate the total cost. (action cost + anvil cost)
-	cost := actionCost + anvilCost
-	if cost <= 0 {
-		return fmt.Errorf("no action was taken")
-	}
-
-	// If our only action was renaming, the cost should never exceed 40.
-	if renameCost == actionCost && renameCost > 0 && cost >= 40 {
-		cost = 39
-	}
-
-	// We can bypass the "impossible cost" limit if we're in creative mode.
 	c := co.GameMode().CreativeInventory()
-	if cost >= 40 && !c {
-		return fmt.Errorf("impossible cost")
+	result, cost, repairCount, err := anvilCombine(input, material, rename, name, c)
+	if err != nil {
+		return err
 	}
 
 	// Ensure we have enough levels (or if we're in creative mode, ignore the cost) to perform the action.
@@ -125,18 +63,6 @@ func (h *ItemStackRequestHandler) handleCraftRecipeOptional(a *protocol.CraftRec
 		return fmt.Errorf("not enough experience")
 	} else if !c {
 		co.SetExperienceLevel(level - cost)
-	}
-
-	// If we had a result item, we need to calculate the new anvil cost and update it on the item.
-	if !result.Empty() {
-		updatedAnvilCost := result.AnvilCost()
-		if !material.Empty() && updatedAnvilCost < material.AnvilCost() {
-			updatedAnvilCost = material.AnvilCost()
-		}
-		if renameCost != actionCost || renameCost == 0 {
-			updatedAnvilCost = updatedAnvilCost*2 + 1
-		}
-		result = result.WithAnvilCost(updatedAnvilCost)
 	}
 
 	// If we're not in creative mode, we have a 12% chance of the anvil degrading down one state. If that is the case, we
@@ -169,6 +95,105 @@ func (h *ItemStackRequestHandler) handleCraftRecipeOptional(a *protocol.CraftRec
 		}, item.Stack{}, s, tx)
 	}
 	return h.createResults(s, tx, result)
+}
+
+// anvilCombine works out what an anvil makes of the input and material passed: the result, the levels
+// it costs and the number of materials a repair uses up. rename is whether the item gets the name
+// passed. An error is returned if the anvil makes nothing of them, or nothing a player not in creative
+// mode can afford.
+func anvilCombine(realInput, realMaterial item.Stack, rename bool, name string, creative bool) (item.Stack, int, int, error) {
+	// The anvil counts the items as AnvilInputs has them (the items themselves unless AnvilRules are
+	// set), which is also how the client is shown them and so what its own cost comes from.
+	input, material := AnvilInputs(realInput, realMaterial)
+	result := input
+
+	// The sum of the input's anvil cost as well as the material's anvil cost.
+	anvilCost := input.AnvilCost()
+	if !material.Empty() {
+		anvilCost += material.AnvilCost()
+	}
+
+	// The material input may be empty (if the player is only renaming, for example).
+	var actionCost, renameCost, repairCount int
+	if !material.Empty() {
+		// First check if we are trying to repair the item with a material.
+		if repairable, ok := input.Item().(item.Repairable); ok && repairable.RepairableBy(material) {
+			var err error
+			result, actionCost, repairCount, err = repairItemWithMaterial(input, material, result)
+			if err != nil {
+				return item.Stack{}, 0, 0, err
+			}
+		} else {
+			_, book := material.Item().(item.EnchantedBook)
+			_, durable := input.Item().(item.Durable)
+			inputName, inputMeta := input.Item().EncodeItem()
+			materialName, materialMeta := material.Item().EncodeItem()
+			sameType := inputName == materialName && inputMeta == materialMeta
+
+			// Ensure that the input item is repairable, or the material item is an enchanted book. If not, this is an
+			// invalid scenario, and we should return an error.
+			enchantedBook := book && len(material.Enchantments()) > 0
+			if !enchantedBook && (!sameType || !durable) {
+				return item.Stack{}, 0, 0, fmt.Errorf("input item is not repairable/same type or material item is not an enchanted book")
+			}
+
+			// If the material is another durable item, we just need to increase the durability of the result by the
+			// material's durability at 12%.
+			if durable && !enchantedBook {
+				result, actionCost = repairItemWithDurable(input, material, result)
+			}
+
+			// Merge enchantments on the material item onto the result item.
+			var hasCompatible, hasIncompatible bool
+			result, hasCompatible, hasIncompatible, actionCost = AnvilMergeEnchantments(realInput, input, material, result, actionCost, enchantedBook)
+
+			// If we don't have any compatible enchantments and the input item isn't durable, then this is an invalid
+			// scenario, and we should return an error.
+			if !durable && hasIncompatible && !hasCompatible {
+				return item.Stack{}, 0, 0, fmt.Errorf("no compatible enchantments but have incompatible ones")
+			}
+		}
+	}
+
+	// If we have a filter string, then the client is intending to rename the item.
+	if rename {
+		renameCost = 1
+		actionCost += renameCost
+		result = result.WithCustomName(name)
+	}
+
+	// Calculate the total cost. (action cost + anvil cost)
+	cost := actionCost + anvilCost
+	if cost <= 0 {
+		return item.Stack{}, 0, 0, fmt.Errorf("no action was taken")
+	}
+
+	// If our only action was renaming, the cost should never exceed 40.
+	if renameCost == actionCost && renameCost > 0 && cost >= 40 {
+		cost = 39
+	}
+
+	if cost >= 40 && !creative {
+		return item.Stack{}, 0, 0, fmt.Errorf("impossible cost")
+	}
+
+	// Whatever the rules, no enchantment of the item may come out lower than it went in.
+	if !AnvilKeepsLevels(realInput, result) {
+		return item.Stack{}, 0, 0, fmt.Errorf("result would lower an enchantment of the input")
+	}
+
+	// If we had a result item, we need to calculate the new anvil cost and update it on the item.
+	if !result.Empty() {
+		updatedAnvilCost := realInput.AnvilCost()
+		if !realMaterial.Empty() && updatedAnvilCost < realMaterial.AnvilCost() {
+			updatedAnvilCost = realMaterial.AnvilCost()
+		}
+		if renameCost != actionCost || renameCost == 0 {
+			updatedAnvilCost = updatedAnvilCost*2 + 1
+		}
+		result = result.WithAnvilCost(updatedAnvilCost)
+	}
+	return result, cost, repairCount, nil
 }
 
 // repairItemWithMaterial is a helper function that repairs an item stack with a given material stack. It returns the new item
@@ -209,6 +234,14 @@ func repairItemWithDurable(input item.Stack, durable item.Stack, result item.Sta
 // mergeEnchantments merges the enchantments of the material item stack onto the result item stack and returns the result
 // item stack, booleans indicating whether the enchantments had any compatible or incompatible enchantments, and the cost.
 func mergeEnchantments(input item.Stack, material item.Stack, result item.Stack, cost int, enchantedBook bool) (item.Stack, bool, bool, int) {
+	return AnvilMergeEnchantments(input, input, material, result, cost, enchantedBook)
+}
+
+// AnvilMergeEnchantments is the merge of the enchantments of an anvil's material onto its result,
+// shared with the sessions of Java players. real is the item in the anvil and input the same item as
+// AnvilInputs has it: which enchantments get along is decided by the real item, the levels to start
+// from by input.
+func AnvilMergeEnchantments(real, input, material, result item.Stack, cost int, enchantedBook bool) (item.Stack, bool, bool, int) {
 	var hasCompatible, hasIncompatible bool
 	for _, enchant := range material.Enchantments() {
 		// First ensure that the enchantment type is compatible with the input item.
@@ -220,7 +253,7 @@ func mergeEnchantments(input item.Stack, material item.Stack, result item.Stack,
 
 		// Then ensure that each input enchantment is compatible with this material enchantment. If one is not compatible,
 		// increase the cost by one.
-		for _, otherEnchant := range input.Enchantments() {
+		for _, otherEnchant := range real.Enchantments() {
 			if otherType := otherEnchant.Type(); enchantType != otherType && !enchantType.CompatibleWithEnchantment(otherType) {
 				compatible = false
 				cost++

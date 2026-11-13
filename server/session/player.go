@@ -277,6 +277,9 @@ func (s *Session) sendInv(inv *inventory.Inventory, windowID uint32) {
 	for _, i := range inv.Slots() {
 		pk.Content = append(pk.Content, instanceFromItem(s.br, i))
 	}
+	if inv == s.ui {
+		s.anvilSlots(pk.Content)
+	}
 	s.writePacket(pk)
 }
 
