@@ -64,7 +64,9 @@ func (c Crossbow) ContinueCharge(releaser Releaser, tx *world.Tx, ctx *UseContex
 			tx.PlaySound(releaser.Position(), sound.CrossbowLoad{Stage: sound.CrossbowLoadingMiddle, QuickCharge: qcLevel > 0})
 		}
 	}
-	if duration >= chargeDuration {
+	// Only on the tick the charge completes: a Java client keeps charging until the use key is let go,
+	// and a sound every tick after that was sent to everyone nearby, 20 times a second.
+	if duration >= chargeDuration && duration-time.Second/20 < chargeDuration {
 		tx.PlaySound(releaser.Position(), sound.CrossbowLoad{Stage: sound.CrossbowLoadingEnd, QuickCharge: qcLevel > 0})
 	}
 }
