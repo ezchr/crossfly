@@ -2,6 +2,7 @@ package javasession
 
 import (
 	"math"
+	"time"
 
 	"github.com/df-mc/dragonfly/server/block/cube"
 	"github.com/df-mc/dragonfly/server/entity"
@@ -286,6 +287,22 @@ type track struct {
 	yaw, pitch, hd byte
 	sinceSync      int
 	synced         bool
+	// lastMove is when the last delta move was sent (moveTicks: how many ticks the next one spans).
+	lastMove time.Time
+}
+
+// moveClock is the time moves are measured with (a test sets it).
+var moveClock = time.Now
+
+// moveTicks is how many ticks a move sent now spans, the last one sent at last: the ticks between
+// them, at least 1 and at most interval (the entity type's update interval). A first move, or one
+// after a pause, spans the full interval, as vanilla's every-interval moves do.
+func moveTicks(last, now time.Time, interval int) int {
+	if last.IsZero() {
+		return interval
+	}
+	n := int((now.Sub(last) + time.Second/40) / (time.Second / 20))
+	return max(1, min(n, interval))
 }
 
 func encodeDelta(v float64) int64 { return int64(math.Floor(v*4096 + 0.5)) }
@@ -304,6 +321,18 @@ func (s *Session) positionSyncOver(e world.Entity, pos mgl64.Vec3, rot cube.Rota
 		return
 	}
 	body, head := entityYaws(e, rot)
+	if ticks == 0 {
+		if _, ok := e.(*player.Player); ok {
+			// Players move whenever their client says so, mostly every tick, but the 26.3 client
+			// plays a linear move over the player type's update interval (2 ticks,
+			// SteppedInterpolationHandler) and queues the rest: moves sent every tick then pile up
+			// to twice real time, and others are shown about 2 ticks late and catch up in jerks.
+			// The move says how many ticks it really spans instead.
+			if iv := s.EntityUpdateInterval(e); iv > 1 {
+				ticks = -iv // syncEntitySteps works the ticks out
+			}
+		}
+	}
 	s.syncEntitySteps(id, pos, cube.Rotation{body, rot.Pitch()}, head, onGround, ticks)
 	s.moveModel(id, pos, rot, onGround) // the parts of its model, if it has one (entitymodel.go)
 }
@@ -338,6 +367,13 @@ func (s *Session) syncEntitySteps(id int32, pos mgl64.Vec3, rot cube.Rotation, h
 		}
 	}
 	moved := d[0] != 0 || d[1] != 0 || d[2] != 0
+	if ticks < 0 { // -interval: the ticks since the last move, at most the interval
+		now := moveClock()
+		ticks = moveTicks(t.lastMove, now, -ticks)
+		if moved {
+			t.lastMove = now
+		}
+	}
 	turned := yaw != t.yaw || pitch != t.pitch
 	headTurned := head != t.hd
 	if fits {
