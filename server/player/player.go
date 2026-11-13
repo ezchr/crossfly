@@ -4572,6 +4572,14 @@ func (p *Player) UpdateDiagnostics(d session.Diagnostics) {
 	p.Handler().HandleDiagnostics(p, d)
 }
 
+// ResetHud sends a Bedrock client its HUD again as the server has it (session.Session.ResetHud). It does
+// nothing for players whose session has no such thing (Java players, players without a client).
+func (p *Player) ResetHud() {
+	if r, ok := p.conn().(interface{ ResetHud() }); ok {
+		r.ResetHud()
+	}
+}
+
 // ShowHudElement shows a HUD element to the player if it is not already shown.
 func (p *Player) ShowHudElement(e hud.Element) {
 	p.conn().ShowHudElement(e)

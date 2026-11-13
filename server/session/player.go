@@ -964,6 +964,26 @@ func (s *Session) SendHudUpdates() {
 	}
 }
 
+// ResetHud sends the client every HUD element the server has not hidden as visible again. A Bedrock
+// client that died with a screen open (the chat) can come back with parts of its HUD not drawn
+// although nothing hid them; this puts its HUD back to what the server has.
+func (s *Session) ResetHud() {
+	if s == Nop {
+		return
+	}
+	s.hudMu.RLock()
+	var show []int32
+	for _, e := range hud.All() {
+		if _, hidden := s.hiddenHud[e]; !hidden {
+			show = append(show, int32(e.Uint8()))
+		}
+	}
+	s.hudMu.RUnlock()
+	if len(show) > 0 {
+		s.writePacket(&packet.SetHud{Elements: show, Visibility: packet.HudVisibilityReset})
+	}
+}
+
 // AddDebugShape adds a debug shape to be rendered to the player. If the shape already exists, it will be
 // updated with the new information.
 func (s *Session) AddDebugShape(shape debug.Shape) {
