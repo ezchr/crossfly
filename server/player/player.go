@@ -2082,6 +2082,13 @@ func (p *Player) UsingItem() bool {
 	return ok && hand == shieldHandMain && p.shield.prepared
 }
 
+// UsingOffHand reports whether the item the player uses is the one in the off hand: a raised shield
+// held there. Bedrock shows a raised shield from the blocking flag; Java viewers need to know the hand.
+func (p *Player) UsingOffHand() bool {
+	_, hand, ok := p.heldShield()
+	return ok && hand == shieldHandOff && p.shield.prepared
+}
+
 // SetShieldBlockingInput updates whether the player is holding the control that raises shields.
 func (p *Player) SetShieldBlockingInput(down bool) {
 	if p.shield.input == down {

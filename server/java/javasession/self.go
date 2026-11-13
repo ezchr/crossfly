@@ -244,7 +244,9 @@ func (s *Session) ViewEntityState(e world.Entity) {
 		// aiming), raises a shield or plays eating.
 		w.Byte(dataLivingFlags)
 		w.VarInt(dataTypeByte)
-		w.Byte(bit(u.UsingItem(), 0x01))
+		// 0x01: using an item, 0x02: the one in the off hand (a shield raised there, the usual place).
+		off := mobBool(e, (interface{ UsingOffHand() bool }).UsingOffHand)
+		w.Byte(bit(u.UsingItem() || off, 0x01) | bit(off, 0x02))
 	}
 	s.writeLivingFxData(w, e)
 	w.Byte(0xff)
