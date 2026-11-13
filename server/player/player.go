@@ -2306,7 +2306,11 @@ func (p *Player) triggerSpearLunge() {
 
 	held, left := p.HeldItems()
 	p.SetHeldItems(p.damageItem(held, enchantment.Lunge.DurabilityCost()), left)
-	p.Exhaust(enchantment.Lunge.ExhaustionCost(level))
+	cost := enchantment.Lunge.ExhaustionCost(level)
+	if per := math.Float64frombits(lungeExhaustion.Load()); per >= 0 {
+		cost = per * float64(level)
+	}
+	p.Exhaust(cost)
 	p.tx.PlaySound(p.Position(), sound.Lunge{Level: level})
 }
 

@@ -178,3 +178,21 @@ func TestLungeRequirements(t *testing.T) {
 		})
 	}
 }
+
+// TestLungeExhaustionRule checks that SetLungeExhaustion replaces Bedrock's 4 exhaustion per level and
+// that a negative value brings it back.
+func TestLungeExhaustionRule(t *testing.T) {
+	defer SetLungeExhaustion(-1)
+	for _, c := range []struct{ per, want float64 }{{2, 1}, {0, 0}, {-1, 2}} {
+		SetLungeExhaustion(c.per)
+		spearWorld(t, world.GameModeSurvival, func(tx *world.Tx, p *Player) {
+			holdLunge(p, 2)
+			p.SetFood(20)
+			saturation := p.hunger.saturationLevel
+			p.triggerSpearLunge()
+			if got := saturation - p.hunger.saturationLevel; math.Abs(got-c.want) > 1e-9 {
+				t.Fatalf("Lunge II at %v per level took %v saturation, want %v", c.per, got, c.want)
+			}
+		})
+	}
+}
