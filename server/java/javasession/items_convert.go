@@ -10,6 +10,7 @@ import (
 	jitem "github.com/df-mc/dragonfly/server/java/protocol/item"
 	"github.com/df-mc/dragonfly/server/java/protocol/text"
 	v777 "github.com/df-mc/dragonfly/server/java/protocol/v777"
+	"github.com/df-mc/dragonfly/server/java/protocol/wire"
 	"github.com/df-mc/dragonfly/server/textcolour"
 	"github.com/df-mc/dragonfly/server/world"
 )
@@ -168,6 +169,8 @@ func javaStack(ds item.Stack, js *jitem.Stack) {
 		dyedColour(v.Tier, js)
 	case item.Firework:
 		fireworksComponent(v, js) // firework.go
+	case item.Crossbow:
+		chargedProjectiles(v, js)
 	}
 
 	headProfile(ds, js) // a player head's skin (heads_java.go)
@@ -375,4 +378,22 @@ func itemText(s string) jitem.Text {
 	}
 	c := text.Legacy(s, text.Bedrock)
 	return jitem.Text{Text: s, NBT: c.Bytes()}
+}
+
+// chargedProjectiles sets the charged_projectiles component of a loaded crossbow. A Java client
+// only shows a crossbow as loaded (and shoots it on the next use instead of charging it again) when
+// the stack has it.
+func chargedProjectiles(c item.Crossbow, js *jitem.Stack) {
+	if c.Item.Empty() {
+		return
+	}
+	var inner jitem.Stack
+	javaStack(c.Item.Grow(1-c.Item.Count()), &inner)
+	if inner.Empty() {
+		return
+	}
+	var w wire.Writer
+	w.VarInt(1)
+	inner.Encode(&w)
+	js.Raw = append(js.Raw, jitem.RawComponent{Type: jitem.CompChargedProjectiles, Data: w.B})
 }

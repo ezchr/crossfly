@@ -118,7 +118,7 @@ func (s *Session) handleInput(id int32, body []byte) (bool, error) {
 				c.BreakBlock(pos)
 				s.input.breaking = false
 			case actionReleaseUseItem:
-				c.ReleaseItem()
+				s.releaseUseItem(c)
 			case actionDropAll, actionDropItem:
 				s.dropHeldItem(c, action == actionDropAll)
 			case actionSwapOffhand:
@@ -421,4 +421,17 @@ func (s *Session) entityByID(tx *world.Tx, id int32) (world.Entity, bool) {
 		return nil, false
 	}
 	return h.Entity(tx)
+}
+
+// releaseUseItem handles RELEASE_USE_ITEM. A Bedrock client finishes charging a crossbow with a
+// second UseItem, which is when Dragonfly loads it (item.Chargeable has no Release); a Java client
+// only lets go of the use key. Without the second UseItem the crossbow was never loaded, so the
+// next use_item started a new charge instead of shooting.
+func (s *Session) releaseUseItem(c session.Controllable) {
+	held, _ := c.HeldItems()
+	if _, ok := held.Item().(item.Chargeable); ok && c.UsingItem() {
+		c.UseItem()
+		return
+	}
+	c.ReleaseItem()
 }
