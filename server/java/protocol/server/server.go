@@ -119,6 +119,9 @@ type ClientInfo struct {
 	// CoreVersion is the version of the minecraft:core pack the client has: its own version, also when a
 	// proxy in front translates the packets of an older client ("" if it named none).
 	CoreVersion string
+	// PacksLoaded reports whether the server offered resource packs and the client loaded every one
+	// (a player who declined one, or whose download failed, sees the vanilla textures).
+	PacksLoaded bool
 }
 
 // Profile is a logged-in player's identity.
@@ -551,6 +554,7 @@ func (l *Listener) configure(c *wire.Conn, ver *version.Version, local bool) (Cl
 	sentRegistries := false
 	coreVersion := ""
 	pending := map[[16]byte]*ResourcePack{}
+	packsOffered, packsLoaded := false, true
 	stopKeepAlive := func() {}
 	defer func() { stopKeepAlive() }()
 	for {
@@ -618,6 +622,7 @@ func (l *Listener) configure(c *wire.Conn, ver *version.Version, local bool) (Cl
 				packs = l.cfg.TranslatedResourcePacks
 			}
 			for _, rp := range packs {
+				packsOffered = true
 				pending[rp.id()] = rp
 				c.WritePacket(ver.ClientboundConfig(v777.ClientboundConfigurationResourcePackPush), rp.push())
 			}
@@ -653,6 +658,9 @@ func (l *Listener) configure(c *wire.Conn, ver *version.Version, local bool) (Cl
 				disconnect(c, ver.ClientboundConfig(v777.ClientboundConfigurationDisconnect), "This server needs its resource pack.")
 				return info, fmt.Errorf("required resource pack refused (status %d)", status)
 			}
+			if status != packLoaded {
+				packsLoaded = false
+			}
 			delete(pending, id)
 			if len(pending) == 0 {
 				stopKeepAlive()
@@ -666,6 +674,7 @@ func (l *Listener) configure(c *wire.Conn, ver *version.Version, local bool) (Cl
 				return info, errors.New("client finished configuration early")
 			}
 			info.CoreVersion = coreVersion
+			info.PacksLoaded = packsOffered && packsLoaded
 			return info, nil
 		case v777.ServerboundConfigurationCustomPayload, v777.ServerboundConfigurationKeepAlive,
 			v777.ServerboundConfigurationPong:

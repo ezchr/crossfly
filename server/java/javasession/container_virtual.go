@@ -95,6 +95,17 @@ func sameItem(a, b item.Stack) bool {
 }
 
 func trackJavaSession(id uuid.UUID, s *Session) { javaSessions.Store(id, s) }
-func untrackJavaSession(id uuid.UUID)           { javaSessions.Delete(id) }
+
+// PackLoaded reports whether p is a Java player who loaded the server's resource packs, so text
+// that draws with the pack's font glyphs (custom window backgrounds) shows as meant.
+func PackLoaded(p *player.Player) bool {
+	v, ok := javaSessions.Load(p.UUID())
+	if !ok {
+		return false
+	}
+	s := v.(*Session)
+	return s.jp != nil && s.jp.Info.PacksLoaded
+}
+func untrackJavaSession(id uuid.UUID) { javaSessions.Delete(id) }
 
 var _ session.Controllable = (*player.Player)(nil)
