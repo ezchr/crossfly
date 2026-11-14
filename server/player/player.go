@@ -1173,23 +1173,33 @@ func (p *Player) respawn(f func(p *Player)) {
 		// character/world change - re-sending ViewSkin to this player's current viewers here on
 		// the same pattern, after giving the respawn's own entity/spawn packets a moment to land
 		// client-side first, is the same kind of workaround for the same kind of quirk.
+		//
+		// The entity state (name tag, score tag, flags) has the same quirk: viewers kept the score
+		// tag the player had just before dying (a health line under the name stayed at the old
+		// value) until it changed again. It is sent again with the skin and twice more after.
 		respawnedHandle := np.H()
 		respawnWorld := w
-		time.AfterFunc(500*time.Millisecond, func() {
-			respawnWorld.Do(func(tx *world.Tx) {
-				e, ok := respawnedHandle.Entity(tx)
-				if !ok {
-					return
-				}
-				rp, ok := e.(*Player)
-				if !ok {
-					return
-				}
-				for _, v := range rp.viewers() {
-					v.ViewSkin(rp)
-				}
+		for i, d := range []time.Duration{500 * time.Millisecond, time.Second, 3 * time.Second} {
+			withSkin := i == 0
+			time.AfterFunc(d, func() {
+				respawnWorld.Do(func(tx *world.Tx) {
+					e, ok := respawnedHandle.Entity(tx)
+					if !ok {
+						return
+					}
+					rp, ok := e.(*Player)
+					if !ok || rp.Dead() {
+						return
+					}
+					for _, v := range rp.viewers() {
+						if withSkin {
+							v.ViewSkin(rp)
+						}
+						v.ViewEntityState(rp)
+					}
+				})
 			})
-		})
+		}
 		if f != nil {
 			f(np)
 		}
