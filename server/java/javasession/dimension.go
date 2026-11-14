@@ -59,6 +59,7 @@ func (s *Session) switchWorld(tx *world.Tx, w *world.World, c session.Controllab
 		s.queue(v777.ClientboundPlayGameEvent, p)
 		s.resendInventory()
 		s.SendAbilities(c)
+		s.newPlayerEntity()
 		s.SendHealth(c.Health(), c.MaxHealth(), c.Absorption())
 		s.SendFood(c.Food(), 0, 0)
 		s.resendLevelInfo() // the client has a new level: no time or weather yet

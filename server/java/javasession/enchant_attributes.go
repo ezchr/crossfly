@@ -20,6 +20,12 @@ import (
 // sneaks and walks on soul sand as if the items had no enchantments. syncEnchantAttributes works
 // them out from what the player holds and wears every tick and sends those that changed, as base
 // values without modifiers, for any level up to the attribute's range.
+//
+// The armour bar comes from attributes the same way: a vanilla server adds the armour's
+// minecraft:armor and minecraft:armor_toughness modifiers to the player, and the client draws the
+// bar from the armor attribute (Player.getArmorValue). They are sent here as well, the sums of
+// what the worn armour gives, as Dragonfly adds them up for its damage reduction
+// (inventory.Armour.DamageReduction).
 
 // enchantAttr is one of the attributes syncEnchantAttributes sends.
 type enchantAttr int
@@ -31,18 +37,20 @@ const (
 	attrSneakingSpeed
 	attrOxygenBonus
 	attrMovementEfficiency
+	attrArmor
+	attrArmorToughness
 	enchantAttrCount
 )
 
 var (
 	enchantAttrNames = [enchantAttrCount]string{
 		"mining_efficiency", "submerged_mining_speed", "water_movement_efficiency",
-		"sneaking_speed", "oxygen_bonus", "movement_efficiency",
+		"sneaking_speed", "oxygen_bonus", "movement_efficiency", "armor", "armor_toughness",
 	}
 	// enchantAttrDefaults are the values of a new Java player entity (Attributes, 26.3).
-	enchantAttrDefaults = [enchantAttrCount]float64{0, 0.2, 0, 0.3, 0, 0}
+	enchantAttrDefaults = [enchantAttrCount]float64{0, 0.2, 0, 0.3, 0, 0, 0, 0}
 	// enchantAttrMax are the attributes' upper bounds.
-	enchantAttrMax = [enchantAttrCount]float64{1024, 20, 1, 1, 1024, 1}
+	enchantAttrMax = [enchantAttrCount]float64{1024, 20, 1, 1, 1024, 1, 30, 20}
 	enchantAttrIDs = func() (ids [enchantAttrCount]int32) {
 		for i, n := range enchantAttrNames {
 			ids[i] = v777.BuiltinID("minecraft:attribute", "minecraft:"+n)
@@ -98,6 +106,12 @@ func enchantAttributeValues(held item.Stack, armour [4]item.Stack, soulSpeed int
 	v[attrWaterMovementEfficiency] = float64(depthStrider) / 3
 	if soulSpeed > 0 {
 		v[attrMovementEfficiency] = 1
+	}
+	for _, it := range armour {
+		if a, ok := it.Item().(item.Armour); ok {
+			v[attrArmor] += a.DefencePoints()
+			v[attrArmorToughness] += a.Toughness()
+		}
 	}
 	for i := range v {
 		v[i] = min(v[i], enchantAttrMax[i])

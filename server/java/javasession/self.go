@@ -17,6 +17,8 @@ type vitals struct {
 	food               int
 	absorption         float64 // last sent; golden hearts are entity data, not set_health
 	absorptionSent     bool
+	maxHealth          float64 // last sent; the minecraft:max_health attribute (max_health.go)
+	maxHealthSent      bool
 }
 
 // Player entity data: absorption (Player.DATA_PLAYER_ABSORPTION_ID, a FLOAT), the golden hearts.
@@ -26,13 +28,19 @@ const (
 )
 
 // SendHealth ...
-func (s *Session) SendHealth(health, max, absorption float64) {
+func (s *Session) SendHealth(health, maxHealth, absorption float64) {
 	s.vitalsMu.Lock()
 	s.vitals.health = health
+	sendMax := !s.vitals.maxHealthSent || s.vitals.maxHealth != maxHealth
+	s.vitals.maxHealth, s.vitals.maxHealthSent = maxHealth, true
 	v := s.vitals
 	sendAbs := !s.vitals.absorptionSent || s.vitals.absorption != absorption
 	s.vitals.absorption, s.vitals.absorptionSent = absorption, true
 	s.vitalsMu.Unlock()
+	if sendMax {
+		// Before the health: the client clamps the health to the maximum it has.
+		s.writeMaxHealth(maxHealth)
+	}
 	s.sendVitals(v)
 	if sendAbs {
 		w := s.packet()
@@ -110,7 +118,6 @@ func (s *Session) SendAbilities(c session.Controllable) {
 func (s *Session) SendRespawn(pos mgl64.Vec3, c session.Controllable) {
 	s.closeWindowsAfterRespawn()
 	s.writeRespawn(s.dim, c, 0)
-	s.enchAttrs.respawned() // a new player entity: default attributes
 	rot := c.Rotation()
 	s.teleport(pos[0], pos[1], pos[2], float32(rot.Yaw()), float32(rot.Pitch()))
 	// Like vanilla's sendLevelInfo: the client waits on "Loading terrain" until this event.
@@ -122,11 +129,12 @@ func (s *Session) SendRespawn(pos mgl64.Vec3, c session.Controllable) {
 	s.resendInventory()
 	s.SendAbilities(c)
 	// The respawn makes the client a new player entity, without the entity data of the old one:
-	// the skin layers (else the own skin is drawn flat) and absorption are sent again.
+	// the skin layers (else the own skin is drawn flat), the attributes (maximum health, armour)
+	// and the health and absorption are sent again: the player's health went to the old entity
+	// before this respawn, and a new one starts at 20 of its maximum.
 	s.sendSkinParts(selfEntityID, s.jp.Info.SkinParts)
-	s.vitalsMu.Lock()
-	s.vitals.absorptionSent = false
-	s.vitalsMu.Unlock()
+	s.newPlayerEntity()
+	s.SendHealth(c.Health(), c.MaxHealth(), c.Absorption())
 }
 
 // SendPlayerSpawn is the player's own spawn point; Java shows nothing for it.

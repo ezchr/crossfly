@@ -157,7 +157,7 @@ func newSession(jp *server.Player, radius int32, log *slog.Logger) *Session {
 		entityIDs:   map[*world.EntityHandle]int32{},
 		modelParts:  map[int32][]int32{},
 		tracks:      map[int32]*track{},
-		vitals:      vitals{health: 20, food: 20, saturation: 5},
+		vitals:      vitals{health: 20, food: 20, saturation: 5, maxHealth: 20},
 	}
 	s.tab.shown = map[uuid.UUID]tabShown{}
 	s.chunks.sent = map[world.ChunkPos]struct{}{}

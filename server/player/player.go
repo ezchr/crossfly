@@ -4580,6 +4580,15 @@ func (p *Player) ResetHud() {
 	}
 }
 
+// ArrowHitPlayer is called when an arrow the player shot hits another player. A Java Edition client
+// plays its arrow hit sound for it (javasession.Session.SendArrowHitPlayer); Bedrock clients have no
+// such sound, and their sessions do nothing.
+func (p *Player) ArrowHitPlayer() {
+	if a, ok := p.conn().(interface{ SendArrowHitPlayer() }); ok {
+		a.SendArrowHitPlayer()
+	}
+}
+
 // ShowHudElement shows a HUD element to the player if it is not already shown.
 func (p *Player) ShowHudElement(e hud.Element) {
 	p.conn().ShowHudElement(e)

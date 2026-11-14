@@ -365,6 +365,7 @@ func (lt *ProjectileBehaviour) hitEntity(victim world.Entity, e *Ent, vel mgl64.
 			return false
 		}
 		l.KnockBack(l.Position().Sub(vel), 0.45+lt.conf.KnockBackForceAddend, 0.3608+lt.conf.KnockBackHeightAddend)
+		arrowHitPlayer(owner, victim, e)
 
 		for _, eff := range lt.conf.Potion.Effects() {
 			if lasting, ok := eff.Type().(effect.LastingType); ok {
@@ -380,6 +381,19 @@ func (lt *ProjectileBehaviour) hitEntity(victim world.Entity, e *Ent, vel mgl64.
 		HurtEntity(victim, dmg, src)
 	}
 	return false
+}
+
+// arrowHitPlayer tells the owner of an arrow that hit another player about the hit, if the owner
+// implements ArrowHitPlayer (a player): a Java client plays its arrow "ding" for it, which vanilla
+// sends the shooter from AbstractArrow.onHitEntity (arrows only, not tridents). Bedrock has no
+// such sound.
+func arrowHitPlayer(owner, victim world.Entity, e *Ent) {
+	if owner == nil || e.H().Type() != ArrowType || victim.H() == owner.H() || victim.H().Type().EncodeEntity() != "minecraft:player" {
+		return
+	}
+	if n, ok := owner.(interface{ ArrowHitPlayer() }); ok {
+		n.ArrowHitPlayer()
+	}
 }
 
 // emitHitEffects emits the configured effects for a final, non-deflected hit.
