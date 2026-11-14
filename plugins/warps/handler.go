@@ -215,20 +215,24 @@ func (m *Manager) drawLocked(p *player.Player, ed *edit, at mgl64.Vec3) int {
 			if pos.Vec3Centre().Sub(at).LenSqr() > 48*48 {
 				return
 			}
-			inside := true
-			for _, face := range cube.Faces() {
-				if !w.has(pos.Side(face)) {
-					inside = false
-					break
+			b, loaded := p.Tx().BlockLoaded(pos)
+			if !loaded {
+				return
+			}
+			if _, air := b.(block.Air); air {
+				// Air enclosed by the area looks the same as glass there: only its surface is sent.
+				inside := true
+				for _, face := range cube.Faces() {
+					if !w.has(pos.Side(face)) {
+						inside = false
+						break
+					}
+				}
+				if inside {
+					return
 				}
 			}
-			if inside {
-				return
-			}
-			b, loaded := p.Tx().BlockLoaded(pos)
-			if !loaded || len(b.Model().BBox(pos, p.Tx())) > 0 {
-				return
-			}
+			// Real blocks in the area show as glass too, for this editor only; the world keeps them.
 			shell[pos] = block.Glass{}
 		}
 		if w.cells != nil {
@@ -245,9 +249,40 @@ func (m *Manager) drawLocked(p *player.Player, ed *edit, at mgl64.Vec3) int {
 			}
 		}
 	}
+	now := time.Now()
+	for pos, until := range ed.guard {
+		if now.After(until) || ed.world != p.Tx().World() {
+			delete(ed.guard, pos)
+		} else if _, ok := shell[pos]; !ok {
+			// Shown as the real block it is, but clicks there still come to the editor.
+			shell[pos] = p.Tx().Block(pos)
+		}
+	}
 	p.SetBlockPreviews(shell)
-	ed.at, ed.world, ed.revision = at, p.Tx().World(), m.revision
+	ed.at, ed.world, ed.revision, ed.shown = at, p.Tx().World(), m.revision, shell
 	return count
+}
+
+// guardTime is how long an area block broken off over a real block keeps swallowing clicks: a
+// client sends the start and the end of a break, or keeps mining the real block it now sees.
+const guardTime = 2 * time.Second
+
+// guardLocked protects the real block at pos for guardTime, then shows it plainly again.
+func (m *Manager) guardLocked(p *player.Player, ed *edit, pos cube.Pos) {
+	if _, air := p.Tx().Block(pos).(block.Air); air {
+		return
+	}
+	if ed.guard == nil {
+		ed.guard = map[cube.Pos]time.Time{}
+	}
+	ed.guard[pos] = time.Now().Add(guardTime)
+	player.DoAfter(p.H(), guardTime+50*time.Millisecond, func(_ *world.Tx, p *player.Player) {
+		m.mu.Lock()
+		defer m.mu.Unlock()
+		if ed := m.editing[p.UUID()]; ed != nil && len(ed.guard) > 0 {
+			m.drawLocked(p, ed, p.Position())
+		}
+	})
 }
 
 func handGlass(p *player.Player) {
@@ -301,6 +336,10 @@ func (m *Manager) removeCell(ctx *player.Context, pos cube.Pos) bool {
 	}
 	w := m.warpAt(ed, m.worldName(p.Tx().World()), pos)
 	if w == nil {
+		if _, guarded := ed.guard[pos]; guarded {
+			ctx.Cancel()
+			return true
+		}
 		return false
 	}
 	ctx.Cancel()
@@ -324,6 +363,9 @@ func (m *Manager) removeCell(ctx *player.Context, pos cube.Pos) bool {
 	ed.picked = w.Name
 	handGlass(p)
 	if removed > 0 {
+		if !w.has(pos) {
+			m.guardLocked(p, ed, pos)
+		}
 		m.changedLocked(p)
 		p.SendPopup(fmt.Sprintf("§aRemoved block from %d warp(s). Selected: %s", removed, w.Name))
 	}
@@ -389,6 +431,7 @@ func (m *Manager) addCell(ctx *player.Context, pos cube.Pos, face cube.Face) boo
 
 func (m *Manager) changedLocked(p *player.Player) {
 	m.revision++
+	m.publishNames()
 	if err := m.saveLocked(); err != nil {
 		p.Message("§cChanged in memory but failed to save warps: ", err)
 	}

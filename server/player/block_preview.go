@@ -3,6 +3,8 @@ package player
 import (
 	"maps"
 
+	"github.com/df-mc/dragonfly/server/block"
+
 	"github.com/df-mc/dragonfly/server/block/cube"
 	"github.com/df-mc/dragonfly/server/item"
 	"github.com/df-mc/dragonfly/server/session"
@@ -26,16 +28,53 @@ func (p *Player) SetBlockPreviews(blocks map[cube.Pos]world.Block) {
 	}); ok {
 		s.SetBlockPreviews(p.blockPreviews)
 	}
-	if oldWorld == p.tx.World() {
-		for pos := range old {
-			if _, ok := blocks[pos]; !ok {
+	sameWorld := oldWorld == p.tx.World()
+	changed := map[cube.Pos]struct{}{}
+	if sameWorld {
+		for pos, b := range old {
+			if nb, ok := blocks[pos]; !ok {
 				p.resendNearbyBlock(pos)
+				changed[pos] = struct{}{}
+			} else if nb == nil || b == nil || world.BlockRuntimeID(nb) != world.BlockRuntimeID(b) {
+				changed[pos] = struct{}{}
 			}
 		}
 	}
 	for pos, b := range blocks {
 		if b != nil && p.withinChunkRadius(pos.Vec3()) {
 			p.conn().ViewBlockUpdate(pos, b, 0)
+			if _, ok := old[pos]; !ok || !sameWorld {
+				changed[pos] = struct{}{}
+			}
+		}
+	}
+	p.resendPreviewNeighbours(changed)
+}
+
+// resendPreviewNeighbours sends the real blocks next to previews that appeared or went away, so
+// that clients recompute the shapes that depend on their neighbours, such as glass pane, fence,
+// wall and iron bar connections, and none stay joined to a preview that is gone.
+func (p *Player) resendPreviewNeighbours(changed map[cube.Pos]struct{}) {
+	done := map[cube.Pos]struct{}{}
+	for pos := range changed {
+		for _, f := range cube.Faces() {
+			n := pos.Side(f)
+			if _, ok := changed[n]; ok {
+				continue
+			}
+			if _, ok := done[n]; ok {
+				continue
+			}
+			done[n] = struct{}{}
+			if p.hasBlockPreview(n) || !p.withinChunkRadius(n.Vec3()) {
+				continue
+			}
+			if b, loaded := p.tx.BlockLoaded(n); !loaded {
+				continue
+			} else if _, air := b.(block.Air); air {
+				continue
+			}
+			p.resendNearbyBlock(n)
 		}
 	}
 }

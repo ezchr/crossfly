@@ -2,8 +2,11 @@ package warps
 
 import (
 	"fmt"
+	"reflect"
+	"slices"
 	"strconv"
 	"strings"
+	"sync/atomic"
 
 	"github.com/df-mc/dragonfly/server/block/cube"
 	"github.com/df-mc/dragonfly/server/cmd"
@@ -12,44 +15,298 @@ import (
 	"github.com/go-gl/mathgl/mgl64"
 )
 
-type Action string
+// actions are the subcommands of /warp. Each has typed overloads below, so the client shows
+// what it takes; anything they do not parse reaches run through fallback with the old messages.
+var actions = []string{"create", "set", "dest", "area", "edit", "require", "deny", "rank", "message", "fade", "on", "off", "rename", "delete", "remove", "list", "info", "tp"}
 
-func (Action) Type() string { return "WarpAction" }
-func (Action) Options(cmd.Source) []string {
-	return []string{"create", "set", "dest", "area", "edit", "require", "deny", "rank", "message", "fade", "on", "off", "rename", "delete", "remove", "list", "info", "tp"}
+// registered is the manager behind /warp, read by the warp-name enum.
+var registered atomic.Pointer[Manager]
+
+// warpName is an existing warp. The client suggests the saved names; any word parses, so an
+// unknown name still gets run's "No warp" reply.
+type warpName string
+
+func (warpName) Type() string { return "WarpName" }
+func (warpName) Options(cmd.Source) []string {
+	if m := registered.Load(); m != nil {
+		if names := m.names.Load(); names != nil {
+			return *names
+		}
+	}
+	return nil
+}
+func (warpName) Parse(line *cmd.Line, v reflect.Value) error {
+	arg, ok := line.Next()
+	if !ok {
+		return line.UsageError()
+	}
+	v.SetString(arg)
+	return nil
 }
 
-type command struct {
-	Action    Action                    `cmd:"action"`
-	Arguments cmd.Optional[cmd.Varargs] `cmd:"arguments"`
-	m         *Manager
-}
-type helpCommand struct{ m *Manager }
+type nameAction string
 
-func (c command) Allow(s cmd.Source) bool {
-	p, ok := s.(*player.Player)
-	return ok && c.m.config.Admin(p)
+func (nameAction) Type() string { return "WarpNameAction" }
+func (nameAction) Options(cmd.Source) []string {
+	return []string{"info", "tp", "on", "off", "delete", "remove"}
 }
-func (c helpCommand) Allow(s cmd.Source) bool {
+
+type ruleAction string
+
+func (ruleAction) Type() string                { return "WarpRuleAction" }
+func (ruleAction) Options(cmd.Source) []string { return []string{"require", "deny", "rank"} }
+
+type onOff string
+
+func (onOff) Type() string                { return "WarpOnOff" }
+func (onOff) Options(cmd.Source) []string { return []string{"on", "off"} }
+
+type base struct{ m *Manager }
+
+func (b base) Allow(s cmd.Source) bool {
 	p, ok := s.(*player.Player)
-	return ok && c.m.config.Admin(p)
+	return ok && b.m.config.Admin(p)
 }
-func (c helpCommand) Run(_ cmd.Source, o *cmd.Output, _ *world.Tx) { help(o) }
-func (c command) Run(s cmd.Source, o *cmd.Output, _ *world.Tx) {
+
+// exec runs a subcommand through run, the single implementation all overloads share.
+func (b base) exec(s cmd.Source, o *cmd.Output, sub string, args ...string) {
 	p, ok := s.(*player.Player)
-	if !ok || !c.m.config.Admin(p) {
+	if !ok || !b.m.config.Admin(p) {
 		o.Error("Only administrators may manage warps.")
 		return
 	}
-	args := strings.Fields(string(c.Arguments.LoadOr("")))
-	if err := c.m.run(p, string(c.Action), args, o); err != nil {
+	if err := b.m.run(p, sub, args, o); err != nil {
 		o.Error(err)
 	}
 }
 
+func num(f float64) string { return strconv.FormatFloat(f, 'g', -1, 64) }
+func vec(v mgl64.Vec3) []string {
+	return []string{num(v[0]), num(v[1]), num(v[2])}
+}
+func corners(a cmd.Optional[mgl64.Vec3], b cmd.Optional[mgl64.Vec3]) []string {
+	var out []string
+	for _, c := range []cmd.Optional[mgl64.Vec3]{a, b} {
+		if v, ok := c.Load(); ok {
+			out = append(out, vec(v)...)
+		}
+	}
+	return out
+}
+
+type nameCmd struct {
+	base
+	Action nameAction `cmd:"action"`
+	Name   warpName   `cmd:"name"`
+}
+
+func (c nameCmd) Run(s cmd.Source, o *cmd.Output, _ *world.Tx) {
+	c.exec(s, o, string(c.Action), string(c.Name))
+}
+
+type listCmd struct {
+	base
+	List cmd.SubCommand `cmd:"list"`
+}
+
+func (c listCmd) Run(s cmd.Source, o *cmd.Output, _ *world.Tx) { c.exec(s, o, "list") }
+
+type editCmd struct {
+	base
+	Edit cmd.SubCommand         `cmd:"edit"`
+	Name cmd.Optional[warpName] `cmd:"name"`
+}
+
+func (c editCmd) Run(s cmd.Source, o *cmd.Output, _ *world.Tx) {
+	if n, ok := c.Name.Load(); ok {
+		c.exec(s, o, "edit", string(n))
+		return
+	}
+	c.exec(s, o, "edit")
+}
+
+type createCmd struct {
+	base
+	Create  cmd.SubCommand           `cmd:"create"`
+	Name    string                   `cmd:"name"`
+	Corner1 cmd.Optional[mgl64.Vec3] `cmd:"corner1"`
+	Corner2 cmd.Optional[mgl64.Vec3] `cmd:"corner2"`
+}
+
+func (c createCmd) Run(s cmd.Source, o *cmd.Output, _ *world.Tx) {
+	c.exec(s, o, "create", append([]string{c.Name}, corners(c.Corner1, c.Corner2)...)...)
+}
+
+type areaCmd struct {
+	base
+	Area    cmd.SubCommand           `cmd:"area"`
+	Name    warpName                 `cmd:"name"`
+	Corner1 cmd.Optional[mgl64.Vec3] `cmd:"corner1"`
+	Corner2 cmd.Optional[mgl64.Vec3] `cmd:"corner2"`
+}
+
+func (c areaCmd) Run(s cmd.Source, o *cmd.Output, _ *world.Tx) {
+	c.exec(s, o, "area", append([]string{string(c.Name)}, corners(c.Corner1, c.Corner2)...)...)
+}
+
+type destHereCmd struct {
+	base
+	Dest cmd.SubCommand `cmd:"dest"`
+	Name warpName       `cmd:"name"`
+	Here cmd.SubCommand `cmd:"here"`
+}
+
+func (c destHereCmd) Run(s cmd.Source, o *cmd.Output, _ *world.Tx) {
+	c.exec(s, o, "dest", string(c.Name), "here")
+}
+
+type destCmd struct {
+	base
+	Dest     cmd.SubCommand        `cmd:"dest"`
+	Name     warpName              `cmd:"name"`
+	Position mgl64.Vec3            `cmd:"position"`
+	Yaw      cmd.Optional[float64] `cmd:"yaw"`
+	Pitch    cmd.Optional[float64] `cmd:"pitch"`
+}
+
+func (c destCmd) Run(s cmd.Source, o *cmd.Output, _ *world.Tx) {
+	c.exec(s, o, "dest", facing(string(c.Name), c.Position, c.Yaw, c.Pitch)...)
+}
+
+func facing(name string, pos mgl64.Vec3, yaw, pitch cmd.Optional[float64]) []string {
+	args := append([]string{name}, vec(pos)...)
+	for _, r := range []cmd.Optional[float64]{yaw, pitch} {
+		if v, ok := r.Load(); ok {
+			args = append(args, num(v))
+		}
+	}
+	return args
+}
+
+// set creates a pad at your feet with its destination here, or moves an existing warp's destination.
+type setCmd struct {
+	base
+	Set  cmd.SubCommand `cmd:"set"`
+	Name string         `cmd:"name"`
+}
+
+func (c setCmd) Run(s cmd.Source, o *cmd.Output, _ *world.Tx) { c.exec(s, o, "set", c.Name) }
+
+type setHereCmd struct {
+	base
+	Set  cmd.SubCommand `cmd:"set"`
+	Name string         `cmd:"name"`
+	Here cmd.SubCommand `cmd:"here"`
+}
+
+func (c setHereCmd) Run(s cmd.Source, o *cmd.Output, _ *world.Tx) {
+	c.exec(s, o, "set", c.Name, "here")
+}
+
+type setDestCmd struct {
+	base
+	Set      cmd.SubCommand        `cmd:"set"`
+	Name     string                `cmd:"name"`
+	Position mgl64.Vec3            `cmd:"position"`
+	Yaw      cmd.Optional[float64] `cmd:"yaw"`
+	Pitch    cmd.Optional[float64] `cmd:"pitch"`
+}
+
+func (c setDestCmd) Run(s cmd.Source, o *cmd.Output, _ *world.Tx) {
+	c.exec(s, o, "set", facing(c.Name, c.Position, c.Yaw, c.Pitch)...)
+}
+
+type setAreaCmd struct {
+	base
+	Set     cmd.SubCommand `cmd:"set"`
+	Name    string         `cmd:"name"`
+	Corner1 mgl64.Vec3     `cmd:"corner1"`
+	Corner2 mgl64.Vec3     `cmd:"corner2"`
+}
+
+func (c setAreaCmd) Run(s cmd.Source, o *cmd.Output, _ *world.Tx) {
+	c.exec(s, o, "set", append(append([]string{c.Name}, vec(c.Corner1)...), vec(c.Corner2)...)...)
+}
+
+type ruleCmd struct {
+	base
+	Action ruleAction `cmd:"action"`
+	Name   warpName   `cmd:"name"`
+	Value  string     `cmd:"value"`
+}
+
+func (c ruleCmd) Run(s cmd.Source, o *cmd.Output, _ *world.Tx) {
+	c.exec(s, o, string(c.Action), string(c.Name), c.Value)
+}
+
+type messageCmd struct {
+	base
+	Message cmd.SubCommand `cmd:"message"`
+	Name    warpName       `cmd:"name"`
+	Text    cmd.Varargs    `cmd:"text"`
+}
+
+func (c messageCmd) Run(s cmd.Source, o *cmd.Output, _ *world.Tx) {
+	c.exec(s, o, "message", append([]string{string(c.Name)}, strings.Fields(string(c.Text))...)...)
+}
+
+type fadeCmd struct {
+	base
+	Fade  cmd.SubCommand `cmd:"fade"`
+	Name  warpName       `cmd:"name"`
+	State onOff          `cmd:"state"`
+}
+
+func (c fadeCmd) Run(s cmd.Source, o *cmd.Output, _ *world.Tx) {
+	c.exec(s, o, "fade", string(c.Name), string(c.State))
+}
+
+type renameCmd struct {
+	base
+	Rename cmd.SubCommand `cmd:"rename"`
+	Name   warpName       `cmd:"name"`
+	New    string         `cmd:"new"`
+}
+
+func (c renameCmd) Run(s cmd.Source, o *cmd.Output, _ *world.Tx) {
+	c.exec(s, o, "rename", string(c.Name), c.New)
+}
+
+// fallback is the plain /warp (help), and takes any input the typed overloads reject, so wrong
+// arguments get run's usage replies. The client is shown it without parameters.
+type fallback struct {
+	base
+	Arguments cmd.Optional[cmd.Varargs] `cmd:"arguments"`
+}
+
+func (fallback) DescribeParams(cmd.Source) []cmd.ParamInfo { return []cmd.ParamInfo{} }
+func (c fallback) Run(s cmd.Source, o *cmd.Output, _ *world.Tx) {
+	args := strings.Fields(string(c.Arguments.LoadOr("")))
+	if len(args) == 0 || !slices.Contains(actions, strings.ToLower(args[0])) {
+		help(o)
+		return
+	}
+	c.exec(s, o, strings.ToLower(args[0]), args[1:]...)
+}
+
 // Register adds the administrator-only /warp command. Call once at startup, after Open.
 func (m *Manager) Register() {
-	cmd.Register(cmd.New("warp", "Walk-in warp pads and glass area editor", nil, command{m: m}, helpCommand{m: m}))
+	registered.Store(m)
+	b := base{m: m}
+	cmd.Register(cmd.New("warp", "Walk-in warp pads and glass area editor", nil,
+		nameCmd{base: b}, listCmd{base: b}, editCmd{base: b}, createCmd{base: b}, areaCmd{base: b},
+		destHereCmd{base: b}, destCmd{base: b}, setCmd{base: b}, setHereCmd{base: b}, setDestCmd{base: b}, setAreaCmd{base: b},
+		ruleCmd{base: b}, messageCmd{base: b}, fadeCmd{base: b}, renameCmd{base: b}, fallback{base: b}))
+}
+
+// publishNames refreshes the names the client suggests. Called with mu held whenever warps change.
+func (m *Manager) publishNames() {
+	names := make([]string, 0, len(m.warps))
+	for _, w := range m.warps {
+		names = append(names, w.Name)
+	}
+	slices.Sort(names)
+	m.names.Store(&names)
 }
 
 func help(o *cmd.Output) {

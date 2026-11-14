@@ -12,6 +12,7 @@ import (
 	"slices"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/df-mc/dragonfly/server/block/cube"
@@ -118,6 +119,10 @@ type edit struct {
 	world    *world.World
 	at       mgl64.Vec3
 	revision uint64
+	// shown is the glass last sent to the editor; guard holds area blocks just broken
+	// off over a real block, so the rest of that click cannot break the real block.
+	shown map[cube.Pos]world.Block
+	guard map[cube.Pos]time.Time
 }
 
 type Manager struct {
@@ -129,6 +134,7 @@ type Manager struct {
 	pending    map[uuid.UUID]uint64
 	revision   uint64
 	nextTicket uint64
+	names      atomic.Pointer[[]string]
 }
 
 var validName = regexp.MustCompile(`^[a-z0-9_-]{1,64}$`)
@@ -145,6 +151,7 @@ func Open(c Config) (*Manager, error) {
 	m := &Manager{config: c, editing: map[uuid.UUID]*edit{}, cooldown: map[uuid.UUID]time.Time{}, pending: map[uuid.UUID]uint64{}}
 	raw, err := os.ReadFile(c.File)
 	if os.IsNotExist(err) {
+		m.publishNames()
 		return m, nil
 	}
 	if err != nil {
@@ -182,6 +189,7 @@ func Open(c Config) (*Manager, error) {
 		}
 		m.warps = append(m.warps, w)
 	}
+	m.publishNames()
 	return m, nil
 }
 

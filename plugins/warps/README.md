@@ -20,9 +20,9 @@ To shape the entrance:
 /warp edit portal
 ```
 
-Nearby warp areas appear as glass for the editor alone. Break the glass to remove area blocks; hold ordinary glass and place against it to add area blocks. Glass placed away from other areas goes to the selected warp. The editor supplies glass when an empty hotbar slot is available. Real world blocks and held stacks are unchanged by area clicks. Walk-in teleports are suspended while editing. Run `/warp edit` again to finish.
+Nearby warp areas appear as glass for the editor alone, including area blocks where the world has a real block; the world itself is unchanged. Break the glass to remove area blocks, and the real block shows again (it cannot be broken by that click); hold ordinary glass and place against it to add area blocks. Glass placed away from other areas goes to the selected warp. The editor supplies glass when an empty hotbar slot is available. Real world blocks and held stacks are unchanged by area clicks. Walk-in teleports are suspended while editing. Run `/warp edit` again to finish.
 
-Breaking a block shared by overlapping areas removes it from all of them. An area's final block cannot be removed; use `/warp delete` to delete it. Changes save immediately and other active editors refresh. Areas up to 50,000 blocks can be shaped by hand; larger cuboids use `/warp area`. Only loaded blocks within 48 blocks of the editor are previewed. Solid world blocks provide their own outline.
+Breaking a block shared by overlapping areas removes it from all of them. An area's final block cannot be removed; use `/warp delete` to delete it. Changes save immediately and other active editors refresh. Areas up to 50,000 blocks can be shaped by hand; larger cuboids use `/warp area`. Only loaded blocks within 48 blocks of the editor are previewed. Leaving the editor (or quitting, or changing world) shows the real blocks again, and the blocks next to the area are resent so glass panes, fences and walls lose any connection to the editor glass.
 
 Other commands:
 
@@ -47,7 +47,7 @@ Other commands:
 /warp tp <name>
 ```
 
-Coordinates support `~` offsets. Area coordinates are inclusive block coordinates; omitted corners select the block at your feet. Destinations preserve decimal coordinates and facing. `/warp set` creates a one-block pad with its destination at your current location, or changes an existing pad's destination. Names are case-insensitive and use letters, digits, underscores and hyphens.
+Every subcommand has its own overloads, so Bedrock and Java show what each takes; warp names are suggested from the saved warps. Coordinates support `~` offsets. Area coordinates are inclusive block coordinates; omitted corners select the block at your feet. Destinations preserve decimal coordinates and facing. `/warp set` creates a one-block pad with its destination at your current location, or changes an existing pad's destination. Names are case-insensitive and use letters, digits, underscores and hyphens.
 
 Warps use insertion order for overlapping eligible triggers and a one-second player cooldown. Administrators bypass required ranks/tags; as on Paper, a deny-tag warp skips administrators. Fade applies 1.5 seconds of blindness and teleports after 0.3 seconds. A pending teleport is discarded after quitting, changing world, another teleport, entering edit mode, or when host rules prevent warping. Missing destination worlds do not fire.
 
