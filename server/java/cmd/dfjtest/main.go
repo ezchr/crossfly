@@ -40,6 +40,7 @@ func main() {
 	nameTag := flag.Bool("nametag", false, "give each joining player a team and rank name tag after 3 s (tab list display names)")
 	hungry := flag.Bool("hungry", false, "start each player at food 10 with 5 bread in hand")
 	slimeFloor := flag.Bool("slimefloor", false, "top layer of slime (breaks instantly, for testing)")
+	hudTest := flag.Bool("hudtest", false, "max health 32 and diamond armour for each joining player; the second player is shot with an arrow of the first after 4 s; the first is killed after 12 s")
 	survival := flag.Bool("survival", true, "new players start in survival (Dragonfly defaults to creative)")
 	flag.Parse()
 	if *pprofAddr != "" {
@@ -100,8 +101,40 @@ func main() {
 			})
 		}()
 	}
+	var first *world.EntityHandle
 	for p := range srv.Accept() {
 		log.Info("player in world", "name", p.Name(), "pos", p.Position())
+		if *hudTest {
+			later(p.H(), time.Second, func(tx *world.Tx, p *player.Player) {
+				p.SetMaxHealth(32)
+				p.Heal(32, entity.FoodHealingSource{})
+				p.Armour().Set(
+					item.NewStack(item.Helmet{Tier: item.ArmourTierDiamond{}}, 1),
+					item.NewStack(item.Chestplate{Tier: item.ArmourTierDiamond{}}, 1),
+					item.NewStack(item.Leggings{Tier: item.ArmourTierDiamond{}}, 1),
+					item.NewStack(item.Boots{Tier: item.ArmourTierDiamond{}}, 1),
+				)
+				log.Info("hudtest: max health 32, diamond armour", "name", p.Name(), "health", p.Health())
+			})
+			if first == nil {
+				first = p.H()
+				later(p.H(), 12*time.Second, func(tx *world.Tx, p *player.Player) {
+					p.Hurt(1000, entity.VoidDamageSource{})
+					log.Info("hudtest: killed", "name", p.Name())
+				})
+			} else {
+				shooter := first
+				later(p.H(), 4*time.Second, func(tx *world.Tx, p *player.Player) {
+					s, ok := shooter.Entity(tx)
+					if !ok {
+						return
+					}
+					opts := world.EntitySpawnOpts{Position: p.Position().Add(mgl64.Vec3{0, 1, -2}), Velocity: mgl64.Vec3{0, 0, 2}}
+					tx.AddEntity(entity.NewArrow(opts, s))
+					log.Info("hudtest: arrow of the first player at", "name", p.Name())
+				})
+			}
+		}
 		if *hungry {
 			later(p.H(), time.Second, func(tx *world.Tx, p *player.Player) {
 				p.SetFood(10)

@@ -46,6 +46,16 @@ func main() {
 
 var breakBelow bool
 
+// attributeNames are the minecraft:attribute ids jbot logs by name.
+var attributeNames = func() map[int32]string {
+	m := map[int32]string{}
+	for _, n := range []string{"armor", "armor_toughness", "max_health", "movement_speed", "mining_efficiency",
+		"submerged_mining_speed", "water_movement_efficiency", "sneaking_speed", "oxygen_bonus", "movement_efficiency"} {
+		m[v777.BuiltinID("minecraft:attribute", "minecraft:"+n)] = n
+	}
+	return m
+}()
+
 func run(addr, name string, stay time.Duration, attack, still bool) error {
 	nc, err := net.Dial("tcp", addr)
 	if err != nil {
@@ -163,8 +173,22 @@ func run(addr, name string, stay time.Duration, attack, still bool) error {
 				errc <- fmt.Errorf("kicked: %q", body)
 				return
 			case v777.ClientboundPlayGameEvent:
-				if ev := r.Byte(); ev == 13 {
+				switch ev := r.Byte(); ev {
+				case 13:
 					log.Printf("%s: level chunks load start", name)
+				case 6:
+					log.Printf("%s: game event 6 (arrow hit player)", name)
+				}
+			case v777.ClientboundPlayUpdateAttributes:
+				eid, n := r.VarInt(), r.VarInt()
+				for i := int32(0); i < n; i++ {
+					attr, v := r.VarInt(), r.Float64()
+					for m := r.VarInt(); m > 0; m-- {
+						r.String(32767)
+						r.Float64()
+						r.Byte()
+					}
+					log.Printf("%s: attribute entity %d %s = %v", name, eid, attributeNames[attr], v)
 				}
 			case v777.ClientboundPlayAddEntity:
 				eid := r.VarInt()
