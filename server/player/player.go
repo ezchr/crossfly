@@ -964,6 +964,9 @@ func (p *Player) Exhaust(points float64) {
 	if !p.GameMode().AllowsTakingDamage() || p.tx.World().Difficulty().FoodRegenerates() {
 		return
 	}
+	if hungerLog {
+		p.logExhaust(points)
+	}
 	before := p.hunger.Food()
 	p.hunger.exhaust(points)
 	if after := p.hunger.Food(); before != after {
@@ -1324,6 +1327,7 @@ func (p *Player) StartSprinting() {
 	}
 	p.StopSneaking()
 	p.sprinting = true
+	p.logSprintToggle(true)
 	p.SetSpeed(p.speed * 1.3)
 	p.updateState()
 }
@@ -1343,6 +1347,7 @@ func (p *Player) StopSprinting() {
 		return
 	}
 	p.sprinting = false
+	p.logSprintToggle(false)
 	p.SetSpeed(p.speed / 1.3)
 	p.updateState()
 }
