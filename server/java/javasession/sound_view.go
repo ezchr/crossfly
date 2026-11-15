@@ -497,6 +497,9 @@ func (s *Session) soundID(pos mgl64.Vec3, id int32, src soundSource, vol, pitch 
 	if id < 0 {
 		return
 	}
+	if soundLog {
+		s.logSound(id, pos)
+	}
 	if l := s.legacy(); l != nil {
 		if id = version.Map(l.sound, id); id < 0 {
 			return

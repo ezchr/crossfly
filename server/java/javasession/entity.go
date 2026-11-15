@@ -602,6 +602,9 @@ func (s *Session) ViewEntityAction(e world.Entity, a world.EntityAction) {
 		w.VarInt(0) // no direct entity
 		w.Bool(false)
 		s.queue(v777.ClientboundPlayDamageEvent, w)
+		if soundLog {
+			s.log.Info("java damage_event", "entity", id, "self", id == selfEntityID)
+		}
 		if id != selfEntityID {
 			s.viewMobData(e, id) // its health (an iron golem's cracks, a wolf's tail)
 		}

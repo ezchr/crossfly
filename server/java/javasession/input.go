@@ -204,6 +204,9 @@ func (s *Session) handleInput(id int32, body []byte) (bool, error) {
 			return true, r.Err
 		}
 		s.input.swingOwed = true
+		if soundLog {
+			s.log.Info("java in: attack", "target", target)
+		}
 		s.do(func(tx *world.Tx, c session.Controllable) {
 			e, ok := s.entityByID(tx, target)
 			if !ok {
@@ -241,6 +244,9 @@ func (s *Session) handleInput(id int32, body []byte) (bool, error) {
 		// still swinging every tick while the attack key is held: those swings belong to the mining too.
 		// Played as misses, they were a burst of attack clicks after every block.
 		mining := time.Since(s.input.lastDig) < 350*time.Millisecond
+		if soundLog {
+			s.log.Info("java in: punch", "owed", owed, "mining", mining)
+		}
 		s.do(func(tx *world.Tx, c session.Controllable) {
 			if owed || mining || s.input.breaking { // breaking is set in these tasks too (block_dig)
 				c.SwingArm()
