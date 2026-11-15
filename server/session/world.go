@@ -1656,10 +1656,19 @@ func (s *Session) ViewBlockAction(pos cube.Pos, a world.BlockAction) {
 			// An instant break has no cracking to animate, and encoding the crack speed would divide by zero.
 			break
 		}
+		// BDS sends the crack speed twice: the start, then at once an update with the same speed
+		// (ServerPlayerBlockUseHandler). With only the start, a Bedrock client drew the cracks of the
+		// block it breaks itself too slowly: far from done when the block broke.
+		data := crackSpeed(t.BreakTime, t.Progress)
 		s.writePacket(&packet.LevelEvent{
 			EventType: packet.LevelEventStartBlockCracking,
 			Position:  vec64To32(pos.Vec3()),
-			EventData: int32(65535 / (t.BreakTime.Seconds() * 20)),
+			EventData: data,
+		})
+		s.writePacket(&packet.LevelEvent{
+			EventType: packet.LevelEventUpdateBlockCracking,
+			Position:  vec64To32(pos.Vec3()),
+			EventData: data,
 		})
 	case block.StopCrackAction:
 		s.writePacket(&packet.LevelEvent{
@@ -1674,7 +1683,7 @@ func (s *Session) ViewBlockAction(pos cube.Pos, a world.BlockAction) {
 		s.writePacket(&packet.LevelEvent{
 			EventType: packet.LevelEventUpdateBlockCracking,
 			Position:  vec64To32(pos.Vec3()),
-			EventData: int32(65535 / (t.BreakTime.Seconds() * 20)),
+			EventData: crackSpeed(t.BreakTime, t.Progress),
 		})
 	case block.BellRingAction:
 		s.writePacket(&packet.BlockActorData{Position: blockPos, NBTData: map[string]any{
@@ -1881,4 +1890,14 @@ func (s *Session) CountsForContainerPower(tx *world.Tx) bool {
 // dispenserContainer is a dispenser or dropper (block.Dispenser, part of Crossfly Full).
 type dispenserContainer interface {
 	DispenserContainer() (dropper bool, customName string)
+}
+
+// crackSpeed is the crack speed of a block cracking event: the part of the block broken per tick times
+// 65535, floored, as BDS sends it (floor(GameMode::getDestroyRate * 65535)). Without a progress it is
+// worked out from the break time, which is rounded up to whole ticks.
+func crackSpeed(breakTime time.Duration, progress float64) int32 {
+	if progress > 0 && !math.IsInf(progress, 0) {
+		return int32(math.Floor(min(progress, 1) * 65535))
+	}
+	return int32(65535 / (breakTime.Seconds() * 20))
 }

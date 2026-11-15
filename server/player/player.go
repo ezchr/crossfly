@@ -2795,7 +2795,7 @@ func (p *Player) StartBreaking(pos cube.Pos, face cube.Face) {
 	p.lastBreakDuration = p.breakTime(pos)
 	p.logBreakStart(p.lastBreakDuration)
 	for _, viewer := range p.viewers() {
-		viewer.ViewBlockAction(pos, block.StartCrackAction{BreakTime: p.lastBreakDuration})
+		viewer.ViewBlockAction(pos, block.StartCrackAction{BreakTime: p.lastBreakDuration, Progress: p.breakProgress(pos)})
 	}
 }
 
@@ -2804,6 +2804,12 @@ func (p *Player) StartBreaking(pos cube.Pos, face cube.Face) {
 // BreakTime returns how long breaking the block at pos takes this player with what it holds, given its
 // effects and situation.
 func (p *Player) BreakTime(pos cube.Pos) time.Duration { return p.breakTime(pos) }
+
+// breakProgress is the part of the block at pos the player breaks every tick (block.BreakProgress).
+func (p *Player) breakProgress(pos cube.Pos) float64 {
+	held, _ := p.HeldItems()
+	return block.BreakProgress(p.tx.Block(pos), held, p.breakContext())
+}
 
 func (p *Player) breakTime(pos cube.Pos) time.Duration {
 	held, _ := p.HeldItems()
@@ -2882,7 +2888,7 @@ func (p *Player) ContinueBreaking(face cube.Face) {
 	if breakTime := p.breakTime(pos); breakTime != p.lastBreakDuration {
 		p.logBreakChange(breakTime)
 		for _, viewer := range p.viewers() {
-			viewer.ViewBlockAction(pos, block.ContinueCrackAction{BreakTime: breakTime})
+			viewer.ViewBlockAction(pos, block.ContinueCrackAction{BreakTime: breakTime, Progress: p.breakProgress(pos)})
 		}
 		p.lastBreakDuration = breakTime
 	}

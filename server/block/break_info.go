@@ -54,13 +54,30 @@ type BreakContext struct {
 // passed, accounting for the status effects and environment described by ctx.
 // See https://minecraft.wiki/w/Breaking#Calculation.
 func BreakDuration(b world.Block, i item.Stack, ctx BreakContext) time.Duration {
+	damage := BreakProgress(b, i, ctx)
+	if damage <= 0 {
+		return math.MaxInt64
+	}
+	if damage >= 1 {
+		// The block breaks within a single tick.
+		return 0
+	}
+	return time.Duration(math.Ceil(1/damage)) * time.Second / 20
+}
+
+// BreakProgress returns how much of the block passed is broken every tick (1 = the whole block) when being
+// broken using the item passed, accounting for the status effects and environment described by ctx: BDS's
+// GameMode::getDestroyRate. It is 0 for a block that cannot be broken and +Inf for one without hardness.
+// The crack animation is sent with this exact rate (floor(rate*65535)), as BDS does: a break time rounded
+// up to whole ticks made the cracks lag behind the client's breaking at high mining speeds.
+func BreakProgress(b world.Block, i item.Stack, ctx BreakContext) float64 {
 	breakable, ok := b.(Breakable)
 	if !ok {
-		return math.MaxInt64
+		return 0
 	}
 	info := breakable.BreakInfo()
 	if info.Hardness <= 0 {
-		return 0
+		return math.Inf(1)
 	}
 	t, ok := i.Item().(item.Tool)
 	if !ok {
@@ -108,11 +125,7 @@ func BreakDuration(b world.Block, i item.Stack, ctx BreakContext) time.Duration 
 	if ctx.MiningFatigueLevel > 0 && !ctx.Java {
 		damage *= math.Pow(0.7, float64(ctx.MiningFatigueLevel))
 	}
-	if damage >= 1 {
-		// The block breaks within a single tick.
-		return 0
-	}
-	return time.Duration(math.Ceil(1/damage)) * time.Second / 20
+	return damage
 }
 
 // BreaksInstantly checks if the block passed breaks instantly, that is, it has zero hardness and so is

@@ -13,6 +13,9 @@ type CloseAction struct{ action }
 type StartCrackAction struct {
 	action
 	BreakTime time.Duration
+	// Progress is the part of the block broken every tick (BreakProgress). If set, the crack speed is sent
+	// from it exactly, as BDS does; otherwise it is worked out from BreakTime.
+	Progress float64
 }
 
 // ContinueCrackAction is a world.BlockAction sent every so often to continue the cracking process of the block. It is
@@ -21,6 +24,8 @@ type StartCrackAction struct {
 type ContinueCrackAction struct {
 	action
 	BreakTime time.Duration
+	// Progress: see StartCrackAction.Progress.
+	Progress float64
 }
 
 // StopCrackAction is a world.BlockAction to make the cracks forming in a block stop and disappear.
