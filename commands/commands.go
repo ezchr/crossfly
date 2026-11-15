@@ -22,6 +22,30 @@ var (
 	ops *Operators
 )
 
+// OperatorFunc, when set, decides who may run operator commands in place of the Operators list: for a server
+// with admins of its own (RegisterMissing).
+var OperatorFunc func(p *player.Player) bool
+
+// RegisterMissing registers the vanilla commands (the basic ones and Crossfly Full's /setblock, /fill and
+// /summon) that no command registered before already uses the name or an alias of, so a server keeps its
+// own versions of some and still gets the rest. Set OperatorFunc first for who may run them.
+func RegisterMissing(s *server.Server) {
+	srv = s
+	all := append(coreCommands(), extraCommands()...)
+	for _, c := range all {
+		taken := false
+		for _, name := range append([]string{c.Name()}, c.Aliases()...) {
+			if _, ok := cmd.ByAlias(name); ok {
+				taken = true
+				break
+			}
+		}
+		if !taken {
+			cmd.Register(c)
+		}
+	}
+}
+
 // Register registers the basic vanilla commands for srv, with ops as the operators.
 func Register(s *server.Server, o *Operators) {
 	srv, ops = s, o
@@ -96,7 +120,10 @@ func isOp(src cmd.Source) bool {
 	case Console:
 		return true
 	case *player.Player:
-		return ops.Is(s)
+		if OperatorFunc != nil {
+			return OperatorFunc(s)
+		}
+		return ops != nil && ops.Is(s)
 	}
 	return false
 }

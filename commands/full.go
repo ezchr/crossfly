@@ -18,12 +18,21 @@ import (
 // RegisterExtra registers the extra commands of Crossfly Full: /setblock and /fill for everyone with operator
 // status, and with the mobs on, /summon and /mobdebug.
 func RegisterExtra() {
-	cmd.Register(cmd.New("setblock", "Changes a block to another block.", nil, setBlock{}))
-	cmd.Register(cmd.New("fill", "Fills all or parts of a region with a specific block.", nil, fill{}))
-	if entity.Mobs() {
-		cmd.Register(cmd.New("summon", "Summons a mob.", nil, summon{}))
-		cmd.Register(debugcmd.Command(isOp))
+	for _, c := range extraCommands() {
+		cmd.Register(c)
 	}
+}
+
+// extraCommands are the commands RegisterExtra registers.
+func extraCommands() []cmd.Command {
+	out := []cmd.Command{
+		cmd.New("setblock", "Changes a block to another block.", nil, setBlock{}),
+		cmd.New("fill", "Fills all or parts of a region with a specific block.", nil, fill{}),
+	}
+	if entity.Mobs() {
+		out = append(out, cmd.New("summon", "Summons a mob.", nil, summon{}), debugcmd.Command(isOp))
+	}
+	return out
 }
 
 // --- /summon ---
