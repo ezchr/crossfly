@@ -552,6 +552,7 @@ func (s *Session) ViewEntityAction(e world.Entity, a world.EntityAction) {
 	}
 	switch a := a.(type) {
 	case entity.DeathAction:
+		s.playerDeathSound(e) // attack_sound.go
 		if id == selfEntityID {
 			return // the client has its own death screen
 		}
@@ -590,7 +591,8 @@ func (s *Session) ViewEntityAction(e world.Entity, a world.EntityAction) {
 		w.VarInt(6) // duration in ticks (SwingAnimation.DEFAULT)
 		s.queue(v777.ClientboundPlaySwingAnimation, w)
 	case entity.HurtAction:
-		// damage_event makes the client play both the hurt animation and the entity's hurt sound.
+		// damage_event makes the client play the hurt animation, and the hurt sound of its own player
+		// only: other players' hurt sounds are sent as sounds (playerHurtSound).
 		dt := damageGeneric
 		if l := s.legacy(); l != nil {
 			dt = version.Map(l.damageType, dt)
@@ -606,7 +608,8 @@ func (s *Session) ViewEntityAction(e world.Entity, a world.EntityAction) {
 			s.log.Info("java damage_event", "entity", id, "self", id == selfEntityID)
 		}
 		if id != selfEntityID {
-			s.viewMobData(e, id) // its health (an iron golem's cracks, a wolf's tail)
+			s.viewMobData(e, id)           // its health (an iron golem's cracks, a wolf's tail)
+			s.playerHurtSound(e, a.Source) // attack_sound.go
 		}
 	case interface{ TNTMinecartPrimed() }: // entity.MinecartPrimeAction (Crossfly Full)
 		w := s.packet()

@@ -69,11 +69,7 @@ func (s *Session) playSound(pos mgl64.Vec3, t world.Sound, broadcast bool) {
 	switch so := t.(type) {
 	// Entities.
 	case sound.Attack:
-		if so.Damage {
-			s.sound(pos, sndAttackStrong, srcPlayers, 1, 1)
-		} else {
-			s.sound(pos, sndAttackNoDamage, srcPlayers, 1, 1)
-		}
+		s.attackSound(pos, so) // attack_sound.go
 	case sound.Drowning:
 		s.sound(pos, sndHurtDrown, srcPlayers, 1, (rnd()-rnd())*0.2+1)
 	case sound.Burning:

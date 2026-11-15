@@ -123,6 +123,12 @@ const (
 	sndNoteBit
 	sndNoteBanjo
 	sndNotePling
+	sndAttackWeak
+	sndAttackCrit
+	sndAttackKnockback
+	sndAttackSweep
+	sndPlayerHurt
+	sndPlayerDeath
 	sndCount
 )
 
@@ -247,4 +253,10 @@ var soundNames = [sndCount]string{
 	sndNoteBit:                "block.note_block.bit",
 	sndNoteBanjo:              "block.note_block.banjo",
 	sndNotePling:              "block.note_block.pling",
+	sndAttackWeak:             "entity.player.attack.weak",
+	sndAttackCrit:             "entity.player.attack.crit",
+	sndAttackKnockback:        "entity.player.attack.knockback",
+	sndAttackSweep:            "entity.player.attack.sweep",
+	sndPlayerHurt:             "entity.player.hurt",
+	sndPlayerDeath:            "entity.player.death",
 }

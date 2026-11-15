@@ -5,6 +5,11 @@ type Attack struct {
 	// Damage specifies if the attack actually dealt damage to the other entity. If set to false, the sound
 	// will be different from when set to true.
 	Damage bool
+	// The fields below only change what Java Edition viewers hear: Bedrock has one sound for a hit and
+	// one for a miss. Weak is an attack below 90% of its Java attack strength, Critical a critical hit,
+	// Knockback a sprinting hit at full strength (played as well as the others), Sweep a full-strength
+	// sword hit on the ground that is neither. Air is a swing at the air, which Java does not play.
+	Weak, Critical, Knockback, Sweep, Air bool
 
 	sound
 }

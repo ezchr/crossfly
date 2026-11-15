@@ -10,7 +10,11 @@ type SwingArmAction struct{ action }
 
 // HurtAction is a world.EntityAction that makes an entity display the animation for being hurt. The entity will be
 // shown as red for a short duration.
-type HurtAction struct{ action }
+type HurtAction struct {
+	action
+	// Source is the source of the damage, if known. Java viewers play the hurt sound of a player from it.
+	Source world.DamageSource
+}
 
 // CriticalHitAction is a world.EntityAction that makes an entity display critical hit particles. This will show stars
 // around the entity.

@@ -100,6 +100,10 @@ type playerData struct {
 	cooldowns       map[string]time.Time
 	spearChargeHits map[uuid.UUID]time.Time
 
+	// nextJavaAttack is the JavaAttack of the next AttackEntity, if nextJavaAttackSet (java_attack.go).
+	nextJavaAttack    JavaAttack
+	nextJavaAttackSet bool
+
 	speed               float64
 	flightSpeed         float64
 	verticalFlightSpeed float64
@@ -770,7 +774,7 @@ func (p *Player) Hurt(dmg float64, src world.DamageSource) (float64, world.HurtR
 
 	pos := p.Position()
 	for _, viewer := range p.viewers() {
-		viewer.ViewEntityAction(p, entity.HurtAction{})
+		viewer.ViewEntityAction(p, entity.HurtAction{Source: src})
 	}
 	if src.Fire() {
 		p.tx.PlaySound(pos, sound.Burning{})
@@ -2242,6 +2246,7 @@ func (p *Player) UseItemAsAttack() bool {
 // have.
 // If the player cannot reach the entity at its position, the method returns immediately.
 func (p *Player) AttackEntity(e world.Entity) bool {
+	defer func() { p.nextJavaAttackSet = false }()
 	if held, _ := p.HeldItems(); !held.Empty() {
 		if _, ok := held.Item().(item.Spear); ok {
 			return p.attackWithSpear(e)
@@ -2418,7 +2423,7 @@ func (p *Player) attackEntity(e world.Entity, criticalAllowed bool) (valid, hit 
 			return true, false
 		}
 		n, vulnerable, _ := entity.HurtEntity(e, i.AttackDamage(), entity.AttackDamageSource{Attacker: p})
-		p.tx.PlaySound(entity.EyePosition(e), sound.Attack{Damage: !mgl64.FloatEqual(n, 0)})
+		p.tx.PlaySound(entity.EyePosition(e), p.attackSound(!mgl64.FloatEqual(n, 0), false))
 		if vulnerable {
 			p.Exhaust(0.1)
 		}
@@ -2475,7 +2480,7 @@ func (p *Player) attackEntity(e world.Entity, criticalAllowed bool) (valid, hit 
 		p.SetHeldItems(p.damageItem(i, durable.DurabilityInfo().AttackDurability), left)
 	}
 
-	p.tx.PlaySound(entity.EyePosition(e), sound.Attack{Damage: !mgl64.FloatEqual(n, 0)})
+	p.tx.PlaySound(entity.EyePosition(e), p.attackSound(!mgl64.FloatEqual(n, 0), critical))
 	// Fire Aspect bypasses shields in Bedrock Edition.
 	if result.Accepted() || result.Blocked() {
 		// Bane of Arthropods slows an arthropod (BDS MeleeWeaponEnchant::doPostAttack).
@@ -4698,7 +4703,7 @@ func (p *Player) PunchAir() {
 	}
 	p.SwingArm()
 	p.delayShieldAfterAttack()
-	p.tx.PlaySound(p.Position(), sound.Attack{})
+	p.tx.PlaySound(p.Position(), sound.Attack{Air: true})
 }
 
 // UpdateDiagnostics updates the diagnostics of the player.

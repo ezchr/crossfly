@@ -29,6 +29,8 @@ type inputState struct {
 	swingOwed bool
 	// lastDig is when the client last started, stopped or aborted breaking a block (read loop only).
 	lastDig time.Time
+	// attack is the attack cooldown of Java's attack sounds (attack_clock.go; player tasks only).
+	attack attackClock
 }
 
 // validFace reports whether a face from the client is one of the six.
@@ -216,6 +218,7 @@ func (s *Session) handleInput(id int32, body []byte) (bool, error) {
 					return
 				}
 			}
+			s.input.attack.attack(c) // the strength of this attack, for its sounds
 			// AttackEntity swings the arm itself when the attack is valid.
 			hit := c.AttackEntity(e)
 			s.log.Debug("attack", "target", target, "hit", hit)
@@ -248,6 +251,7 @@ func (s *Session) handleInput(id int32, body []byte) (bool, error) {
 			s.log.Info("java in: punch", "owed", owed, "mining", mining)
 		}
 		s.do(func(tx *world.Tx, c session.Controllable) {
+			s.input.attack.reset()                  // every punch starts the attack cooldown over (handlePunch)
 			if owed || mining || s.input.breaking { // breaking is set in these tasks too (block_dig)
 				c.SwingArm()
 				return

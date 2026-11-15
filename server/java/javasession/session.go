@@ -460,6 +460,7 @@ func (s *Session) tickLoop() {
 				s.sendChunkBatch(tx)
 				s.continueBreaking(c)
 				s.continueEating(c)
+				s.input.attack.tick(c, pos)
 				s.syncEnchantAttributes(tx, c)
 			})
 			s.tickWeather()
