@@ -96,5 +96,29 @@ func Components(it world.CustomItem) map[string]any {
 			builder.AddComponent(k, v)
 		}
 	}
+	builder.normaliseInteractButton()
 	return builder.Construct()
+}
+
+// normaliseInteractButton rewrites a minecraft:interact_button given in the add-on JSON form (true,
+// or the button's text) into the form BDS sends in the item registry. Clients ignore the JSON form
+// and show no interact button for the item.
+func (builder *ComponentBuilder) normaliseInteractButton() {
+	var text string
+	switch v := builder.components["minecraft:interact_button"].(type) {
+	case bool:
+		if !v {
+			delete(builder.components, "minecraft:interact_button")
+			return
+		}
+		text = "action.interact.use"
+	case string:
+		text = v
+	default:
+		return
+	}
+	builder.components["minecraft:interact_button"] = map[string]any{
+		"interact_text":     text,
+		"requires_interact": uint8(1),
+	}
 }
