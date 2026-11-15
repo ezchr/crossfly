@@ -27,6 +27,8 @@ type inputState struct {
 	// using an item, on a block or an entity, attacking, digging, dropping. That punch is the swing
 	// of that action, not a swing at the air. Read loop only.
 	swingOwed bool
+	// lastDig is when the client last started, stopped or aborted breaking a block (read loop only).
+	lastDig time.Time
 }
 
 // validFace reports whether a face from the client is one of the six.
@@ -94,6 +96,10 @@ func (s *Session) handleInput(id int32, body []byte) (bool, error) {
 		switch action {
 		case actionStartDestroy, actionAbortDestroy, actionStopDestroy, actionDropAll, actionDropItem:
 			s.input.swingOwed = true
+		}
+		switch action {
+		case actionStartDestroy, actionAbortDestroy, actionStopDestroy:
+			s.input.lastDig = time.Now()
 		}
 		s.do(func(tx *world.Tx, c session.Controllable) {
 			// Bedrock clients drive the breaking animation with start/continue/stop and send the
@@ -221,8 +227,12 @@ func (s *Session) handleInput(id int32, body []byte) (bool, error) {
 		// that is the arm swinging too, not a miss.
 		owed := s.input.swingOwed
 		s.input.swingOwed = false
+		// After a block breaks the client waits 5 ticks (destroyDelay) before it starts the next one,
+		// still swinging every tick while the attack key is held: those swings belong to the mining too.
+		// Played as misses, they were a burst of attack clicks after every block.
+		mining := time.Since(s.input.lastDig) < 350*time.Millisecond
 		s.do(func(tx *world.Tx, c session.Controllable) {
-			if owed || s.input.breaking { // breaking is set in these tasks too (block_dig)
+			if owed || mining || s.input.breaking { // breaking is set in these tasks too (block_dig)
 				c.SwingArm()
 				return
 			}
