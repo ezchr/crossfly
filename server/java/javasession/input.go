@@ -128,6 +128,16 @@ func (s *Session) handleInput(id int32, body []byte) (bool, error) {
 				if !s.input.breaking || pos != s.input.breakPos {
 					return
 				}
+				// Like vanilla Java's server (ServerPlayerGameMode): the block breaks if the server's own
+				// progress is at least 70% (leeway for lag). If the client says it finished earlier (a
+				// nuker, instamine), the block stays and is sent back; the server keeps breaking it every
+				// tick while the client keeps mining and breaks it at 100%.
+				if bp, ok := c.(interface{ BreakingProgress() (float64, bool) }); ok {
+					if progress, breaking := bp.BreakingProgress(); breaking && progress < 0.7 {
+						s.ViewBlockUpdate(pos, tx.Block(pos), 0)
+						return
+					}
+				}
 				c.FinishBreaking()
 				c.BreakBlock(pos)
 				s.input.breaking = false

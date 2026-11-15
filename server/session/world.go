@@ -571,9 +571,9 @@ func (s *Session) ViewParticle(pos mgl64.Vec3, p world.Particle) {
 		})
 	case particle.PunchBlock:
 		s.writePacket(&packet.LevelEvent{
-			EventType: packet.LevelEventParticlesCrackBlock,
+			EventType: packet.LevelEventParticlesCrackBlockDown + int32(pa.Face),
 			Position:  vec64To32(pos),
-			EventData: int32(s.br.BlockRuntimeID(pa.Block)) | (int32(pa.Face) << 24),
+			EventData: int32(s.br.BlockRuntimeID(pa.Block)),
 		})
 	case particle.Legacy:
 		s.writePacket(&packet.LevelEvent{

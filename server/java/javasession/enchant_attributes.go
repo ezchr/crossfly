@@ -3,6 +3,7 @@ package javasession
 import (
 	"github.com/df-mc/dragonfly/server/block"
 	"github.com/df-mc/dragonfly/server/block/cube"
+	"github.com/df-mc/dragonfly/server/entity/effect"
 	"github.com/df-mc/dragonfly/server/item"
 	"github.com/df-mc/dragonfly/server/item/enchantment"
 	"github.com/df-mc/dragonfly/server/item/inventory"
@@ -11,6 +12,7 @@ import (
 	"github.com/df-mc/dragonfly/server/session"
 	"github.com/df-mc/dragonfly/server/world"
 	"github.com/go-gl/mathgl/mgl64"
+	"math"
 )
 
 // A Java client applies Efficiency, Aqua Affinity, Depth Strider, Swift Sneak, Respiration and Soul
@@ -39,6 +41,7 @@ const (
 	attrMovementEfficiency
 	attrArmor
 	attrArmorToughness
+	attrBlockBreakSpeed
 	enchantAttrCount
 )
 
@@ -46,11 +49,12 @@ var (
 	enchantAttrNames = [enchantAttrCount]string{
 		"mining_efficiency", "submerged_mining_speed", "water_movement_efficiency",
 		"sneaking_speed", "oxygen_bonus", "movement_efficiency", "armor", "armor_toughness",
+		"block_break_speed",
 	}
 	// enchantAttrDefaults are the values of a new Java player entity (Attributes, 26.3).
-	enchantAttrDefaults = [enchantAttrCount]float64{0, 0.2, 0, 0.3, 0, 0, 0, 0}
+	enchantAttrDefaults = [enchantAttrCount]float64{0, 0.2, 0, 0.3, 0, 0, 0, 0, 1}
 	// enchantAttrMax are the attributes' upper bounds.
-	enchantAttrMax = [enchantAttrCount]float64{1024, 20, 1, 1, 1024, 1, 30, 20}
+	enchantAttrMax = [enchantAttrCount]float64{1024, 20, 1, 1, 1024, 1, 30, 20, 1024}
 	enchantAttrIDs = func() (ids [enchantAttrCount]int32) {
 		for i, n := range enchantAttrNames {
 			ids[i] = v777.BuiltinID("minecraft:attribute", "minecraft:"+n)
@@ -164,6 +168,7 @@ func (s *Session) syncEnchantAttributes(tx *world.Tx, c session.Controllable) {
 	soul := soulSpeedLevel(armour[3], soulSand || soulSoil, onGround, st.soulSpeed > 0, c.Flying(), riding)
 
 	v := enchantAttributeValues(held, armour, soul)
+	v[attrBlockBreakSpeed] = min(bedrockBreakFactor(effectLevels(c)), enchantAttrMax[attrBlockBreakSpeed])
 	prev := enchantAttrDefaults
 	if st.valid {
 		prev = st.sent
@@ -204,4 +209,43 @@ func (s *Session) syncEnchantAttributes(tx *world.Tx, c session.Controllable) {
 		}
 		s.writeSpeed()
 	}
+}
+
+// effectLevels returns the levels of the effects that change mining speed on c: the higher of Haste and
+// Conduit Power, and Mining Fatigue (0 for none).
+func effectLevels(c session.Controllable) (positive, fatigue int) {
+	e, ok := c.(interface {
+		Effect(effect.Type) (effect.Effect, bool)
+	})
+	if !ok {
+		return 0, 0
+	}
+	if h, ok := e.Effect(effect.Haste); ok {
+		positive = h.Level()
+	}
+	if cp, ok := e.Effect(effect.ConduitPower); ok {
+		positive = max(positive, cp.Level())
+	}
+	if f, ok := e.Effect(effect.MiningFatigue); ok {
+		fatigue = f.Level()
+	}
+	return positive, fatigue
+}
+
+// bedrockBreakFactor is the block_break_speed that makes a Java client mine as fast as a Bedrock one. Both
+// multiply the speed by 1+0.2*level for Haste or Conduit Power, but Bedrock also multiplies the progress
+// per tick by 1.2^level (GameMode::continueDestroyBlock). Mining Fatigue is 0.3^level on the speed and
+// 0.7^level on the progress on Bedrock, and 0.3, 0.09, 0.0027 or 0.00081 (level 4 and up) on Java.
+// block_break_speed multiplies a Java client's speed, so the server breaks blocks (block.BreakProgress,
+// Bedrock's formula) at the same moment for both editions.
+func bedrockBreakFactor(positive, fatigue int) float64 {
+	f := 1.0
+	if positive > 0 {
+		f *= math.Pow(1.2, float64(positive))
+	}
+	if fatigue > 0 {
+		java := [...]float64{0.3, 0.09, 0.0027, 0.00081}[min(fatigue, 4)-1]
+		f *= math.Pow(0.3, float64(fatigue)) * math.Pow(0.7, float64(fatigue)) / java
+	}
+	return f
 }

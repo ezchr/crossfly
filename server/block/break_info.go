@@ -54,31 +54,51 @@ type BreakContext struct {
 // passed, accounting for the status effects and environment described by ctx.
 // See https://minecraft.wiki/w/Breaking#Calculation.
 func BreakDuration(b world.Block, i item.Stack, ctx BreakContext) time.Duration {
-	damage := BreakProgress(b, i, ctx)
-	if damage <= 0 {
+	progress := BreakProgress(b, i, ctx)
+	if progress <= 0 {
 		return math.MaxInt64
 	}
-	if damage >= 1 {
+	if progress >= 1 {
 		// The block breaks within a single tick.
 		return 0
 	}
-	return time.Duration(math.Ceil(1/damage)) * time.Second / 20
+	return time.Duration(math.Ceil(1/progress)) * time.Second / 20
 }
 
-// BreakProgress returns how much of the block passed is broken every tick (1 = the whole block) when being
-// broken using the item passed, accounting for the status effects and environment described by ctx: BDS's
-// GameMode::getDestroyRate. It is 0 for a block that cannot be broken and +Inf for one without hardness.
-// The crack animation is sent with this exact rate (floor(rate*65535)), as BDS does: a break time rounded
-// up to whole ticks made the cracks lag behind the client's breaking at high mining speeds.
+// BreakProgress returns the fraction of the block passed that is broken every tick when it is broken using the
+// item passed, accounting for the status effects and environment described by ctx (BDS's
+// GameMode::getDestroyRate). A block is broken once the progress made reaches 1. BreakProgress returns 0 for
+// blocks that cannot be broken. The crack animation is sent with this exact rate (floor(rate*65535)), as BDS
+// does.
 func BreakProgress(b world.Block, i item.Stack, ctx BreakContext) float64 {
 	breakable, ok := b.(Breakable)
 	if !ok {
 		return 0
 	}
 	info := breakable.BreakInfo()
-	if info.Hardness <= 0 {
-		return math.Inf(1)
+	if info.Hardness < 0 {
+		return 0
 	}
+	positive := max(ctx.HasteLevel, ctx.ConduitPowerLevel)
+	progress := 1.0
+	if info.Hardness > 0 {
+		progress = baseBreakProgress(b, info, i, ctx, positive)
+	}
+	// Bedrock also scales the final progress by Haste/Conduit Power and Mining Fatigue. Java players mine
+	// with the same formula: they are sent a block_break_speed that makes up the difference
+	// (javasession.bedrockBreakFactor).
+	if positive > 0 {
+		progress *= math.Pow(1.2, float64(positive))
+	}
+	if ctx.MiningFatigueLevel > 0 {
+		progress *= math.Pow(0.7, float64(ctx.MiningFatigueLevel))
+	}
+	return progress
+}
+
+// baseBreakProgress returns the progress made every tick breaking a block with a positive hardness, before
+// the final Haste, Conduit Power and Mining Fatigue multipliers are applied.
+func baseBreakProgress(b world.Block, info BreakInfo, i item.Stack, ctx BreakContext, positive int) float64 {
 	t, ok := i.Item().(item.Tool)
 	if !ok {
 		t = item.ToolNone{}
@@ -100,7 +120,6 @@ func BreakProgress(b world.Block, i item.Stack, ctx BreakContext) float64 {
 
 	// Haste and Conduit Power do not stack; the higher of the two is used. They boost both the mining speed
 	// and the final destroy progress per tick.
-	positive := max(ctx.HasteLevel, ctx.ConduitPowerLevel)
 	if positive > 0 {
 		speed *= 0.2*float64(positive) + 1
 	}
@@ -114,19 +133,10 @@ func BreakProgress(b world.Block, i item.Stack, ctx BreakContext) float64 {
 		speed /= 5
 	}
 
-	damage := speed / info.Hardness
 	if canHarvest {
-		damage /= 30
-	} else {
-		damage /= 100
+		return speed / info.Hardness / 30
 	}
-	if positive > 0 && !ctx.Java {
-		damage *= math.Pow(1.2, float64(positive))
-	}
-	if ctx.MiningFatigueLevel > 0 && !ctx.Java {
-		damage *= math.Pow(0.7, float64(ctx.MiningFatigueLevel))
-	}
-	return damage
+	return speed / info.Hardness / 100
 }
 
 // BreaksInstantly checks if the block passed breaks instantly, that is, it has zero hardness and so is

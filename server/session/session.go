@@ -79,10 +79,13 @@ type Session struct {
 	// player is viewed.
 	joinSkin skin.Skin
 
-	breakingPos cube.Pos
-
-	// heldItemPredicted is true while the client has predicted changes to its held item itself (mining
-	// with it), so they are not sent back to it.
+	breakingFace cube.Face
+	// continuedBreak is true if the PlayerAuthInput packet being handled made the player continue breaking.
+	continuedBreak bool
+	// predictedBreak is the position of the block the client last predicted to be broken, if any.
+	predictedBreak *cube.Pos
+	// heldItemPredicted is true while the client has predicted changes to its held item itself, so they
+	// should not be sent back to it.
 	heldItemPredicted atomic.Bool
 
 	inTransaction, containerOpened atomic.Bool

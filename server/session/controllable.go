@@ -106,7 +106,9 @@ type Controllable interface {
 	Jump()
 
 	StartBreaking(pos cube.Pos, face cube.Face)
+	Breaking() (cube.Pos, bool)
 	ContinueBreaking(face cube.Face)
+	ContinueBreakingBlock(pos cube.Pos, face cube.Face)
 	FinishBreaking()
 	AbortBreaking()
 
