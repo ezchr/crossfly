@@ -732,9 +732,10 @@ func (s *Session) broadcastInvFunc(tx *world.Tx, c Controllable) inventory.SlotF
 				viewer.ViewEntityItems(c)
 			}
 		}
-		if !s.inTransaction.Load() {
-			s.sendItem(after, slot, protocol.WindowIDInventory)
+		if s.inTransaction.Load() || (slot == int(*s.heldSlot) && s.heldItemPredicted.Load()) {
+			return // the item stack response sets it on the client
 		}
+		s.sendItem(after, slot, protocol.WindowIDInventory)
 	}
 }
 

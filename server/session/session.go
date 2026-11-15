@@ -81,6 +81,10 @@ type Session struct {
 
 	breakingPos cube.Pos
 
+	// heldItemPredicted is true while the client has predicted changes to its held item itself (mining
+	// with it), so they are not sent back to it.
+	heldItemPredicted atomic.Bool
+
 	inTransaction, containerOpened atomic.Bool
 	openedWindowID                 atomic.Uint32
 	openedContainerID              atomic.Uint32
