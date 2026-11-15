@@ -4945,6 +4945,12 @@ func (p *Player) Data() Config {
 }
 
 // conn returns the network session of the player, of any kind (Bedrock or not). If it has none, a
+// Viewer returns the world.Viewer of the player's own Bedrock client (a viewer that shows nothing for
+// a player without one), for showing the player something other than what everyone else is shown.
+func (p *Player) Viewer() world.Viewer {
+	return p.session()
+}
+
 // no-op session is returned.
 func (p *Player) conn() Session {
 	if s := p.s; s != nil {
