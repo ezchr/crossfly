@@ -63,6 +63,11 @@ func bedrockName(e world.Entity) string {
 	if n, ok := e.(networkEncoded); ok {
 		return n.NetworkEncodeEntity()
 	}
+	// The Bedrock session reads the network id from the entity's type (session.NetworkEncodeableEntity):
+	// a custom entity shown as a vanilla one (an NPC sent as a villager) declares it there.
+	if n, ok := e.H().Type().(networkEncoded); ok {
+		return n.NetworkEncodeEntity()
+	}
 	return e.H().Type().EncodeEntity()
 }
 
