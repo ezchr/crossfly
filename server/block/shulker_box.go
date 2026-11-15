@@ -133,10 +133,28 @@ func (s ShulkerBox) UseOnBlock(pos cube.Pos, face cube.Face, _ mgl64.Vec3, tx *w
 	if !used {
 		return
 	}
-	s = s.initialised()
+	// The placed box gets an inventory of its own with copies of the item's contents: sharing the item's
+	// inventory, taking items out of a box placed in creative (where the item stays in the hand) emptied
+	// the item too.
+	s = s.copied()
 	s.Facing = face
 	place(tx, pos, s, user, ctx)
 	return placed(ctx)
+}
+
+// copied returns the shulker box with a new inventory holding the same items, so that it shares no
+// inventory with s.
+func (s ShulkerBox) copied() ShulkerBox {
+	n := NewShulkerBox()
+	n.Colour, n.Facing, n.CustomName = s.Colour, s.Facing, s.CustomName
+	if s.inventory != nil {
+		for i, it := range s.inventory.Slots() {
+			if !it.Empty() {
+				_ = n.inventory.SetItem(i, it)
+			}
+		}
+	}
+	return n
 }
 
 // initialised lazily populates runtime fields on values created via struct
