@@ -2793,6 +2793,7 @@ func (p *Player) StartBreaking(pos cube.Pos, face cube.Face) {
 		return
 	}
 	p.lastBreakDuration = p.breakTime(pos)
+	p.logBreakStart(p.lastBreakDuration)
 	for _, viewer := range p.viewers() {
 		viewer.ViewBlockAction(pos, block.StartCrackAction{BreakTime: p.lastBreakDuration})
 	}
@@ -2842,6 +2843,7 @@ func (p *Player) FinishBreaking() {
 		p.resendNearbyBlock(p.breakingPos)
 		return
 	}
+	p.logBreakFinish()
 	p.AbortBreaking()
 	p.BreakBlock(p.breakingPos)
 }
@@ -2878,6 +2880,7 @@ func (p *Player) ContinueBreaking(face cube.Face) {
 		p.tx.PlaySound(pos.Vec3(), sound.BlockBreaking{Block: b})
 	}
 	if breakTime := p.breakTime(pos); breakTime != p.lastBreakDuration {
+		p.logBreakChange(breakTime)
 		for _, viewer := range p.viewers() {
 			viewer.ViewBlockAction(pos, block.ContinueCrackAction{BreakTime: breakTime})
 		}
