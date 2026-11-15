@@ -64,11 +64,16 @@ func bedrockName(e world.Entity) string {
 		return n.NetworkEncodeEntity()
 	}
 	// The Bedrock session reads the network id from the entity's type (session.NetworkEncodeableEntity):
-	// a custom entity shown as a vanilla one (an NPC sent as a villager) declares it there.
-	if n, ok := e.H().Type().(networkEncoded); ok {
-		return n.NetworkEncodeEntity()
+	// a custom entity shown as a vanilla one (an NPC sent as a villager) declares it there. A type Java
+	// has an entity of its own for keeps its save id: a floating text is a falling block on Bedrock
+	// and a text display on Java, and text display data sent for a falling block crashes the client.
+	save := e.H().Type().EncodeEntity()
+	if _, listed := javaEntityName[save]; !listed {
+		if n, ok := e.H().Type().(networkEncoded); ok {
+			return n.NetworkEncodeEntity()
+		}
 	}
-	return e.H().Type().EncodeEntity()
+	return save
 }
 
 // javaTypeName is the Java entity type name e is shown as, or ok == false for entities Java has no
