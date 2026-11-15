@@ -87,12 +87,13 @@ func BreakProgress(b world.Block, i item.Stack, ctx BreakContext) float64 {
 	canHarvest := info.Harvestable(t)
 	speed := 1.0
 	if info.Effective(t) {
+		// The tool speed and Efficiency count whenever the tool is the right kind for the block, also when its
+		// tier is too low to harvest it (an iron pickaxe on ancient debris): BDS DiggerItem::getDestroySpeed
+		// only checks that the block is one the tool mines, and the tier only makes the progress /100 instead
+		// of /30 below. Dragonfly gave a wrong tier no speed at all, so the cracks ran far slower than the
+		// client broke the block.
 		speed = t.BaseMiningEfficiency(b)
-		if !canHarvest && !ctx.Java {
-			// A tool of the correct type but wrong tier (e.g. a wooden pickaxe on diamond ore) grants no
-			// speed bonus in Bedrock Edition (Java keeps it, see BreakContext.Java).
-			speed = 1
-		} else if e, ok := i.Enchantment(enchantment.Efficiency); ok && (canHarvest || ctx.Java) {
+		if e, ok := i.Enchantment(enchantment.Efficiency); ok {
 			speed += enchantment.Efficiency.Addend(e.Level())
 		}
 	}

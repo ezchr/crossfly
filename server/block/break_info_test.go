@@ -87,7 +87,7 @@ func TestBreakDuration(t *testing.T) {
 			name:      "wrong tier tool cannot harvest",
 			block:     block.DiamondOre{Type: block.StoneOre()},
 			stack:     woodPick,
-			wantTicks: 300,
+			wantTicks: 150, // wooden speed 2 still counts (BDS DiggerItem::getDestroySpeed); the tier only makes it /100
 		},
 	}
 
