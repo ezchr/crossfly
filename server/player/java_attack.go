@@ -17,7 +17,8 @@ type JavaAttack struct {
 // SetNextJavaAttack sets the JavaAttack of the player's next AttackEntity call. Java viewers then hear the
 // attack as vanilla Java plays it: weak below 90% strength, the knockback sound as well for a sprinting
 // hit at full strength, and the sweep sound for a full-strength sword hit on the ground at walking speed.
-// Without it (a Bedrock player) an attack is at full strength and never sweeps.
+// Without it (a Bedrock player) an attack is at full strength with neither: a Bedrock player keeps
+// sprinting after a sprinting hit, where a Java player stops, so every hit of theirs would sound like one.
 func (p *Player) SetNextJavaAttack(a JavaAttack) {
 	p.nextJavaAttack, p.nextJavaAttackSet = a, true
 }
@@ -26,13 +27,14 @@ func (p *Player) SetNextJavaAttack(a JavaAttack) {
 // whether it was a critical hit (Player.attack in vanilla Java). Bedrock viewers only hear whether it did
 // damage.
 func (p *Player) attackSound(damaged, critical bool) sound.Attack {
+	java := p.nextJavaAttackSet
 	strength, walking := 1.0, false
-	if p.nextJavaAttackSet {
+	if java {
 		strength = p.nextJavaAttack.Strength
 		walking = p.nextJavaAttack.Movement < p.Speed()*2.5
 	}
 	full := strength > 0.9
-	s := sound.Attack{Damage: damaged, Weak: !full, Knockback: full && p.Sprinting()}
+	s := sound.Attack{Damage: damaged, Weak: !full, Knockback: java && full && p.Sprinting()}
 	if damaged {
 		held, _ := p.HeldItems()
 		_, sword := held.Item().(item.Sword)
