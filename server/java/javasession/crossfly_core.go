@@ -12,9 +12,14 @@ import (
 // (piston.go and minecart.go in Crossfly Full).
 
 func javaBlockEntityData(JavaBlock) (string, []byte) { return "", nil }
-func blockEntityExtra(world.Block) (string, []byte)  { return "", nil }
-func (s *Session) viewMinecart(world.Entity, int32)  {}
-func (s *Session) viewBoat(world.Entity, int32)      {}
+func blockEntityExtra(b world.Block) (string, []byte) {
+	if typ, data, ok := signBlockEntity(b); ok {
+		return typ, data
+	}
+	return "", nil
+}
+func (s *Session) viewMinecart(world.Entity, int32) {}
+func (s *Session) viewBoat(world.Entity, int32)     {}
 
 // Crossfly Core shows no capes of Java players to Bedrock players (cape.go in Crossfly Full).
 

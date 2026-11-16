@@ -12,6 +12,9 @@ import (
 // whose block entity carries data Java clients draw from: the monster spawner's mob (BaseSpawner.load reads
 // SpawnData.entity.id for the spinning mob, RequiredPlayerRange for when it spins, Delay for how fast).
 func blockEntityExtra(b world.Block) (string, []byte) {
+	if typ, data, ok := signBlockEntity(b); ok {
+		return typ, data // sign text (sign_text_java.go)
+	}
 	s, ok := b.(block.MobSpawner)
 	if !ok {
 		return "", nil
