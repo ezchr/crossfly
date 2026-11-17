@@ -13,6 +13,7 @@ import (
 
 	"github.com/df-mc/dragonfly/server"
 	"github.com/df-mc/dragonfly/server/block"
+	"github.com/df-mc/dragonfly/server/block/cube"
 	"github.com/df-mc/dragonfly/server/entity"
 	"github.com/df-mc/dragonfly/server/entity/effect"
 	"github.com/df-mc/dragonfly/server/item"
@@ -41,6 +42,8 @@ func main() {
 	hungry := flag.Bool("hungry", false, "start each player at food 10 with 5 bread in hand")
 	slimeFloor := flag.Bool("slimefloor", false, "top layer of slime (breaks instantly, for testing)")
 	hudTest := flag.Bool("hudtest", false, "max health 32 and diamond armour for each joining player; the second player is shot with an arrow of the first after 4 s; the first is killed after 12 s")
+	bridgeAssist := flag.Bool("bridgeassist", false, "Bedrock's bridge placement help for Java players (javasession.Config.BridgeAssist)")
+	bridgeTest := flag.Bool("bridgetest", false, "a 3 block long stone walkway 20 blocks above the ground at x 0..2, z 0, each joining player on its first block with 64 stone and 64 stone slabs (for -bridgeassist)")
 	survival := flag.Bool("survival", true, "new players start in survival (Dragonfly defaults to creative)")
 	flag.Parse()
 	if *pprofAddr != "" {
@@ -85,7 +88,7 @@ func main() {
 		os.Exit(1)
 	}
 	log.Info("java listening", "addr", jl.Addr())
-	go javasession.Run(javasession.Config{Server: srv, Listener: jl, ChunkRadius: *radius, Log: log})
+	go javasession.Run(javasession.Config{Server: srv, Listener: jl, ChunkRadius: *radius, Log: log, BridgeAssist: *bridgeAssist})
 
 	var second *world.World
 	if *worldTest {
@@ -181,6 +184,18 @@ func main() {
 					})
 				})
 			}()
+		}
+		if *bridgeTest {
+			later(p.H(), time.Second, func(tx *world.Tx, p *player.Player) {
+				y := int(p.Position().Y()) + 20
+				for x := 0; x < 3; x++ {
+					tx.SetBlock(cube.Pos{x, y, 0}, block.Stone{}, nil)
+				}
+				_ = p.Inventory().SetItem(0, item.NewStack(block.Stone{}, 64))
+				_ = p.Inventory().SetItem(1, item.NewStack(block.Slab{Block: block.Stone{}}, 64))
+				p.Teleport(mgl64.Vec3{0.5, float64(y + 1), 0.5})
+				log.Info("bridgetest: walkway", "y", y, "name", p.Name())
+			})
 		}
 		if *spawnTest {
 			tx := p.Tx()

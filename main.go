@@ -40,6 +40,9 @@ type javaConfig struct {
 	// ChunkRadius is the largest view distance in chunks a Java player gets. Their own setting is
 	// used when it is smaller.
 	ChunkRadius int
+	// BridgeAssist gives Java players the block placement help Bedrock players have: using a block while
+	// looking down at nothing places it against the block they stand on, on the side they look towards.
+	BridgeAssist bool `comment:"BridgeAssist gives Java players the block placement help Bedrock players have: using a block while looking down past an edge at nothing places it against the block they stand on, on the side they look towards. Bedrock players always have it. The environment variable CF_JAVA_BRIDGE_ASSIST (1 or 0) overrides it."`
 }
 
 func defaultConfig() fileConfig {
@@ -127,12 +130,13 @@ func startJava(srv *server.Server, conf server.Config, jc javaConfig, log *slog.
 	}
 	log.Info("Java Edition listener running.", "addr", l.Addr(), "online-mode", jc.OnlineMode && secret == nil, "velocity", secret != nil)
 	go javasession.Run(javasession.Config{
-		Server:      srv,
-		Listener:    l,
-		ChunkRadius: jc.ChunkRadius,
-		Log:         log,
-		JoinMessage: conf.JoinMessage,
-		QuitMessage: conf.QuitMessage,
+		Server:       srv,
+		Listener:     l,
+		ChunkRadius:  jc.ChunkRadius,
+		Log:          log,
+		JoinMessage:  conf.JoinMessage,
+		QuitMessage:  conf.QuitMessage,
+		BridgeAssist: jc.BridgeAssist,
 	})
 	return nil
 }

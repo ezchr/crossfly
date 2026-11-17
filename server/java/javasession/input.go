@@ -29,6 +29,8 @@ type inputState struct {
 	swingOwed bool
 	// lastDig is when the client last started, stopped or aborted breaking a block (read loop only).
 	lastDig time.Time
+	// lastUseOn is when the client last sent use_item_on (read loop only; bridge_assist.go).
+	lastUseOn time.Time
 	// attack is the attack cooldown of Java's attack sounds (attack_clock.go; player tasks only).
 	attack attackClock
 }
@@ -164,6 +166,7 @@ func (s *Session) handleInput(id int32, body []byte) (bool, error) {
 			return true, r.Err
 		}
 		s.input.swingOwed = true
+		s.input.lastUseOn = time.Now()
 		if hand == 0 {
 			pos := cube.Pos{x, y, z}
 			// The click position is within the block; clamp what a hostile client sends (NaN too).
@@ -184,15 +187,19 @@ func (s *Session) handleInput(id int32, body []byte) (bool, error) {
 	case v777.ServerboundPlayUseItem:
 		hand := r.VarInt()
 		seq := r.VarInt()
-		r.Float32()
-		r.Float32()
+		yaw, pitch := r.Float32(), r.Float32()
 		if r.Err != nil {
 			return true, r.Err
 		}
 		s.input.swingOwed = true
 		if hand == 0 {
 			s.fxUsedItem()
+			// A click that hit nothing: Bedrock's placement help may have a block for it.
+			assist := s.bridgeAssist && time.Since(s.input.lastUseOn) > bridgeAssistUseOnGap
 			s.do(func(tx *world.Tx, c session.Controllable) {
+				if assist && s.bridgeAssistUse(tx, c, yaw, pitch) {
+					return
+				}
 				c.UseItem()
 				if held, _ := c.HeldItems(); c.UsingItem() && isConsumable(held) {
 					s.input.eatStart = time.Now()

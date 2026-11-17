@@ -34,6 +34,7 @@ The `[Java]` section of `config.toml`:
 | `VelocitySecretFile` | `""` | Path to Velocity's `forwarding.secret`. Set it when the server sits behind Velocity with modern forwarding; Velocity then checks the accounts. |
 | `CompressionThreshold` | `256` | Packets this big or bigger are compressed. Use `-1` when only Velocity on the same machine connects. |
 | `ChunkRadius` | `12` | Largest view distance Java players get. |
+| `BridgeAssist` | `false` | Bedrock's bridging help for Java players: using a block while looking down past an edge at nothing places it against the block they stand on, on the side they look towards. Bedrock players always have it (their client does it). The environment variable `CF_JAVA_BRIDGE_ASSIST` (`1` or `0`) overrides it. See [bridge assist](server/java/javasession/BRIDGE_ASSIST.md). |
 
 Everything else in `config.toml` is Dragonfly's own configuration.
 

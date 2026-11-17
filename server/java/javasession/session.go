@@ -57,6 +57,8 @@ type Session struct {
 
 	joinMessage chat.Translation
 	quitMessage chat.Translation
+	// bridgeAssist: Config.BridgeAssist (bridge_assist.go).
+	bridgeAssist bool
 
 	tabs        *tabList
 	tab         tabState

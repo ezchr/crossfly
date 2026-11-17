@@ -87,6 +87,11 @@ for p := range srv.Accept() {
 - Identity: a Java player gets the XUID and UUID ViaBedrock would give them, so players who
   used ViaProxy before keep their data. `Config.Identity` changes this.
 
+- Optional: Bedrock's bridging help for Java players (`javasession.Config.BridgeAssist`, off by default):
+  using a block while looking down past an edge at nothing places it against the block the player
+  stands on, as the Bedrock client does for its players. See
+  [javasession/BRIDGE_ASSIST.md](javasession/BRIDGE_ASSIST.md).
+
 Not done: the recipe book, villager trades.
 
 ## Licence

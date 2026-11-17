@@ -43,6 +43,11 @@ type Config struct {
 	JoinMessage, QuitMessage chat.Translation
 	// Allow, if set, is asked before a Java player joins; a non-empty reason refuses them.
 	Allow func(p jserver.Profile, id uuid.UUID, xuid string) (reason string)
+	// BridgeAssist gives Java players the block placement help of Bedrock Edition: using a block while
+	// looking down at nothing places it against the block the player stands on, on the side they look
+	// towards (bridge_assist.go). Bedrock clients always have it. Off by default. The environment
+	// variable CF_JAVA_BRIDGE_ASSIST (1 or 0) overrides it.
+	BridgeAssist bool
 }
 
 // Run adds every Java client the listener accepts to the server. It returns when the listener is
@@ -53,6 +58,10 @@ func Run(conf Config) {
 	}
 	if conf.ChunkRadius <= 0 {
 		conf.ChunkRadius = 8
+	}
+	conf.BridgeAssist = bridgeAssistEnv(conf.BridgeAssist)
+	if conf.BridgeAssist {
+		conf.Log.Info("Bridge assist for Java players is on.")
 	}
 	tabs := newTabList(conf.Server)
 	for {
@@ -114,6 +123,7 @@ func join(conf Config, tabs *tabList, jp *jserver.Player) {
 	s.tabs = tabs
 	s.selfID = jp.Profile.UUID
 	s.joinMessage, s.quitMessage = conf.JoinMessage, conf.QuitMessage
+	s.bridgeAssist = conf.BridgeAssist
 	s.xuid, s.skin = xuid, pc.Skin
 	registerProfile(id, jp.Profile.Properties)
 	registerProfile(jp.Profile.UUID, jp.Profile.Properties) // for the client's own tab entry
