@@ -1032,7 +1032,7 @@ func (p *Player) kill(src world.DamageSource) {
 
 	p.addHealth(-p.MaxHealth())
 
-	keepInv := false
+	keepInv := p.tx.World().KeepInventory() // the keepinventory game rule; the handler may change it
 	p.Handler().HandleDeath(p, src, &keepInv)
 	p.StopSneaking()
 	p.StopSprinting()

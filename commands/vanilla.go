@@ -32,6 +32,7 @@ func coreCommands() []cmd.Command {
 		cmd.New("time", "Changes or queries the world's game time.", nil, timeSet{}, timeAdd{}, timeQuery{}),
 		cmd.New("weather", "Sets the weather.", nil, weatherCmd{}),
 		cmd.New("difficulty", "Sets the difficulty level.", nil, difficultyCmd{}),
+		cmd.New("gamerule", "Shows or sets a game rule.", nil, gameRuleCmd{}),
 		cmd.New("setworldspawn", "Sets the world spawn.", nil, setWorldSpawn{}),
 		cmd.New("say", "Sends a message in the chat to all players.", nil, say{}),
 		cmd.New("tell", "Sends a private message to players.", []string{"msg", "w"}, tell{}),
@@ -542,6 +543,60 @@ func (c difficultyCmd) Run(_ cmd.Source, o *cmd.Output, tx *world.Tx) {
 		}
 	}
 	o.Printf("Set the difficulty to %v", c.Difficulty)
+}
+
+// --- /gamerule ---
+
+// gameRuleName is a game rule /gamerule supports.
+type gameRuleName string
+
+func (gameRuleName) Type() string { return "GameRule" }
+func (gameRuleName) Options(cmd.Source) []string {
+	return []string{"keepinventory", "dodaylightcycle"}
+}
+
+type gameRuleCmd struct {
+	op
+	Rule  gameRuleName       `cmd:"rule"`
+	Value cmd.Optional[bool] `cmd:"value"`
+}
+
+// Run shows a game rule, or sets it on the Overworld, Nether and End (they share their rules, as in vanilla).
+func (c gameRuleCmd) Run(_ cmd.Source, o *cmd.Output, tx *world.Tx) {
+	var get func(*world.World) bool
+	var set func(*world.World, bool)
+	switch c.Rule {
+	case "keepinventory":
+		get, set = (*world.World).KeepInventory, (*world.World).SetKeepInventory
+	case "dodaylightcycle":
+		get = (*world.World).TimeCycle
+		set = func(w *world.World, v bool) {
+			if v {
+				w.StartTime()
+			} else {
+				w.StopTime()
+			}
+		}
+	default:
+		o.Errorf("Unknown game rule: %v", c.Rule)
+		return
+	}
+	v, ok := c.Value.Load()
+	if !ok {
+		o.Printf("%v = %v", c.Rule, get(tx.World()))
+		return
+	}
+	for _, w := range []*world.World{srv.World(), srv.Nether(), srv.End()} {
+		if w == tx.World() {
+			set(w, v)
+		} else {
+			w.Do(func(*world.Tx) { set(w, v) })
+		}
+	}
+	if !slices.Contains([]*world.World{srv.World(), srv.Nether(), srv.End()}, tx.World()) {
+		set(tx.World(), v) // a world of the server's own (not its Overworld, Nether or End)
+	}
+	o.Printf("Game rule %v has been updated to %v", c.Rule, v)
 }
 
 // --- /setworldspawn ---

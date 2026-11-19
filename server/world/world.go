@@ -974,6 +974,27 @@ func (w *World) TimeCycle() bool {
 	return w.set.TimeCycle
 }
 
+// KeepInventory returns the keepinventory game rule of the World: whether players keep their items and
+// experience when they die.
+func (w *World) KeepInventory() bool {
+	if w == nil {
+		return false
+	}
+	w.set.Lock()
+	defer w.set.Unlock()
+	return w.set.KeepInventory
+}
+
+// SetKeepInventory sets the keepinventory game rule of the World. It is saved with the world (level.dat).
+func (w *World) SetKeepInventory(v bool) {
+	if w == nil {
+		return
+	}
+	w.set.Lock()
+	defer w.set.Unlock()
+	w.set.KeepInventory = v
+}
+
 // enableTimeCycle enables or disables the time cycling of the World.
 func (w *World) enableTimeCycle(v bool) {
 	if w == nil {

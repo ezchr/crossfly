@@ -42,6 +42,9 @@ type Settings struct {
 	// Difficulty is the difficulty of the World. Behaviour of hunger, regeneration and monsters differs based on the
 	// difficulty of the world.
 	Difficulty Difficulty
+	// KeepInventory is the keepinventory game rule: players keep their inventory, armour and experience when
+	// they die (a Handler's HandleDeath may still change it per death).
+	KeepInventory bool
 	// TickRange is the radius in chunks around a Viewer that has its blocks and entities ticked when the world is
 	// ticked. If set to 0, blocks and entities will never be ticked.
 	TickRange int32

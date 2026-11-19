@@ -238,6 +238,7 @@ func (d *Data) Settings() *world.Settings {
 		Spawn:           cube.Pos{int(d.SpawnX), int(d.SpawnY), int(d.SpawnZ)},
 		Time:            d.Time,
 		TimeCycle:       d.DoDayLightCycle,
+		KeepInventory:   d.KeepInventory,
 		RainTime:        int64(d.RainTime),
 		Raining:         d.RainLevel > 0,
 		ThunderTime:     int64(d.LightningTime),
@@ -257,6 +258,7 @@ func (d *Data) PutSettings(s *world.Settings) {
 	d.LimitedWorldOriginX, d.LimitedWorldOriginY, d.LimitedWorldOriginZ = d.SpawnX, d.SpawnY, d.SpawnZ
 	d.Time = s.Time
 	d.DoDayLightCycle = s.TimeCycle
+	d.KeepInventory = s.KeepInventory
 	d.DoWeatherCycle = s.WeatherCycle
 	d.RainTime, d.RainLevel = int32(s.RainTime), 0
 	d.LightningTime, d.LightningLevel = int32(s.ThunderTime), 0
