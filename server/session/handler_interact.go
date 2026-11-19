@@ -2,6 +2,7 @@ package session
 
 import (
 	"fmt"
+	"time"
 
 	"github.com/df-mc/dragonfly/server/entity"
 	"github.com/df-mc/dragonfly/server/world"
@@ -35,9 +36,14 @@ func (h *InteractHandler) Handle(p packet.Packet, s *Session, tx *world.Tx, c Co
 		}
 		if !s.invOpened.CompareAndSwap(false, true) {
 			// When there is latency, this might end up being sent multiple times. If we send a ContainerOpen
-			// multiple times, the client crashes.
-			return nil
+			// multiple times, the client crashes. A request a second or more after the last open is
+			// not that: the client closed its inventory without a ContainerClose the server saw, and
+			// would otherwise never get it open again (an iOS player, 2026-11-19).
+			if at := s.invOpenedAt.Load(); at == 0 || time.Since(time.Unix(0, at)) < time.Second {
+				return nil
+			}
 		}
+		s.invOpenedAt.Store(time.Now().UnixNano())
 		s.writePacket(&packet.ContainerOpen{
 			WindowID:                0,
 			ContainerType:           0xff,

@@ -116,6 +116,9 @@ type Session struct {
 	// ask for; see subChunkLimit.
 	subLimits map[world.ChunkPos]int32
 	invOpened atomic.Bool
+	// invOpenedAt is when the inventory was last opened (UnixNano), for an open request the client
+	// sends while the server still has it open.
+	invOpenedAt atomic.Int64
 
 	hudMu      sync.RWMutex
 	hudUpdates map[hud.Element]bool
