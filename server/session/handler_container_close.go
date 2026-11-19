@@ -19,6 +19,13 @@ func (h *ContainerCloseHandler) Handle(p packet.Packet, s *Session, tx *world.Tx
 	c.MoveItemsToInventory()
 	s.anvilKeep(tx)
 
+	// A client confirms a close the server made itself (ServerSide, sent by closeWindow or a menu
+	// library through writePacket) with a ContainerClose of its own. That one gets no reply: a
+	// client takes a reply to it as a response it did not ask for (PacketViolationWarning "Server
+	// sent a ContainerClosePacket response packet when it should have sent the server initiated
+	// packet").
+	confirm := s.serverClosedWindow.CompareAndSwap(int32(pk.WindowID)+1, 0)
+
 	var containerType byte
 	switch pk.WindowID {
 	case 0:
@@ -50,6 +57,9 @@ func (h *ContainerCloseHandler) Handle(p packet.Packet, s *Session, tx *world.Tx
 		// so echo both back - otherwise the villager never opens again.
 		s.closeCurrentContainer(tx, true)
 		containerType = pk.ContainerType
+	}
+	if confirm && !trading {
+		return nil
 	}
 	s.writePacket(&packet.ContainerClose{
 		WindowID:      pk.WindowID,

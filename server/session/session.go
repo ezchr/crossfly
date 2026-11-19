@@ -116,6 +116,10 @@ type Session struct {
 	// ask for; see subChunkLimit.
 	subLimits map[world.ChunkPos]int32
 	invOpened atomic.Bool
+	// serverClosedWindow is the window ID plus one of the last ContainerClose the server sent
+	// itself (ServerSide), until the client confirms it with a ContainerClose of its own, which
+	// gets no reply (handler_container_close.go). 0: none.
+	serverClosedWindow atomic.Int32
 	// invOpenedAt is when the inventory was last opened (UnixNano), for an open request the client
 	// sends while the server still has it open.
 	invOpenedAt atomic.Int64
@@ -819,6 +823,14 @@ func (s *Session) writePacket(pk packet.Packet) {
 		return
 	}
 	pk = expandGradients(pk)
+	switch p := pk.(type) {
+	case *packet.ContainerClose:
+		if p.ServerSide {
+			s.serverClosedWindow.Store(int32(p.WindowID) + 1)
+		}
+	case *packet.ContainerOpen:
+		s.serverClosedWindow.Store(0)
+	}
 	select {
 	case s.packets <- pk:
 	case <-s.closeBackground:
