@@ -2331,7 +2331,7 @@ func (p *Player) triggerSpearLunge() {
 	level := l.Level()
 
 	dir := p.Rotation().Vec3()
-	speed := enchantment.Lunge.Speed(level)
+	speed := enchantment.Lunge.Speed(level) * lungeScale()
 	p.SetVelocity(p.Velocity().Add(mgl64.Vec3{dir[0] * speed, 0, dir[2] * speed}))
 
 	held, left := p.HeldItems()

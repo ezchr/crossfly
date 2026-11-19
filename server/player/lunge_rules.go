@@ -24,3 +24,17 @@ var noLungeWithElytra atomic.Bool
 // SetNoLungeWithElytra sets whether Lunge does nothing for a player wearing an elytra, for every
 // player. Off by default (Bedrock). It may be called at any time.
 func SetNoLungeWithElytra(on bool) { noLungeWithElytra.Store(on) }
+
+// lungeSpeedScale scales the push of Lunge for every player, as float bits; 0 or unset: 1 (Bedrock's).
+var lungeSpeedScale atomic.Uint64
+
+// SetLungeSpeedScale scales how far a jab with Lunge pushes, for every player (a server rule, not
+// Bedrock's): 1.25 pushes a quarter further. 0 or less brings back Bedrock's. It may be called at any time.
+func SetLungeSpeedScale(scale float64) { lungeSpeedScale.Store(math.Float64bits(scale)) }
+
+func lungeScale() float64 {
+	if v := math.Float64frombits(lungeSpeedScale.Load()); v > 0 {
+		return v
+	}
+	return 1
+}
