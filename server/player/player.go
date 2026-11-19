@@ -2346,6 +2346,11 @@ func (p *Player) canLunge() bool {
 	if p.Gliding() || p.touchingWater() {
 		return false
 	}
+	if noLungeWithElytra.Load() {
+		if _, elytra := p.Armour().Chestplate().Item().(item.Elytra); elytra {
+			return false
+		}
+	}
 	if _, riding := p.RidingEntity(p.tx); riding {
 		return false
 	}
