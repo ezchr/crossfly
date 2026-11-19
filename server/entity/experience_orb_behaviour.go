@@ -36,7 +36,7 @@ func (conf ExperienceOrbBehaviourConfig) New() *ExperienceOrbBehaviour {
 	if conf.ExistenceDuration == 0 {
 		conf.ExistenceDuration = time.Minute * 5
 	}
-	b := &ExperienceOrbBehaviour{conf: conf, lastSearch: time.Now()}
+	b := &ExperienceOrbBehaviour{conf: conf}
 	b.passive = PassiveBehaviourConfig{
 		Gravity:           conf.Gravity,
 		Drag:              conf.Drag,
@@ -79,8 +79,11 @@ var followBox = cube.Box(-8, -8, -8, 8, 8, 8)
 // vanilla Bedrock behaviour here: orbs never merge. Set it before the server starts.
 var OrbMergeRadius float64
 
-// tryMerge merges e into another orb within OrbMergeRadius: both are replaced by one orb with
-// their total experience. It reports whether e was merged (and closed).
+// tryMerge merges e into another orb within OrbMergeRadius: the other orb takes e's experience,
+// keeping its place, motion and target (Paper's ExperienceOrb merging), and e is closed. It reports
+// whether e was merged. Replacing both with a new orb, as this did first, gave a resting pair a new
+// random hop and a new orb's search delay at every merge, so a pile of orbs kept hopping and never
+// flew to a player (2026-11-19).
 func (exp *ExperienceOrbBehaviour) tryMerge(e *Ent, tx *world.Tx) bool {
 	pos := e.Position()
 	for other := range tx.EntitiesWithin(cube.Box(-OrbMergeRadius, -OrbMergeRadius, -OrbMergeRadius, OrbMergeRadius, OrbMergeRadius, OrbMergeRadius).Translate(pos)) {
@@ -95,10 +98,10 @@ func (exp *ExperienceOrbBehaviour) tryMerge(e *Ent, tx *world.Tx) bool {
 		if !ok || o.Position().Sub(pos).Len() > OrbMergeRadius {
 			continue
 		}
-		total := exp.conf.Experience + ob.conf.Experience
-		tx.AddEntity(NewExperienceOrb(world.EntitySpawnOpts{Position: o.Position(), Velocity: o.Velocity()}, total))
+		ob.conf.Experience += exp.conf.Experience
+		exp.conf.Experience = 0
 		_ = e.Close()
-		_ = o.Close()
+		o.updateState() // its size shows its new value
 		return true
 	}
 	return false
@@ -127,10 +130,12 @@ func (exp *ExperienceOrbBehaviour) tick(e *Ent, tx *world.Tx) {
 // findTarget attempts to find a target for an experience orb in w around pos.
 func (exp *ExperienceOrbBehaviour) findTarget(tx *world.Tx, pos mgl64.Vec3) {
 	exp.target = nil
+	best := math.MaxFloat64
 	for o := range tx.EntitiesWithin(followBox.Translate(pos)) {
-		if ec, ok := o.(experienceCollector); ok && ec.CanCollectExperience() {
-			exp.target = o.H()
-			break
+		if ec, ok := o.(experienceCollector); ok && canFollow(ec) {
+			if d := o.Position().Sub(pos).LenSqr(); d < best {
+				exp.target, best = o.H(), d
+			}
 		}
 	}
 	exp.lastSearch = time.Now()
@@ -151,6 +156,18 @@ func (exp *ExperienceOrbBehaviour) moveToTarget(e *Ent, target experienceCollect
 	if e.H().Type().BBox(e).Translate(pos).IntersectsWith(target.H().Type().BBox(target).Translate(target.Position())) && target.CollectExperience(exp.conf.Experience) {
 		_ = e.Close()
 	}
+}
+
+// canFollow reports whether an orb may fly to ec: alive and in a game mode that interacts (not a
+// spectator), whatever the 100 ms between pickups.
+func canFollow(ec experienceCollector) bool {
+	if ec.Dead() {
+		return false
+	}
+	if g, ok := ec.(interface{ GameMode() world.GameMode }); ok && !g.GameMode().AllowsInteraction() {
+		return false
+	}
+	return true
 }
 
 // experienceCollector represents an entity that can collect experience orbs.
