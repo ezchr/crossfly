@@ -29,6 +29,7 @@ var DefaultRegistry = conf.New([]world.EntityType{
 	SplashPotionType,
 	TNTType,
 	TextType,
+	WindChargeType,
 })
 
 var conf = world.EntityRegistryConfig{
@@ -38,6 +39,7 @@ var conf = world.EntityRegistryConfig{
 	EndCrystal:         NewEndCrystal,
 	ArmourStand:        NewArmourStand,
 	Snowball:           NewSnowball,
+	WindCharge:         NewWindCharge,
 	BottleOfEnchanting: NewBottleOfEnchanting,
 	Cushion: func(opts world.EntitySpawnOpts, colour any) *world.EntityHandle {
 		return NewCushion(opts, colour.(item.Colour))

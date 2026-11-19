@@ -77,6 +77,13 @@ func (s *Session) ViewParticle(pos mgl64.Vec3, p world.Particle) {
 		s.simpleParticle(ptDustPlume, pos, 0)
 	case particle.HugeExplosion:
 		s.simpleParticle(ptExplosionEmitter, pos, 0)
+	case particle.WindExplosion:
+		// A wind charge's burst (radius 1.2, under 2): gust_emitter_small.
+		if id, ok := s.namedParticleID("gust_emitter_small"); ok {
+			w := s.packet()
+			w.VarInt(id)
+			s.particleAt(w, true, pos, 0, 0, 0, 0, 0)
+		}
 	case particle.MobSpawnerSpawn:
 		s.levelEvent(levelEventMobSpawnerSpawn, cube.PosFromVec3(pos), 0, false)
 	case particle.EndermanTeleport:

@@ -292,6 +292,14 @@ func (s *Session) playSound(pos mgl64.Vec3, t world.Sound, broadcast bool) {
 		s.customSound(pos, names[min(max(so.Level, 1), 3)-1], 1, 1)
 	case sound.ItemThrow:
 		s.sound(pos, sndSnowballThrow, srcNeutral, 0.5, 0.4/(rnd()*0.4+0.8))
+	case sound.WindChargeThrow:
+		// WindChargeItem.use: WIND_CHARGE_THROW, neutral, 0.5, 0.4 / (random * 0.4 + 0.8).
+		s.customSound(pos, "minecraft:entity.wind_charge.throw", 0.5, 0.4/(rnd()*0.4+0.8))
+	case sound.WindChargeBurst:
+		// The client plays an explosion's sound at volume 4, pitch (1 + (r1 - r2) * 0.2) * 0.7.
+		s.customSound(pos, "minecraft:entity.wind_charge.wind_burst", 4, (1+(rnd()-rnd())*0.2)*0.7)
+	case sound.CandleExtinguish:
+		s.customSound(pos, "minecraft:block.candle.extinguish", 1, 1)
 	case sound.FishingRodCast:
 		// FishingRodItem.use: FISHING_BOBBER_THROW, neutral, 0.5, 0.4 / (random * 0.4 + 0.8).
 		s.sound(pos, sndFishingBobberThrow, srcNeutral, 0.5, 0.4/(rnd()*0.4+0.8))

@@ -285,6 +285,17 @@ func (s Snowball) Dispense(pos cube.Pos, face cube.Face, tx *world.Tx, ctx *Disp
 	})
 }
 
+// Dispense launches a wind charge from a dispenser (ownerless, the usual dispenser projectile speed).
+func (WindCharge) Dispense(pos cube.Pos, face cube.Face, tx *world.Tx, ctx *DispenseContext) DispenseResult {
+	create := tx.World().EntityRegistry().Config().WindCharge
+	if create == nil {
+		return DispenseFailure
+	}
+	return dispenseProjectile(pos, face, tx, ctx, sound.WindChargeThrow{}, func(opts world.EntitySpawnOpts) *world.EntityHandle {
+		return create(opts, nil)
+	})
+}
+
 // Dispense launches the potion from a dispenser.
 func (s SplashPotion) Dispense(pos cube.Pos, face cube.Face, tx *world.Tx, ctx *DispenseContext) DispenseResult {
 	create := tx.World().EntityRegistry().Config().SplashPotion

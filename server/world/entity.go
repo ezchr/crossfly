@@ -549,6 +549,8 @@ type EntityRegistryConfig struct {
 	Snowball           func(opts EntitySpawnOpts, owner Entity) *EntityHandle
 	SplashPotion       func(opts EntitySpawnOpts, t any, owner Entity) *EntityHandle
 	Lightning          func(opts EntitySpawnOpts) *EntityHandle
+	// WindCharge throws a wind charge for owner (nil for a dispenser). Optional: wind charges do nothing without it.
+	WindCharge func(opts EntitySpawnOpts, owner Entity) *EntityHandle
 	// FishingHook casts a fishing hook for owner (the velocity of opts is worked out from owner). Optional: fishing
 	// rods do nothing without it.
 	FishingHook func(opts EntitySpawnOpts, owner Entity) *EntityHandle

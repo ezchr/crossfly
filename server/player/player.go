@@ -92,6 +92,8 @@ type playerData struct {
 	glideTicks   int64
 	fireTicks    int64
 	fallDistance float64
+	// wind is the state a wind burst leaves on the player (BDS WindChargeKnockbackComponent).
+	wind windLaunch
 
 	breathing         bool
 	airSupplyTicks    int
@@ -627,6 +629,7 @@ func (p *Player) updateFallState(distanceThisTick float64) {
 	switch {
 	case p.OnGround():
 		p.fallDistance -= distanceThisTick
+		p.fallDistance = p.wind.limitFall(p.fallDistance, p.Position().Y())
 		if p.fallDistance > 3 {
 			p.fall(p.fallDistance)
 		}
@@ -3330,6 +3333,7 @@ func (p *Player) teleport(pos mgl64.Vec3) {
 	p.data.Pos = pos
 	p.data.Vel = mgl64.Vec3{}
 	p.ResetFallDistance()
+	p.wind = windLaunch{}
 }
 
 // Move moves the player from one position to another in the world, by adding the delta passed to the current
@@ -3772,6 +3776,7 @@ func (p *Player) Tick(tx *world.Tx, current int64) {
 
 	p.checkBlockCollisions(p.data.Vel)
 	p.onGround = p.checkOnGround(mgl64.Vec3{})
+	p.tickWindLaunch()
 	p.checkEntitySteppers()
 	p.tickBorder(tx)
 

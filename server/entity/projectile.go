@@ -140,6 +140,14 @@ type ProjectileBehaviour struct {
 	portalTravel     bool
 	// shot is set once projectile_shoot was posted for the projectile.
 	shot bool
+	// hitVel is the velocity the projectile had in the tick it last hit something.
+	hitVel mgl64.Vec3
+}
+
+// HitVelocity returns the velocity the projectile had when it hit its target, before the hit
+// stopped it: the posDelta BDS Explosion::explode steps back along out of a solid block.
+func (lt *ProjectileBehaviour) HitVelocity() mgl64.Vec3 {
+	return lt.hitVel
 }
 
 // Owner returns the owner of the projectile.
@@ -212,6 +220,7 @@ func (lt *ProjectileBehaviour) Tick(e *Ent, tx *world.Tx) *Movement {
 	}
 	m, result := lt.tickMovement(e, tx)
 	e.data.Pos, e.data.Vel, e.data.Rot = m.pos, m.vel, m.rot
+	lt.hitVel = vel
 
 	lt.collisionPos, lt.collided, lt.ageCollided = cube.Pos{}, false, 0
 

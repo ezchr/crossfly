@@ -20,6 +20,7 @@ func init() {
 	world.RegisterItem(BlazeRod{})
 	world.RegisterItem(BreezeRod{})
 	world.RegisterItem(Mace{})
+	world.RegisterItem(WindCharge{})
 	world.RegisterItem(BoneMeal{})
 	world.RegisterItem(Bone{})
 	world.RegisterItem(BookAndQuill{})
