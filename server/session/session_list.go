@@ -199,7 +199,7 @@ func skinToProtocol(s skin.Skin) protocol.Skin {
 		CapeID:                   s.CapeID,
 		FullID:                   fullID,
 		Animations:               animations,
-		Trusted:                  true,
+		Trusted:                  protocol.Option(true),
 		// OverrideAppearance always true: this tells the receiving client to use the skin data sent
 		// here rather than falling back to any appearance it might otherwise guess for the player.
 		OverrideAppearance:        true,
