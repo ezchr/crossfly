@@ -19,6 +19,8 @@ type windLaunch struct {
 	active bool
 	y      float64
 	ticks  int
+	// bursts counts every wind burst that pushed the player, for anti-cheats (WindBursts).
+	bursts uint64
 }
 
 // limitFall is the fall distance counted on landing at y: only what the player fell below the height the
@@ -44,9 +46,10 @@ func (p *Player) WindBurstLaunch(push mgl64.Vec3, negatesFallDamage bool) {
 		return
 	}
 	push = push.Mul(math.Max(1-res, 0))
+	p.wind.bursts++
 	if negatesFallDamage {
 		if !p.wind.active {
-			p.wind = windLaunch{active: true}
+			p.wind = windLaunch{active: true, bursts: p.wind.bursts}
 		}
 		p.wind.y = p.Position().Y()
 	}
@@ -65,7 +68,7 @@ func (p *Player) tickWindLaunch() {
 		p.wind.ticks++
 	}
 	if p.wind.ticks > 10 {
-		p.wind = windLaunch{}
+		p.wind = windLaunch{bursts: p.wind.bursts}
 	}
 }
 
@@ -73,4 +76,11 @@ func (p *Player) tickWindLaunch() {
 // its fall damage.
 func (p *Player) WindLaunched() (float64, bool) {
 	return p.wind.y, p.wind.active
+}
+
+// WindBursts is how many wind bursts have pushed the player since it joined: a change means the server
+// gave it a push the client shows a ping later (an anti-cheat can't see it otherwise: the push is set as
+// velocity on the client, and a burst deals no damage).
+func (p *Player) WindBursts() uint64 {
+	return p.wind.bursts
 }
