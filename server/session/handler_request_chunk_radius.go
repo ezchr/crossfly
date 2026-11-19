@@ -2,8 +2,27 @@ package session
 
 import (
 	"github.com/df-mc/dragonfly/server/world"
+	"github.com/sandertv/gophertunnel/minecraft/protocol"
 	"github.com/sandertv/gophertunnel/minecraft/protocol/packet"
 )
+
+// ChunkRadiusForDevice, when set, caps the view distance of a Bedrock player by the device they
+// play on, so that weak devices can be sent fewer chunks than strong ones. It only ever lowers the
+// server's maximum: ok false, or a radius above it, leaves the maximum. Set it before the server
+// starts; it applies to every view-distance request.
+var ChunkRadiusForDevice func(protocol.DeviceOS) (radius int, ok bool)
+
+// maxRadius is the most chunks this session is sent around its player: the server's maximum, or
+// less for its device (ChunkRadiusForDevice).
+func (s *Session) maxRadius() int32 {
+	m := s.maxChunkRadius
+	if ChunkRadiusForDevice != nil && s.conn != nil {
+		if r, ok := ChunkRadiusForDevice(s.conn.ClientData().DeviceOS); ok && r > 0 && int32(r) < m {
+			m = int32(r)
+		}
+	}
+	return m
+}
 
 // RequestChunkRadiusHandler handles the RequestChunkRadius packet.
 type RequestChunkRadiusHandler struct {
@@ -19,8 +38,8 @@ func (h *RequestChunkRadiusHandler) Handle(p packet.Packet, s *Session, tx *worl
 		return nil
 	}
 
-	if pk.ChunkRadius > s.maxChunkRadius {
-		pk.ChunkRadius = s.maxChunkRadius
+	if m := s.maxRadius(); pk.ChunkRadius > m {
+		pk.ChunkRadius = m
 	}
 	s.chunkRadius = pk.ChunkRadius
 

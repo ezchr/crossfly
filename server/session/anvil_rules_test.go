@@ -124,6 +124,7 @@ func anvilCases() []anvilCase {
 		{"reported pickaxe: Efficiency 5 + Efficiency 10 book", anvilPick(ench(eff, 5), ench(enchantment.Unbreaking, 3), ench(enchantment.Fortune, 3)).WithAnvilCost(3), anvilBook(ench(eff, 10)), eff, false, 10, 10},
 		{"reported pickaxe with Efficiency 4", anvilPick(ench(eff, 4), ench(enchantment.Unbreaking, 3), ench(enchantment.Fortune, 3)).WithAnvilCost(3), anvilBook(ench(eff, 10)), eff, true, 10, 10},
 		{"reported pickaxe without Efficiency", anvilPick(ench(enchantment.Unbreaking, 3), ench(enchantment.Fortune, 3)).WithAnvilCost(3), anvilBook(ench(eff, 10)), eff, true, 10, 10},
+		{"Efficiency 10 pickaxe, Fortune 3 + Fortune 4 book", anvilPick(ench(eff, 10), ench(enchantment.Unbreaking, 3), ench(enchantment.Fortune, 3)), anvilBook(ench(enchantment.Fortune, 4)), enchantment.Fortune, false, 4, 8},
 	}
 }
 
