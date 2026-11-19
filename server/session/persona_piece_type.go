@@ -32,6 +32,7 @@ var personaPieceTypes = map[string]uint32{
 	"persona_capes":          protocol.PieceTypeCapes,
 	"persona_classic_skin":   protocol.PieceTypeClassicSkin,
 	"persona_emote":          protocol.PieceTypeEmote,
+	"persona_coco":           protocol.PieceTypeCoCo,
 	"unsupported":            protocol.PieceTypeUnsupported,
 }
 

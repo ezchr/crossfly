@@ -791,6 +791,7 @@ func (s *Session) playSound(pos mgl64.Vec3, t world.Sound, disableRelative bool)
 			EventType: packet.LevelEventWaxOn,
 			Position:  vec64To32(pos),
 		})
+		return
 	case sound.WaxedSignFailedInteraction:
 		pk.SoundType = packet.SoundEventWaxedSignInteractFail
 	case sound.WaxRemoved:
@@ -798,11 +799,13 @@ func (s *Session) playSound(pos mgl64.Vec3, t world.Sound, disableRelative bool)
 			EventType: packet.LevelEventWaxOff,
 			Position:  vec64To32(pos),
 		})
+		return
 	case sound.CopperScraped:
 		s.writePacket(&packet.LevelEvent{
 			EventType: packet.LevelEventScrape,
 			Position:  vec64To32(pos),
 		})
+		return
 	case sound.Pop:
 		s.writePacket(&packet.LevelEvent{
 			EventType: packet.LevelEventSoundInfinityArrowPickup,
@@ -1215,6 +1218,7 @@ func (s *Session) playSound(pos mgl64.Vec3, t world.Sound, disableRelative bool)
 			Volume:    1,
 			Pitch:     0.7,
 		})
+		return
 	case sound.LightningThunder:
 		s.writePacket(&packet.PlaySound{
 			SoundName: "ambient.weather.thunder",
@@ -1222,6 +1226,7 @@ func (s *Session) playSound(pos mgl64.Vec3, t world.Sound, disableRelative bool)
 			Volume:    1,
 			Pitch:     1.0,
 		})
+		return
 	}
 	s.writePacket(pk)
 }

@@ -659,17 +659,27 @@ func (s *Session) SendHealth(health, max, absorption float64) {
 	})
 }
 
-// SendEffect sends an effects passed to the player.
+// SendEffect sends an effects passed to the player: an update of one the client has, else an add.
 func (s *Session) SendEffect(e effect.Effect) {
-	s.SendEffectRemoval(e.Type())
 	id, _ := effect.ID(e.Type())
 	dur := e.Duration() / (time.Second / 20)
 	if e.Infinite() {
 		dur = -1
 	}
+	op := byte(packet.MobEffectAdd)
+	s.effectsMu.Lock()
+	if s.effectsSent[int32(id)] {
+		op = packet.MobEffectModify
+	} else {
+		if s.effectsSent == nil {
+			s.effectsSent = map[int32]bool{}
+		}
+		s.effectsSent[int32(id)] = true
+	}
+	s.effectsMu.Unlock()
 	s.writePacket(&packet.MobEffect{
 		EntityRuntimeID: selfEntityRuntimeID,
-		Operation:       packet.MobEffectAdd,
+		Operation:       op,
 		EffectType:      int32(id),
 		Amplifier:       int32(e.Level() - 1),
 		Particles:       !e.ParticlesHidden(),
@@ -684,6 +694,9 @@ func (s *Session) SendEffectRemoval(e effect.Type) {
 	if !ok {
 		panic(fmt.Sprintf("unregistered effect type %T", e))
 	}
+	s.effectsMu.Lock()
+	delete(s.effectsSent, int32(id))
+	s.effectsMu.Unlock()
 	s.writePacket(&packet.MobEffect{
 		EntityRuntimeID: selfEntityRuntimeID,
 		Operation:       packet.MobEffectRemove,

@@ -120,6 +120,11 @@ type Session struct {
 	// itself (ServerSide), until the client confirms it with a ContainerClose of its own, which
 	// gets no reply (handler_container_close.go). 0: none.
 	serverClosedWindow atomic.Int32
+	// effectsSent holds the effects the client has, so SendEffect updates those instead of removing
+	// and adding them again (which made the icon flash and speed pulse the view). A respawn or a
+	// dimension change clears the client's effects, and the set (writePacket).
+	effectsMu   sync.Mutex
+	effectsSent map[int32]bool
 	// invOpenedAt is when the inventory was last opened (UnixNano), for an open request the client
 	// sends while the server still has it open.
 	invOpenedAt atomic.Int64
@@ -830,6 +835,10 @@ func (s *Session) writePacket(pk packet.Packet) {
 		}
 	case *packet.ContainerOpen:
 		s.serverClosedWindow.Store(0)
+	case *packet.Respawn, *packet.ChangeDimension:
+		s.effectsMu.Lock()
+		s.effectsSent = nil
+		s.effectsMu.Unlock()
 	}
 	select {
 	case s.packets <- pk:
