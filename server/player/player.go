@@ -1084,6 +1084,7 @@ func (p *Player) dropItems() {
 
 	p.MoveItemsToInventory()
 	for _, it := range append(p.inv.Clear(), append(p.armour.Clear(), p.offHand.Clear()...)...) {
+		it = item.RestoreAnvilHeld(it)
 		if _, ok := it.Enchantment(enchantment.CurseOfVanishing); ok {
 			continue
 		}
@@ -1097,6 +1098,8 @@ func (p *Player) dropItems() {
 // If no space is left for these items, the leftover items are dropped.
 func (p *Player) MoveItemsToInventory() {
 	for _, i := range p.ui.Clear() {
+		// An item whose enchantments a Bedrock anvil took off while it lay there gets them back.
+		i = item.RestoreAnvilHeld(i)
 		if n, err := p.inv.AddItem(i); err != nil {
 			// We couldn't add the item to the main inventory (probably because
 			// it was full), so we drop it instead.

@@ -17,6 +17,7 @@ func (h *ContainerCloseHandler) Handle(p packet.Packet, s *Session, tx *world.Tx
 	}
 
 	c.MoveItemsToInventory()
+	s.anvilKeep(tx)
 
 	var containerType byte
 	switch pk.WindowID {

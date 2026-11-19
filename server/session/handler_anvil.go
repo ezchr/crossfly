@@ -42,6 +42,9 @@ func (h *ItemStackRequestHandler) handleCraftRecipeOptional(a *protocol.CraftRec
 	if input.Empty() {
 		return fmt.Errorf("no item in input input slot")
 	}
+	// An item whose enchantments the anvil took off while it lay here (anvil_strip.go) is made into
+	// the result as it was.
+	input = item.RestoreAnvilHeld(input)
 	material, _ := h.itemInSlot(protocol.StackRequestSlotInfo{
 		Container: protocol.FullContainerName{ContainerID: protocol.ContainerAnvilMaterial},
 		Slot:      anvilMaterialSlot,

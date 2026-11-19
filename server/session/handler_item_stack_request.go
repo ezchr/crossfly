@@ -48,6 +48,9 @@ func (h *ItemStackRequestHandler) Handle(p packet.Packet, s *Session, tx *world.
 	pk := p.(*packet.ItemStackRequest)
 	h.current = time.Now()
 
+	// After the requests, once the client has their answers: the anvil input as the anvil rules
+	// want it (anvil_strip.go). Deferred before inTransaction, so the slots it changes are sent.
+	defer s.anvilKeep(tx)
 	s.inTransaction.Store(true)
 	defer s.inTransaction.Store(false)
 
@@ -283,6 +286,7 @@ func (h *ItemStackRequestHandler) handleDrop(a *protocol.DropStackRequestAction,
 	if i.Count() < int(a.Count) {
 		return fmt.Errorf("client attempted to drop %v items, but only %v present", a.Count, i.Count())
 	}
+	i = item.RestoreAnvilHeld(i) // dropped from the anvil: with the enchantments it took off
 
 	inv, _ := s.invByID(int32(a.Source.Container.ContainerID), tx)
 	if err := call(event.C(inventory.Holder(c)), int(a.Source.Slot), i.Grow(int(a.Count)-i.Count()), inv.Handler().HandleDrop); err != nil {
